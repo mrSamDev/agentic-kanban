@@ -1,5 +1,7 @@
 # agentic-kanban
 
+> **Alpha**: This project is early-stage. APIs, schema, and behavior may change without warning. Use at own risk — things may break.
+
 SQLite-backed task coordination for AI agents.
 
 No server. No daemon. No queues. Just a shared database file that agents use to claim, track, review, and complete work.
