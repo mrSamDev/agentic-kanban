@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"agent-kanban/internal/storage"
 	"agent-kanban/internal/task"
@@ -12,6 +13,20 @@ import (
 )
 
 var dbPath string
+
+var validNoteTypes = map[string]bool{
+	"PROGRESS": true,
+	"ERROR":    true,
+	"DECISION": true,
+	"":         true, // optional
+}
+
+func nonEmpty(s string, label string) error {
+	if strings.TrimSpace(s) == "" {
+		return &task.ExitError{Code: 2, Message: label + " cannot be empty"}
+	}
+	return nil
+}
 
 func main() {
 	var rootCmd = &cobra.Command{
@@ -91,9 +106,9 @@ func writeJSON(v any) {
 }
 
 func writeStderr(msg string) {
-	err := json.NewEncoder(os.Stderr).Encode(map[string]string{"error": msg})
-	if err != nil {
-		// best-effort fallback
+	// JSON is the primary format; fall back to plain text on encode error
+	// (os.Stderr.Write failure is deliberately ignored — nothing useful to do).
+	if err := json.NewEncoder(os.Stderr).Encode(map[string]string{"error": msg}); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}
 }
@@ -127,6 +142,15 @@ func dispatchCmd() *cobra.Command {
 	cmd.Flags().IntVar(&priority, "priority", 100, "priority (lower = more urgent)")
 	cmd.MarkFlagRequired("title")
 	cmd.MarkFlagRequired("role")
+	cmd.PreRunE = func(_ *cobra.Command, _ []string) error {
+		if err := nonEmpty(title, "title"); err != nil {
+			return err
+		}
+		if err := nonEmpty(role, "role"); err != nil {
+			return err
+		}
+		return nil
+	}
 	return cmd
 }
 
@@ -242,6 +266,12 @@ func logProgressCmd() *cobra.Command {
 	cmd.Flags().StringVar(&noteType, "type", "", "note type (PROGRESS|ERROR|DECISION)")
 	cmd.MarkFlagRequired("agent")
 	cmd.MarkFlagRequired("note")
+	cmd.PreRunE = func(_ *cobra.Command, _ []string) error {
+		if noteType != "" && !validNoteTypes[noteType] {
+			return &task.ExitError{Code: 2, Message: "note type must be PROGRESS, ERROR, or DECISION"}
+		}
+		return nil
+	}
 	return cmd
 }
 

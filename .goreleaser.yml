@@ -1,0 +1,29 @@
+version: 2
+
+project_name: kanban
+
+builds:
+  - main: ./cmd/kanban/
+    binary: kanban
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - name_template: "kanban_{{ .Os }}_{{ .Arch }}"
+    format: binary
+    files:
+      - none*
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: mrSamDev
+    name: agentic-kanban

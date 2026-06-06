@@ -1,7 +1,8 @@
 #!/bin/sh
 # install.sh — install kanban into your project
-# Usage: curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
-#        curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh -s -- -b /usr/local/bin
+# Usage:
+#   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
+#   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh -s -- -b /usr/local/bin
 
 set -e
 
@@ -10,15 +11,12 @@ BINDIR="${BINDIR:-".kanban"}"
 REPO="mrSamDev/agentic-kanban"
 VERSION="${VERSION:-latest}"
 
-# --- colors (optional) ---
+# --- colors ---
 if [ -t 1 ]; then
-  GREEN='\033[0;32m'
-  BOLD='\033[1m'
-  NC='\033[0m'
+  GREEN='\033[0;32m'; BOLD='\033[1m'; NC='\033[0m'
 else
   GREEN=''; BOLD=''; NC=''
 fi
-
 say() { printf "${GREEN}==>${NC} ${BOLD}%s${NC}\n" "$*"; }
 
 # --- parse flags ---
@@ -98,6 +96,53 @@ add_to_gitignore() {
   fi
 }
 
+# --- 4. auto-export KANBAN_DB helper ---
+add_kanban_db_to_profile() {
+  PROFILE_FILE=""
+
+  # Detect shell profile
+  if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
+    PROFILE_FILE="$HOME/.zshrc"
+  elif [ -n "$BASH_VERSION" ] || [ -f "$HOME/.bashrc" ]; then
+    PROFILE_FILE="$HOME/.bashrc"
+  elif [ -f "$HOME/.profile" ]; then
+    PROFILE_FILE="$HOME/.profile"
+  fi
+
+  if [ -z "$PROFILE_FILE" ]; then
+    return
+  fi
+
+  # Check if already present
+  if grep -q "export KANBAN_DB=" "$PROFILE_FILE" 2>/dev/null; then
+    return
+  fi
+
+  # Append a default that users can override per-project
+  cat >> "$PROFILE_FILE" << 'PROFILE_EOF'
+
+# agentic-kanban: per-project db location (override per shell)
+export KANBAN_DB="${KANBAN_DB:-"$(pwd)/.kanban/kanban.db"}"
+PROFILE_EOF
+
+  say "Added 'export KANBAN_DB=...' to $PROFILE_FILE"
+  say "Reload: source $PROFILE_FILE"
+}
+
+# --- 5. create .kanban dir + init a sample task ---
+init_board() {
+  mkdir -p ".kanban"
+
+  if [ ! -f ".kanban/kanban.db" ]; then
+    "${BINDIR}/kanban" --db ".kanban/kanban.db" task dispatch \
+      --title "Hello kanban" \
+      --role worker \
+      --priority 100 \
+      --db ".kanban/kanban.db" 2>/dev/null || true
+    say "Created .kanban/kanban.db with a sample task"
+  fi
+}
+
 # --- main ---
 if download_binary; then
   say "Installed ${BINDIR}/kanban (release)"
@@ -106,14 +151,21 @@ else
 fi
 
 add_to_gitignore
+add_kanban_db_to_profile
 
+# Only auto-init when installing into project dir (not global)
+case "$BINDIR" in
+  .kanban)
+    init_board
+    ;;
+esac
+
+say "Done!"
 echo ""
-say "kanban installed at $(cd "$BINDIR" && pwd)/kanban"
-echo ""
-echo "Quick start:"
+echo "Usage:"
+echo "  cd my-project"
 echo "  export KANBAN_DB=\"\$(pwd)/.kanban/kanban.db\""
-echo "  ${BINDIR}/kanban --db \"\$KANBAN_DB\" task dispatch --title \"My first task\" --role worker"
 echo "  ${BINDIR}/kanban --db \"\$KANBAN_DB\" task claim-next --agent my-agent --role worker"
 echo ""
-echo "Skills (markdown docs):"
+echo "Skills:"
 echo "  https://github.com/${REPO}/tree/main/skills"

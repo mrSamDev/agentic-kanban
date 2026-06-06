@@ -56,9 +56,9 @@ type HistoryEntry struct {
 
 // TaskDetail is the full view returned by View: task + notes + history.
 type TaskDetail struct {
-	Task    Task            `json:"task"`
-	Notes   []Note          `json:"notes"`
-	History []HistoryEntry  `json:"history"`
+	Task    Task           `json:"task"`
+	Notes   []Note         `json:"notes"`
+	History []HistoryEntry `json:"history"`
 }
 
 // NullableTimeFromDB converts a *sql.NullTime (from database/sql) to *time.Time.
