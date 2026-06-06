@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+// hookSem caps concurrent .d/ hook goroutines to prevent unbounded goroutine
+// spawns on burst events. Blocks the caller when at capacity — prefer
+// backpressure over silent drops.
+var hookSem = make(chan struct{}, 20)
+
 func runHook(hooksDir, eventType string, payload any) {
 	if hooksDir == "" {
 		return
@@ -37,7 +42,11 @@ func runHook(hooksDir, eventType string, payload any) {
 		if err != nil || info.Mode()&0111 == 0 {
 			continue
 		}
-		go execHook(filepath.Join(dirPath, e.Name()), b, name+".d/"+e.Name())
+		hookSem <- struct{}{}
+		go func(hp, lb string) {
+			defer func() { <-hookSem }()
+			execHook(hp, b, lb)
+		}(filepath.Join(dirPath, e.Name()), name+".d/"+e.Name())
 	}
 }
 

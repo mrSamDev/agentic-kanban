@@ -6,22 +6,35 @@ import (
 	"fmt"
 )
 
-// eventPayload enriches events with title/project/priority so hooks have
-// self-sufficient data without a follow-up DB lookup.
-func eventPayload(tx *sql.Tx, taskID string, extra map[string]string) map[string]string {
-	p := map[string]string{"task_id": taskID}
+// EventPayload carries typed event fields so hooks get self-sufficient data
+// without re-parsing strings. Zero values are omitted from JSON.
+type EventPayload struct {
+	TaskID       string `json:"task_id"`
+	Title        string `json:"title,omitempty"`
+	Project      string `json:"project,omitempty"`
+	Priority     string `json:"priority,omitempty"`
+	Agent        string `json:"agent,omitempty"`
+	NoteType     string `json:"note_type,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	RoleBoundary string `json:"role_boundary,omitempty"`
+}
+
+// eventPayload loads task metadata from DB and merges extra fields.
+func eventPayload(tx *sql.Tx, taskID string, extra EventPayload) EventPayload {
+	p := EventPayload{TaskID: taskID}
 	var title, project string
 	var priority int
 	if err := tx.QueryRow(
 		`SELECT title, project, priority FROM tasks WHERE id = ?`, taskID,
 	).Scan(&title, &project, &priority); err == nil {
-		p["title"] = title
-		p["project"] = project
-		p["priority"] = fmt.Sprintf("%d", priority)
+		p.Title = title
+		p.Project = project
+		p.Priority = fmt.Sprintf("%d", priority)
 	}
-	for k, v := range extra {
-		p[k] = v
-	}
+	p.Agent = extra.Agent
+	p.NoteType = extra.NoteType
+	p.Reason = extra.Reason
+	p.RoleBoundary = extra.RoleBoundary
 	return p
 }
 
@@ -66,6 +79,28 @@ func loadTaskMetas(tx *sql.Tx, ids []string) (map[string]taskMeta, error) {
 		return nil, fmt.Errorf("iterate task metas: %w", err)
 	}
 	return metas, nil
+}
+
+// buildPayload constructs a payload from pre-loaded metadata. Extra fields
+// may override meta values (e.g. batch update changes project/priority).
+func buildPayload(metas map[string]taskMeta, id string, extra EventPayload) EventPayload {
+	p := EventPayload{TaskID: id}
+	if m, ok := metas[id]; ok {
+		p.Title = m.Title
+		p.Project = m.Project
+		p.Priority = fmt.Sprintf("%d", m.Priority)
+	}
+	if extra.Project != "" {
+		p.Project = extra.Project
+	}
+	if extra.Priority != "" {
+		p.Priority = extra.Priority
+	}
+	p.Agent = extra.Agent
+	p.NoteType = extra.NoteType
+	p.Reason = extra.Reason
+	p.RoleBoundary = extra.RoleBoundary
+	return p
 }
 
 func insertEvent(tx *sql.Tx, eventType string, payload any) error {

@@ -50,7 +50,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert history: %w", err)
 	}
 
-	if err := insertEvent(tx, "task.created", eventPayload(tx, id, nil)); err != nil {
+	if err := insertEvent(tx, "task.created", eventPayload(tx, id, EventPayload{})); err != nil {
 		return Task{}, fmt.Errorf("insert event: %w", err)
 	}
 
@@ -58,12 +58,12 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("commit dispatch: %w", err)
 	}
 
-	runHook(s.hooksDir, "task.created", map[string]string{
-		"task_id": id,
-		"title":   title,
-		"project": project,
-		"priority": fmt.Sprintf("%d", priority),
-		"role_boundary": roleBoundary,
+	runHook(s.hooksDir, "task.created", EventPayload{
+		TaskID:       id,
+		Title:        title,
+		Project:      project,
+		Priority:     fmt.Sprintf("%d", priority),
+		RoleBoundary: roleBoundary,
 	})
 	return s.View(ctx, id)
 }
@@ -73,7 +73,7 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 	defer cancel()
 
 	var task Task
-	var payload map[string]string
+	var payload EventPayload
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -127,7 +127,7 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 			return fmt.Errorf("insert complete history for task %s agent %s: %w", id, agent, err)
 		}
 
-		payload = eventPayload(tx, id, map[string]string{"agent": agent})
+		payload = eventPayload(tx, id, EventPayload{Agent: agent})
 		if !toReview {
 			if err := insertEvent(tx, "task.completed", payload); err != nil {
 				return fmt.Errorf("insert event: %w", err)
@@ -162,7 +162,7 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 	}
 
 	var task Task
-	var payload map[string]string
+	var payload EventPayload
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -213,7 +213,7 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 			return fmt.Errorf("insert progress history for task %s agent %s: %w", id, agent, err)
 		}
 
-		extra := map[string]string{"agent": agent, "note_type": noteType}
+		extra := EventPayload{Agent: agent, NoteType: noteType}
 		payload = eventPayload(tx, id, extra)
 		if err := insertEvent(tx, "task.progress", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)
@@ -240,7 +240,7 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 	}
 
 	var task Task
-	var payload map[string]string
+	var payload EventPayload
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -289,7 +289,7 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 			return fmt.Errorf("insert block history for task %s agent %s: %w", id, agent, err)
 		}
 
-		extra := map[string]string{"agent": agent, "reason": reason}
+		extra := EventPayload{Agent: agent, Reason: reason}
 		payload = eventPayload(tx, id, extra)
 		if err := insertEvent(tx, "task.blocked", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)

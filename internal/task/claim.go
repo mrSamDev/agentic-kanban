@@ -75,13 +75,13 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 			return fmt.Errorf("insert claim history for task %s agent %s: %w", t.ID, agent, err)
 		}
 
-		if err := insertEvent(tx, "task.claimed", map[string]string{
-			"task_id": t.ID,
-			"agent":   agent,
-			"title":   t.Title,
-			"project": t.Project,
-			"priority": fmt.Sprintf("%d", t.Priority),
-			"role_boundary": t.RoleBoundary,
+		if err := insertEvent(tx, "task.claimed", EventPayload{
+			TaskID:       t.ID,
+			Agent:        agent,
+			Title:        t.Title,
+			Project:      t.Project,
+			Priority:     fmt.Sprintf("%d", t.Priority),
+			RoleBoundary: t.RoleBoundary,
 		}); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
@@ -97,13 +97,13 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 		return Task{}, fmt.Errorf("claim after retries: %w", err)
 	}
 	if task.ID != "" {
-		runHook(s.hooksDir, "task.claimed", map[string]string{
-			"task_id": task.ID,
-			"agent":   agent,
-			"title":   task.Title,
-			"project": task.Project,
-			"priority": fmt.Sprintf("%d", task.Priority),
-			"role_boundary": task.RoleBoundary,
+		runHook(s.hooksDir, "task.claimed", EventPayload{
+			TaskID:       task.ID,
+			Agent:        agent,
+			Title:        task.Title,
+			Project:      task.Project,
+			Priority:     fmt.Sprintf("%d", task.Priority),
+			RoleBoundary: task.RoleBoundary,
 		})
 	}
 	return task, nil

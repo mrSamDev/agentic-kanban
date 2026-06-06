@@ -10,7 +10,7 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
 	var task Task
-	var payload map[string]string
+	var payload EventPayload
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -49,7 +49,7 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 			return fmt.Errorf("insert review history for task %s agent %s: %w", id, agent, err)
 		}
 
-		payload = eventPayload(tx, id, map[string]string{"agent": agent})
+		payload = eventPayload(tx, id, EventPayload{Agent: agent})
 		if err := insertEvent(tx, "review.approved", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
@@ -76,7 +76,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 	}
 
 	var task Task
-	var payload map[string]string
+	var payload EventPayload
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -123,7 +123,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 			return fmt.Errorf("insert reject history for task %s agent %s: %w", id, agent, err)
 		}
 
-		extra := map[string]string{"agent": agent, "reason": reason}
+		extra := EventPayload{Agent: agent, Reason: reason}
 		payload = eventPayload(tx, id, extra)
 		if err := insertEvent(tx, "review.rejected", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)

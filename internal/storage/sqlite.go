@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -38,7 +38,7 @@ func Open(path string, debug bool) (*DB, error) {
 	db.SetMaxIdleConns(1)
 
 	if debug {
-		log.Println("[db] opened:", path)
+		slog.Info("db opened", "path", path)
 	}
 
 	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
@@ -46,7 +46,7 @@ func Open(path string, debug bool) (*DB, error) {
 		return nil, fmt.Errorf("enable WAL: %w", err)
 	}
 	if debug {
-		log.Println("[db] WAL mode enabled")
+		slog.Info("db WAL mode enabled")
 	}
 
 	if _, err := db.Exec("PRAGMA wal_autocheckpoint = 1000"); err != nil {
@@ -54,7 +54,7 @@ func Open(path string, debug bool) (*DB, error) {
 		return nil, fmt.Errorf("set wal_autocheckpoint: %w", err)
 	}
 	if debug {
-		log.Println("[db] wal_autocheckpoint = 1000")
+		slog.Info("db wal_autocheckpoint set", "value", 1000)
 	}
 
 	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
@@ -77,7 +77,7 @@ func Open(path string, debug bool) (*DB, error) {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
 	if debug {
-		log.Println("[db] schema applied")
+		slog.Info("db schema applied")
 	}
 
 	var hasProject bool
@@ -88,7 +88,7 @@ func Open(path string, debug bool) (*DB, error) {
 			return nil, fmt.Errorf("add project column: %w", err)
 		}
 		if debug {
-			log.Println("[db] project column migration applied")
+			slog.Info("db project column migration applied")
 		}
 	}
 
@@ -111,7 +111,7 @@ func Open(path string, debug bool) (*DB, error) {
 func (db *DB) Close() error {
 	// Prevent unbounded WAL growth.
 	if db.debug {
-		log.Println("[db] checkpointing WAL before close")
+		slog.Info("db checkpointing WAL before close")
 	}
 	db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	return db.DB.Close()

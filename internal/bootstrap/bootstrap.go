@@ -218,7 +218,6 @@ func writeFlatSkills(skillsDir string) error {
 	// Write role index alongside flat skills
 	var sb strings.Builder
 	sb.WriteString("# Skill Index\n\n")
-	sb.WriteString("role:files\n")
 	for role, names := range SkillNames {
 		for _, name := range names {
 			sb.WriteString(fmt.Sprintf("%s:%s.md\n", role, name))

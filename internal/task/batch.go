@@ -10,13 +10,18 @@ func (s *Service) BatchUpdatePriority(ctx context.Context, ids []string, priorit
 		return 0, &ExitError{Code: 2, Message: "priority must be between 0 and 999"}
 	}
 	var updated int
-	var payloads []map[string]string
+	var payloads []EventPayload
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("batch priority begin tx: %w", err)
 		}
 		defer tx.Rollback()
+
+		metas, err := loadTaskMetas(tx, ids)
+		if err != nil {
+			return fmt.Errorf("batch priority load metas: %w", err)
+		}
 
 		updated = 0
 		payloads = nil
@@ -31,7 +36,7 @@ func (s *Service) BatchUpdatePriority(ctx context.Context, ids []string, priorit
 			n, _ := res.RowsAffected()
 			if n > 0 {
 				updated++
-				p := eventPayload(tx, id, map[string]string{"priority": fmt.Sprintf("%d", priority)})
+				p := buildPayload(metas, id, EventPayload{Priority: fmt.Sprintf("%d", priority)})
 				payloads = append(payloads, p)
 				if err := insertEvent(tx, "task.priority_updated", p); err != nil {
 					return fmt.Errorf("insert priority event for %s: %w", id, err)
@@ -53,13 +58,18 @@ func (s *Service) BatchUpdateProject(ctx context.Context, ids []string, project 
 		return 0, &ExitError{Code: 2, Message: "project cannot be empty"}
 	}
 	var updated int
-	var payloads []map[string]string
+	var payloads []EventPayload
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("batch project begin tx: %w", err)
 		}
 		defer tx.Rollback()
+
+		metas, err := loadTaskMetas(tx, ids)
+		if err != nil {
+			return fmt.Errorf("batch project load metas: %w", err)
+		}
 
 		updated = 0
 		payloads = nil
@@ -74,7 +84,7 @@ func (s *Service) BatchUpdateProject(ctx context.Context, ids []string, project 
 			n, _ := res.RowsAffected()
 			if n > 0 {
 				updated++
-				p := eventPayload(tx, id, map[string]string{"project": project})
+				p := buildPayload(metas, id, EventPayload{Project: project})
 				payloads = append(payloads, p)
 				if err := insertEvent(tx, "task.project_updated", p); err != nil {
 					return fmt.Errorf("insert project event for %s: %w", id, err)

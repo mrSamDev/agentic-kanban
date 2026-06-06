@@ -38,16 +38,6 @@ func readAgentDefs(harness Harness) (map[string]string, error) {
 	return defs, nil
 }
 
-func readSkillFile(filename string) (string, error) {
-	for _, dir := range []string{"manager", "worker", "reviewer"} {
-		data, err := skillFiles.ReadFile(filepath.Join("embed", "skills", dir, filename))
-		if err == nil {
-			return string(data), nil
-		}
-	}
-	return "", fmt.Errorf("skill %s not found", filename)
-}
-
 type SkillInfo struct {
 	Name string
 	Role string
@@ -62,8 +52,8 @@ var SkillNames = map[string][]string{
 
 func ListSkills() []SkillInfo {
 	var out []SkillInfo
-	for role, names := range SkillNames {
-		for _, name := range names {
+	for _, role := range []string{"manager", "worker", "reviewer"} {
+		for _, name := range SkillNames[role] {
 			out = append(out, SkillInfo{Name: name, Role: role, File: name + ".md"})
 		}
 	}
@@ -81,16 +71,15 @@ func ReadSkill(name string) (string, string, error) {
 }
 
 func loadRoleSkills() (map[string]map[string]string, error) {
-	roles := SkillNames
-	result := make(map[string]map[string]string, len(roles))
-	for role, names := range roles {
+	result := make(map[string]map[string]string, len(SkillNames))
+	for role, names := range SkillNames {
 		skills := make(map[string]string, len(names))
 		for _, name := range names {
-			content, err := readSkillFile(name + ".md")
+			data, err := skillFiles.ReadFile(filepath.Join("embed", "skills", role, name+".md"))
 			if err != nil {
 				return nil, err
 			}
-			skills[name+".md"] = content
+			skills[name+".md"] = string(data)
 		}
 		result[role] = skills
 	}
