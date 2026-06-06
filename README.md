@@ -1,167 +1,114 @@
 # agentic-kanban
 
-> **Alpha**: This project is early-stage. APIs, schema, and behavior may change without warning. Use at own risk — things may break.
+> **Alpha.** Things may break. You've been warned.
 
-SQLite-backed task coordination for AI agents.
-
-No server. No daemon. No queues. Just a shared database file that agents use to claim, track, review, and complete work.
-
-Single Go binary + SQLite.
+SQLite-backed task coordination for AI agents. No server, no daemon, no queues. Just a shared database file agents use to claim, track, review, and finish work. Single Go binary plus SQLite.
 
 ```bash
 curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
 ```
 
-> **Security note**: The `curl | sh` install is convenient for trusted environments. For production, download the binary directly from releases and verify the checksum.
+> The curl pipe install works fine for trusted environments. For production, grab the binary from releases and verify the checksum.
 
 ## Why
 
-AI agents (subagents in pi, Claude, etc.) need shared state without servers. Kanban gives them a SQLite-backed task board they all read/write. Agents claim tasks, report progress, and complete work — the `.db` file is the coordination point.
+AI agents need shared state without standing up infrastructure. Kanban gives them a SQLite task board they all read and write. Agents claim tasks, report progress, complete work, and the `.db` file is the only coordination point.
 
-## When to use this
+## When it fits
 
-**Use agentic-kanban when:**
+**Use this when:** multiple AI agents on the same machine or a shared filesystem need durable coordination without Redis or Postgres or message queues. You also want crash recovery and task ownership. Tested with 3 to 10 concurrent agents, and up to 50.
 
-- Multiple AI agents need shared state
-- Agents run on the same machine or shared filesystem
-- You want durable coordination without Redis / Postgres / message queues
-- You need crash recovery and task ownership
-- Scale: 3-10 concurrent agents on one machine (tested up to 50)
-
-**Not a fit when:**
-
-- Agents run across untrusted networks
-- You need real-time push notifications
-- You need thousands of concurrent workers
-
-For those cases, look at Temporal, Celery, or Kafka.
+**Skip it when:** agents run across untrusted networks, you need real-time push notifications, or you need thousands of concurrent workers. Those cases want something like Temporal, Celery, or Kafka.
 
 ## Quick start
 
 ```bash
-# Install (or download binary from releases for production)
 curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
-
-# Init a project (creates DB, scaffolds skills)
 kanban init --harness pi
 
-# Or init + seed from a plan file
+# Product owner workflow: an LLM reads your spec or roadmap, writes a task
+# proposal, you approve, then it dispatches. See the dispatch-plan and
+# approve-plan skills under skills/manager/.
+
+# For simple plans, the built-in parser works too.
 kanban init --harness pi --plan plan.md
 
-# Enable debug logging for observability
 kanban --debug task dispatch --title "Set up auth" --role worker --priority 10
-
-# Just use it — default DB path is .kanban/kanban.db
-# Tasks may be created by humans, manager agents, or orchestration agents.
-# Once created, workers and reviewers coordinate entirely through the shared DB.
-
-kanban task dispatch --title "Set up auth" --role worker --priority 10
-
-# Agent claims and completes
 kanban task claim-next --agent my-agent --role worker
-# Returns task JSON if work exists
-# Returns {} if no eligible task exists
-kanban task log-progress TASK-1 --agent my-agent --note "Working" --type PROGRESS
+kanban task log-progress TASK-1 --agent my-agent --note "Working"
 kanban task complete TASK-1 --agent my-agent
 ```
 
 ## Commands
 
-| Command | Role | Description |
+A short table since these are reference docs:
+
+| Command | Who | What |
 |---|---|---|
-| `task dispatch --title --role [--priority]` | any | Create a task (status=TODO). Humans or agents. |
-| `task claim-next --agent --role` | worker, reviewer | Atomically claim highest-priority task. `{}` if none. |
-| `task log-progress <id> --agent --note [--type]` | worker | Log progress + renew 15-min lease |
-| `task block <id> --agent --reason` | worker | Mark blocked, clear lease |
-| `task complete <id> --agent [--review]` | worker | Mark done (or submit for review) |
-| `task view <id>` | all | Full detail: task + notes + history |
-| `task search [--status] [--role] [--agent]` | manager | Filter task list |
-| `task approve <id> --agent` | reviewer | Approve IN_REVIEW → DONE (no claim needed) |
-| `task reject <id> --agent --reason` | reviewer | Reject IN_REVIEW → TODO (no claim needed) |
-| `batch set-priority --ids --priority` | manager | Set priority for multiple tasks (fires events + hooks) |
-| `batch set-project --ids --project` | manager | Set project for multiple tasks (fires events + hooks) |
-| `prune [--before] [--dry-run]` | ops | Delete old events, history, and notes |
-| `init [--harness] [--plan] [--dir]` | setup | Scaffold DB + skills for pi, claude, or generic |
-| `--debug` (global flag) | ops | Enable debug logging for database operations |
+| `task dispatch --title --role` | anyone | Create a task as TODO |
+| `task claim-next --agent --role` | worker, reviewer | Atomically grab top task |
+| `task log-progress <id> --agent --note` | worker | Log progress, renew lease |
+| `task block <id> --agent --reason` | worker | Mark blocked, drop lease |
+| `task complete <id> --agent --review` | worker | Mark done or submit for review |
+| `task view <id>` | anyone | Full details plus notes and history |
+| `task search --status --role --agent` | manager | Filter the board |
+| `task approve <id> --agent` | reviewer | IN_REVIEW to DONE |
+| `task reject <id> --agent --reason` | reviewer | IN_REVIEW to TODO |
+| `batch set-priority --ids --priority` | manager | Bulk priority update |
+| `batch set-project --ids --project` | manager | Bulk project label |
+| `prune --before --dry-run` | ops | Clean old events and notes |
+| `init --harness --plan --dir` | setup | Scaffold DB and agent files |
 
 ## Observability
-
-Enable debug logging with `--debug`:
 
 ```bash
 kanban --debug task claim-next --agent alice --role worker
 ```
 
-Output:
-```
-[db] opened: .kanban/kanban.db
-[db] WAL mode enabled
-[db] wal_autocheckpoint = 1000
-[db] schema applied
-{ ...task JSON... }
-[db] checkpointing WAL before close
-```
-
-Useful for:
-- Debugging database lock issues
-- Verifying WAL checkpoint behavior
-- Understanding operation timing in multi-agent setups
+Prints database ops alongside normal output. Useful for debugging lock issues, WAL behavior, and multi-agent timing.
 
 ## Production notes
 
-**Tested scale**: 3-10 concurrent agents on one machine (via `TestClaimNextAtomic`).
+3 to 10 concurrent agents works fine. Past 50 you'll see contention on claim-next. The retry loop (100ms, 200ms, 400ms backoff) handles it, but measure latency. Past 1000, SQLite itself becomes the bottleneck. Switch to Postgres or a distributed queue.
 
-**At 50+ agents**: Expect contention on `claim-next`. The retry loop (100ms, 200ms, 400ms backoff) handles this, but measure latency.
-
-**At 1000+ agents**: SQLite becomes a bottleneck. Consider PostgreSQL or a distributed queue.
-
-**Backup**: The `.db` file is your state. Back it up like any database. WAL mode means you can safely copy the main database file while the system is running.
-
-**Migration**: Schema changes are handled automatically on open. The schema uses `CREATE IF NOT EXISTS` and column existence checks via `PRAGMA table_info` before ALTER TABLE. No manual migration steps needed.
-
-**Event TTL**: Events auto-expire 3 days after creation (configurable via `ttl_seconds` column). Set `ttl_seconds = NULL` to make an event permanent. Use `kanban prune --before 30d` to manually clean old events, history, and notes. After pruning, run `VACUUM` to reclaim disk space.
+Back up the `.db` file like any database. WAL mode lets you safely copy the main file while the system runs. Schema changes happen automatically on open. Events expire after 3 days by default; set `ttl_seconds` to NULL for permanent events. Run `kanban prune --before 30d` to clean up, then `VACUUM` to reclaim space.
 
 ## How it works
 
-- **One `.db` file per project.** Agents share it. No server.
-- **Atomic task claims.** Two agents calling `claim-next` simultaneously get different tasks (SQLite write-serialized).
-- **Lease-based crash recovery.** A claimed task has a 15-minute lease. `log-progress` renews it. If an agent crashes, the lease expires and the next `claim-next` reclaims the task.
-- **WAL auto-checkpoint.** WAL file is automatically checkpointed every 1000 pages to prevent unbounded disk growth.
-- **Context timeouts.** All operations support cancellation via context (for future timeout configuration).
+One `.db` file per project, shared by all agents. No server. Two agents calling claim-next at the same time get different tasks because SQLite serializes writes. A claimed task has a 15-minute lease. The log-progress command renews it. If an agent crashes, the lease expires and the next claim-next reclaims the task. The WAL file checkpoints itself every 1000 pages so it doesn't eat your disk.
 
-```
-Worker-A claims TASK-1.
-Worker-A crashes.
+```text
+Worker-A claims TASK-1. Worker-A crashes.
 15 minutes later the lease expires.
-Worker-B calls claim-next and automatically receives TASK-1.
+Worker-B calls claim-next and gets TASK-1.
 ```
-- **JSON output.** Every command prints stable JSON on stdout. `claim-next` with no work returns `{}`. Errors go to stderr as `{"error":"..."}` with exit code 2.
-- **Markdown skills.** `skills/worker/` etc. contain docs agents read to learn the protocol. No tool-calling protocol needed.
+
+Every command prints stable JSON to stdout. Empty work returns `{}`. Errors go to stderr as `{"error":"..."}` with exit code 2. Skill files in the `skills/` directory teach agents the protocol. No tool-calling framework needed.
 
 ## Hooks
 
-Hooks let you run scripts when tasks change state. Drop an executable in `.kanban/hooks/` named after the event. The hook gets a JSON payload on stdin with the event type and task details.
+Drop an executable in `.kanban/hooks/` named after an event. The hook gets JSON on stdin with the event type and task details. Each hook has a 30-second timeout. Errors are logged to stderr but the operation continues. Missing hooks are silently ignored.
 
-| Event | When | Payload |
-|---|---|---|
-| `task.created` | A task is dispatched | `task_id`, `title`, `project`, `priority`, `role_boundary` |
-| `task.claimed` | An agent claims a task | `task_id`, `agent`, `title`, `project`, `priority`, `role_boundary` |
-| `task.progress` | An agent logs progress | `task_id`, `agent`, `note_type`, `title`, `project`, `priority` |
-| `task.completed` | A task is completed | `task_id`, `agent`, `title`, `project`, `priority` |
-| `task.submitted_for_review` | A task is submitted for review | `task_id`, `agent`, `title`, `project`, `priority` |
-| `task.blocked` | A task is blocked | `task_id`, `agent`, `reason`, `title`, `project`, `priority` |
-| `review.approved` | A reviewer approves | `task_id`, `agent`, `title`, `project`, `priority` |
-| `review.rejected` | A reviewer rejects | `task_id`, `agent`, `reason`, `title`, `project`, `priority` |
-| `task.priority_updated` | Batch priority update | `task_id`, `priority`, `title`, `project` |
-| `task.project_updated` | Batch project update | `task_id`, `project`, `title`, `priority` |
+| Event | When |
+|---|---|
+| `task.created` | Task dispatched |
+| `task.claimed` | Agent claims |
+| `task.progress` | Progress logged |
+| `task.completed` | Task finished |
+| `task.submitted_for_review` | Submitted |
+| `task.blocked` | Blocked |
+| `review.approved` | Approved |
+| `review.rejected` | Rejected |
+| `task.priority_updated` | Batch priority |
+| `task.project_updated` | Batch project |
 
-You can chain multiple hooks for the same event by adding a `.d/` directory. The single-file hook runs synchronously. The `.d/` hooks run concurrently, so a slow Slack notifier won't block the caller. Each hook gets a 30-second timeout. If it fails, the error goes to stderr but the operation keeps going. Missing hooks are silently ignored.
+Chain multiple hooks by adding a `.d/` directory. The single file runs synchronously. The `.d/` hooks run concurrently, so a slow Slack notifier won't block the caller.
 
-```
+```text
 .kanban/hooks/
-├── task-created          # single hook, runs synchronously
-├── task-completed        # single hook, runs synchronously
-└── task-completed.d/     # multiple hooks, all run concurrently
+├── task-created
+├── task-completed
+└── task-completed.d/
     ├── slack
     ├── metrics
     └── dashboard
@@ -169,59 +116,51 @@ You can chain multiple hooks for the same event by adding a `.d/` directory. The
 
 ## Init command
 
-`kanban init` bootstraps a project with a kanban database and agent skill files:
-
 ```bash
-# Interactive harness prompt
-kanban init
-
-# Or specify harness directly
-kanban init --harness pi
-kanban init --harness claude
-kanban init --harness generic
-
-# Seed tasks from a plan file (markdown headings or JSON)
+kanban init                           # interactive prompt
+kanban init --harness pi              # pi extensions
+kanban init --harness claude          # Claude Code agents
+kanban init --harness generic         # plain .agents/ directory
 kanban init --harness pi --plan plan.md
-kanban init --harness pi --plan plan.json --dir ./my-project
 ```
 
-Plan file formats:
+The plan parser handles markdown headings with optional `[p1]` priority hints and JSON arrays.
 
 ```markdown
 ## Set up auth [p1]
 - Implement login endpoint
 - Add JWT middleware
-
-## Add CI pipeline
-
-## Review everything [p1]
 ```
-
-Priority hints: `[p1]`-`[p999]` in headings.
-
-Or JSON:
 
 ```json
 [
-  {"title": "Fix auth bug", "role": "worker", "priority": 1},
-  {"title": "Review PR", "role": "reviewer", "priority": 5}
+  {"title": "Fix auth bug", "role": "worker", "priority": 1}
 ]
 ```
 
+### Product owner workflow
+
+For real plans (specs, PRDs, anything with sections and tables and timelines), the Go parser won't cut it. Use the LLM-driven skills instead. An agent reads the plan, understands what it describes, and writes a proposal to `.kanban/tasks-proposal.md`. You review it, check the items you want, then the agent dispatches each one. No brittle regex, no parser changes. Just the LLM's ability to read a document and figure out what work it describes.
+
+```
+Agent reads plan.md, writes .kanban/tasks-proposal.md
+You review and check [x] on approved items
+Agent reads the proposal and dispatches each checked task
+```
+
+The skills live at `skills/manager/dispatch-plan.md` and `skills/manager/approve-plan.md`.
+
 ## Workflow
 
-```
-TODO
-  │ dispatch
-  ▼
+```text
 TODO ── claim-next ──> IN_PROGRESS ── complete --review ──> IN_REVIEW ── approve ──> DONE
-                          │                                       │
-                          │ block                                 │ reject
-                          ▼                                       ▼
-                       BLOCKED                                  TODO
+                            │                                       │
+                            │ block                                 │ reject
+                            ▼                                       ▼
+                         BLOCKED                                  TODO
 ```
 
-Reviewers approve/reject IN_REVIEW tasks directly — no claim needed.
+Reviewers don't need to claim IN_REVIEW tasks. They just approve or reject.
 
 ## Architecture
 
@@ -229,77 +168,43 @@ Reviewers approve/reject IN_REVIEW tasks directly — no claim needed.
 Manager                    Workers                    Reviewers
   │                           │                           │
   ├── dispatch tasks ────────>│                           │
-  │                           ├── claim-next (TODO)       │
-  │                           ├── log-progress (heartbeat)│
+  │                           ├── claim-next              │
+  │                           ├── log-progress            │
   │                           ├── complete --review ─────>│
-  │                           │              ├── approve (no claim)
-  │                           │              ├── reject (no claim)
+  │                           │              ├── approve  │
+  │                           │              ├── reject   │
   │<── search --status BLOCKED│                           │
-  └── unblock / reassign ────>│                           │
+  └── unblock or reassign ───>│                           │
 ```
 
 ## Project structure
 
 ```
-├── cmd/kanban/main.go        # CLI entrypoint
-├── internal/
-│   ├── bootstrap/
-│   │   ├── bootstrap.go      # Init logic + plan parsing
-│   │   ├── bootstrap_test.go # Tests for init + plan parsing
-│   │   ├── agents.go         # Agent definition templates
-│   │   ├── kanban_extension.go # Pi extension template (TS)
-│   │   └── skills.go         # Skill document templates
-│   ├── storage/
-│   │   ├── schema.sql        # SQLite schema (embedded)
-│   │   └── sqlite.go         # Connection + pragmas + migration
-│   └── task/
-│       ├── helpers.go        # Errors, service struct
-│       ├── model.go          # Structs
-│       ├── queries.go        # View, Search
-│       ├── service.go        # Business logic
-│       └── service_test.go   # 24 tests (incl. concurrent claim race)
-├── skills/
-│   ├── manager/              # dispatch-task, review-backlog, view-task
-│   ├── worker/               # claim-next-task, log-progress, complete-task, block-task
-│   └── reviewer/             # claim-review, approve-task, reject-task
-├── examples/
-│   ├── pi-subagents.md       # Integration guide for pi (with extension)
-│   └── claude-code-subagents.md  # Integration guide for Claude Code
-└── install.sh                # curl-install script
+cmd/kanban/main.go              CLI entrypoint
+internal/
+  bootstrap/                    Init, plan parsing, agent and skill templates
+  bootstrap/kanban_extension.go Pi extension (TypeScript template)
+  storage/                      SQLite connection, schema, migration
+  task/                         Models, queries, service logic
+skills/
+  manager/                      dispatch-task, dispatch-plan, approve-plan, review-backlog, view-task
+  worker/                       claim-next-task, log-progress, complete-task, block-task
+  reviewer/                     claim-review, approve-task, reject-task
+examples/                       Integration guides for pi and Claude Code
 ```
 
-## Skills (agent docs)
+## Skills
 
-Each role directory in `skills/` contains markdown files agents read to learn the protocol. The files describe exact bash commands, JSON output shapes, and exit codes.
+Each directory under `skills/` holds markdown files agents read to learn the protocol. The files describe exact bash commands, JSON shapes, and exit codes.
 
-- [skills/manager/](skills/manager/) — dispatch, review backlog, view task
-- [skills/worker/](skills/worker/) — claim, log progress, block, complete
-- [skills/reviewer/](skills/reviewer/) — claim review, approve, reject
+- [skills/manager/](skills/manager/) -- dispatch, dispatch-plan, approve-plan, review, view
+- [skills/worker/](skills/worker/) -- claim, progress, block, complete
+- [skills/reviewer/](skills/reviewer/) -- claim review, approve, reject
 
 ## Integration examples
 
-- [examples/pi-subagents.md](examples/pi-subagents.md) — three-coder setup with pi
-- [examples/claude-code-subagents.md](examples/claude-code-subagents.md) — Claude Code subagent coordination
-
-## Usage with pi subagents
-
-```bash
-cd my-project
-
-# Install and init with pi harness
-curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
-kanban init --harness pi
-
-# Dispatch work
-kanban task dispatch --title "Refactor auth" --role worker --priority 1
-kanban task dispatch --title "Add tests" --role worker --priority 5
-
-# Let agents coordinate (no --db needed)
-subagent --agent worker --task "
-  Read skills/worker/claim-next-task.md.
-  Claim and execute the next worker task.
-"
-```
+- [examples/pi-subagents.md](examples/pi-subagents.md) -- three-coder setup
+- [examples/claude-code-subagents.md](examples/claude-code-subagents.md) -- Claude Code coordination
 
 ## Building
 
@@ -307,7 +212,7 @@ subagent --agent worker --task "
 go build -o kanban ./cmd/kanban/
 ```
 
-Requires Go 1.24+. Pure Go, no CGo.
+Requires Go 1.24 or later. Pure Go, no CGo.
 
 ## License
 
