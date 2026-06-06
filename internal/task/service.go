@@ -44,6 +44,10 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert history: %w", err)
 	}
 
+	if err := insertEvent(tx, "task.created", map[string]string{"task_id": id}); err != nil {
+		return Task{}, fmt.Errorf("insert event: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return Task{}, fmt.Errorf("commit dispatch: %w", err)
 	}
@@ -122,6 +126,10 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 			return fmt.Errorf("insert claim history for task %s agent %s: %w", t.ID, agent, err)
 		}
 
+		if err := insertEvent(tx, "task.claimed", map[string]string{"task_id": t.ID, "agent": agent}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
+
 		if err := tx.Commit(); err != nil {
 			return err
 		}
@@ -196,6 +204,12 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 		)
 		if err != nil {
 			return fmt.Errorf("insert complete history for task %s agent %s: %w", id, agent, err)
+		}
+
+		if !toReview {
+			if err := insertEvent(tx, "task.completed", map[string]string{"task_id": id, "agent": agent}); err != nil {
+				return fmt.Errorf("insert event: %w", err)
+			}
 		}
 
 		if err := tx.Commit(); err != nil {
@@ -333,6 +347,10 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 			return fmt.Errorf("insert block history for task %s agent %s: %w", id, agent, err)
 		}
 
+		if err := insertEvent(tx, "task.blocked", map[string]string{"task_id": id, "agent": agent}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
+
 		if err := tx.Commit(); err != nil {
 			return err
 		}
@@ -382,6 +400,10 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 	)
 	if err != nil {
 		return Task{}, fmt.Errorf("insert review history for task %s agent %s: %w", id, agent, err)
+	}
+
+	if err := insertEvent(tx, "review.approved", map[string]string{"task_id": id, "agent": agent}); err != nil {
+		return Task{}, fmt.Errorf("insert event: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -442,6 +464,10 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 	)
 	if err != nil {
 		return Task{}, fmt.Errorf("insert reject history for task %s agent %s: %w", id, agent, err)
+	}
+
+	if err := insertEvent(tx, "review.rejected", map[string]string{"task_id": id, "agent": agent}); err != nil {
+		return Task{}, fmt.Errorf("insert event: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
