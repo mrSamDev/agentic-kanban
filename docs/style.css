@@ -12,9 +12,61 @@
   --code-bg: #f0ece6;
   --border: #e0dcd5;
   --line: #d4cfc6;
+  --btn-primary-text: #ffffff;
+  --card-bad: #b85c4a;
+  --comment: #8a8478;
   --radius: 8px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
+}
+
+/* ── Dark mode (system preference) ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1815;
+    --bg-card: #24211d;
+    --text: #e8e2d8;
+    --text-soft: #9c958a;
+    --accent: #4db6a0;
+    --accent-hover: #5cc9b2;
+    --code-bg: #2a2722;
+    --border: #3a3630;
+    --line: #4a453d;
+    --btn-primary-text: #0f0d0a;
+    --card-bad: #d4836f;
+    --comment: #7a7468;
+  }
+}
+
+/* ── Dark mode (manual toggle) ── */
+[data-theme="dark"] {
+  --bg: #1a1815;
+  --bg-card: #24211d;
+  --text: #e8e2d8;
+  --text-soft: #9c958a;
+  --accent: #4db6a0;
+  --accent-hover: #5cc9b2;
+  --code-bg: #2a2722;
+  --border: #3a3630;
+  --line: #4a453d;
+  --btn-primary-text: #0f0d0a;
+  --card-bad: #d4836f;
+  --comment: #7a7468;
+}
+
+[data-theme="light"] {
+  --bg: #faf8f5;
+  --bg-card: #ffffff;
+  --text: #2d2a24;
+  --text-soft: #6b655a;
+  --accent: #2d7d6f;
+  --accent-hover: #24685c;
+  --code-bg: #f0ece6;
+  --border: #e0dcd5;
+  --line: #d4cfc6;
+  --btn-primary-text: #ffffff;
+  --card-bad: #b85c4a;
+  --comment: #8a8478;
 }
 
 /* ── Base ── */
@@ -63,7 +115,7 @@ nav {
 }
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--btn-primary-text);
   border: 1px solid var(--accent);
 }
 .btn-primary:hover {
@@ -127,7 +179,7 @@ code {
   font-size: 0.9em;
 }
 pre code { font-size: inherit; }
-code .c { color: #8a8478; font-style: italic; }  /* comments */
+code .c { color: var(--comment); font-style: italic; }  /* comments */
 
 /* ── Diagrams ── */
 .diagram code {
@@ -169,7 +221,7 @@ code .c { color: #8a8478; font-style: italic; }  /* comments */
 .card li::before { content: "–"; position: absolute; left: 0; color: var(--line); }
 
 .card-good h3 { color: var(--accent); }
-.card-bad h3 { color: #b85c4a; }
+.card-bad h3 { color: var(--card-bad); }
 
 /* ── Table ── */
 .table-wrap { overflow-x: auto; }
@@ -202,6 +254,23 @@ footer {
   border-top: 1px solid var(--border);
   max-width: 848px;
   margin: 0 auto;
+}
+
+/* ── Theme toggle ── */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 6px 10px;
+  transition: border-color .15s, color .15s;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ── Responsive ── */

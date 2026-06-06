@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,10 @@
 <header>
   <nav>
     <span class="logo">agentic-kanban</span>
-    <a href="https://github.com/mrSamDev/agentic-kanban" class="btn-outline">GitHub</a>
+    <div>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
+      <a href="https://github.com/mrSamDev/agentic-kanban" class="btn-outline">GitHub</a>
+    </div>
   </nav>
 </header>
 
@@ -217,6 +220,43 @@ TODO ── claim-next ──> IN_PROGRESS ── complete --review ──> IN_R
 <footer>
   <p>MIT License · <a href="https://github.com/mrSamDev/agentic-kanban">mrSamDev/agentic-kanban</a></p>
 </footer>
+
+<script>
+(function() {
+  var html = document.documentElement;
+  var btn = document.getElementById('themeToggle');
+  var saved = localStorage.getItem('theme');
+  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  function setTheme(theme) {
+    if (theme === 'dark') {
+      html.setAttribute('data-theme', 'dark');
+      btn.textContent = '☀️';
+      btn.setAttribute('aria-label', 'Switch to light mode');
+    } else {
+      html.setAttribute('data-theme', 'light');
+      btn.textContent = '🌙';
+      btn.setAttribute('aria-label', 'Switch to dark mode');
+    }
+  }
+
+  // Use saved preference; fall back to system preference
+  if (saved) {
+    setTheme(saved);
+  } else if (prefersDark) {
+    setTheme('dark');
+  } else {
+    setTheme('light');
+  }
+
+  btn.addEventListener('click', function() {
+    var current = html.getAttribute('data-theme');
+    var next = current === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('theme', next);
+  });
+})();
+</script>
 
 </body>
 </html>
