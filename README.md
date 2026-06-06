@@ -2,7 +2,9 @@
 
 > **Alpha.** Things may break. You've been warned.
 
-SQLite-backed task coordination for AI agents. No server, no daemon, no queues. Just a shared database file agents use to claim, track, review, and finish work. Single Go binary plus SQLite.
+Coordination protocol for AI agents. SQLite-backed. Agent-agnostic.
+
+No server, no daemon, no queues. Just a shared database file agents use to claim, track, review, and finish work. Single Go binary plus SQLite.
 
 ```bash
 curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
@@ -28,7 +30,7 @@ kanban init --harness pi
 
 # Product owner workflow: an LLM reads your spec or roadmap, writes a task
 # proposal, you approve, then it dispatches. See the dispatch-plan and
-# approve-plan skills under skills/manager/.
+# approve-plan skills under embed/skills/manager/.
 
 # For simple plans, the built-in parser works too.
 kanban init --harness pi --plan plan.md
@@ -59,31 +61,74 @@ A short table since these are reference docs:
 | `prune --before --dry-run` | ops | Clean old events and notes |
 | `init --harness --plan --dir` | setup | Scaffold DB and agent files |
 
-## Observability
-
-```bash
-kanban --debug task claim-next --agent alice --role worker
-```
-
-Prints database ops alongside normal output. Useful for debugging lock issues, WAL behavior, and multi-agent timing.
-
-## Production notes
-
-3 to 10 concurrent agents works fine. Past 50 you'll see contention on claim-next. The retry loop (100ms, 200ms, 400ms backoff) handles it, but measure latency. Past 1000, SQLite itself becomes the bottleneck. Switch to Postgres or a distributed queue.
-
-Back up the `.db` file like any database. WAL mode lets you safely copy the main file while the system runs. Schema changes happen automatically on open. Events expire after 3 days by default; set `ttl_seconds` to NULL for permanent events. Run `kanban prune --before 30d` to clean up, then `VACUUM` to reclaim space.
-
-## How it works
-
-One `.db` file per project, shared by all agents. No server. Two agents calling claim-next at the same time get different tasks because SQLite serializes writes. A claimed task has a 15-minute lease. The log-progress command renews it. If an agent crashes, the lease expires and the next claim-next reclaims the task. The WAL file checkpoints itself every 1000 pages so it doesn't eat your disk.
+## Workflow
 
 ```text
-Worker-A claims TASK-1. Worker-A crashes.
-15 minutes later the lease expires.
-Worker-B calls claim-next and gets TASK-1.
+TODO ── claim-next ──> IN_PROGRESS ── complete --review ──> IN_REVIEW ── approve ──> DONE
+                            │                                       │
+                            │ block                                 │ reject
+                            ▼                                       ▼
+                         BLOCKED                                  TODO
 ```
 
-Every command prints stable JSON to stdout. Empty work returns `{}`. Errors go to stderr as `{"error":"..."}` with exit code 2. Skill files in the `skills/` directory teach agents the protocol. No tool-calling framework needed.
+Reviewers don't need to claim IN_REVIEW tasks. They just approve or reject.
+
+## Skills — the agent runtime
+
+Agents don't ship with kanban knowledge. Skills teach them. Each role gets its own set of skill files — the agent reads its role's skills and learns the protocol.
+
+### Coordination skills (shipped)
+
+These are the **protocol skills** — they teach coordination, not software engineering. They're the moat. Different agents (Claude Code, PI, Codex, Gemini) all read the same skill files. The agents change. The protocol stays.
+
+| Role | Skills | What the agent learns |
+|---|---|---|
+| `manager/` | dispatch-task, dispatch-plan, approve-plan, review-backlog, view-task | Plan work, dispatch tasks, review progress |
+| `worker/` | claim-next-task, log-progress, complete-task, block-task | Claim tasks, report progress, finish work |
+| `reviewer/` | claim-review, approve-task, reject-task | Review submissions, approve or reject |
+
+```text
+Kanban binary = the protocol engine
+Kanban skills = the agent runtime (one per role)
+Agent runtime  = Claude Code, PI, Codex, Gemini, ...
+```
+
+### Task skills (bring your own)
+
+You can add custom task skills alongside protocol skills. These teach an agent *how to do the work*, not *how to coordinate*. For example `skills/worker/deploy-to-prod.md` or `skills/manager/sprint-review.md`. Protocol skills handle coordination; task skills handle domain logic.
+
+Source: [internal/bootstrap/embed/skills/](internal/bootstrap/embed/skills/)
+
+## Architecture
+
+```
+Manager                    Workers                    Reviewers
+  │                           │                           │
+  ├── dispatch tasks ────────>│                           │
+  │                           ├── claim-next              │
+  │                           ├── log-progress            │
+  │                           ├── complete --review ─────>│
+  │                           │              ├── approve  │
+  │                           │              ├── reject   │
+  │<── search --status BLOCKED│                           │
+  └── unblock or reassign ───>│                           │
+```
+
+## Project structure
+
+```
+cmd/kanban/main.go              CLI entrypoint
+internal/
+  bootstrap/                    Init, plan parsing, agent and skill templates
+  bootstrap/kanban_extension.go Pi extension (TypeScript template)
+  storage/                      SQLite connection, schema, migration
+  task/                         Models, queries, service logic
+embed/skills/               Embedded skill templates (canonical source)
+  manager/                 dispatch-task, dispatch-plan, approve-plan, review-backlog, view-task
+  worker/                  claim-next-task, log-progress, complete-task, block-task
+  reviewer/                claim-review, approve-task, reject-task
+examples/                       Integration guides for pi and Claude Code
+```
 
 ## Hooks
 
@@ -148,58 +193,33 @@ You review and check [x] on approved items
 Agent reads the proposal and dispatches each checked task
 ```
 
-The skills live at `skills/manager/dispatch-plan.md` and `skills/manager/approve-plan.md`.
+The skills live at `embed/skills/manager/dispatch-plan.md` and `embed/skills/manager/approve-plan.md`.
 
-## Workflow
+## Observability
+
+```bash
+kanban --debug task claim-next --agent alice --role worker
+```
+
+Prints database ops alongside normal output. Useful for debugging lock issues, WAL behavior, and multi-agent timing.
+
+## Production notes
+
+3 to 10 concurrent agents works fine. Past 50 you'll see contention on claim-next. The retry loop (100ms, 200ms, 400ms backoff) handles it, but measure latency. Past 1000, SQLite itself becomes the bottleneck. Switch to Postgres or a distributed queue.
+
+Back up the `.db` file like any database. WAL mode lets you safely copy the main file while the system runs. Schema changes happen automatically on open. Events expire after 3 days by default; set `ttl_seconds` to NULL for permanent events. Run `kanban prune --before 30d` to clean up, then `VACUUM` to reclaim space.
+
+## How it works
+
+One `.db` file per project, shared by all agents. No server. Two agents calling claim-next at the same time get different tasks because SQLite serializes writes. A claimed task has a 15-minute lease. The log-progress command renews it. If an agent crashes, the lease expires and the next claim-next reclaims the task. The WAL file checkpoints itself every 1000 pages so it doesn't eat your disk.
 
 ```text
-TODO ── claim-next ──> IN_PROGRESS ── complete --review ──> IN_REVIEW ── approve ──> DONE
-                            │                                       │
-                            │ block                                 │ reject
-                            ▼                                       ▼
-                         BLOCKED                                  TODO
+Worker-A claims TASK-1. Worker-A crashes.
+15 minutes later the lease expires.
+Worker-B calls claim-next and gets TASK-1.
 ```
 
-Reviewers don't need to claim IN_REVIEW tasks. They just approve or reject.
-
-## Architecture
-
-```
-Manager                    Workers                    Reviewers
-  │                           │                           │
-  ├── dispatch tasks ────────>│                           │
-  │                           ├── claim-next              │
-  │                           ├── log-progress            │
-  │                           ├── complete --review ─────>│
-  │                           │              ├── approve  │
-  │                           │              ├── reject   │
-  │<── search --status BLOCKED│                           │
-  └── unblock or reassign ───>│                           │
-```
-
-## Project structure
-
-```
-cmd/kanban/main.go              CLI entrypoint
-internal/
-  bootstrap/                    Init, plan parsing, agent and skill templates
-  bootstrap/kanban_extension.go Pi extension (TypeScript template)
-  storage/                      SQLite connection, schema, migration
-  task/                         Models, queries, service logic
-skills/
-  manager/                      dispatch-task, dispatch-plan, approve-plan, review-backlog, view-task
-  worker/                       claim-next-task, log-progress, complete-task, block-task
-  reviewer/                     claim-review, approve-task, reject-task
-examples/                       Integration guides for pi and Claude Code
-```
-
-## Skills
-
-Each directory under `skills/` holds markdown files agents read to learn the protocol. The files describe exact bash commands, JSON shapes, and exit codes.
-
-- [skills/manager/](skills/manager/) -- dispatch, dispatch-plan, approve-plan, review, view
-- [skills/worker/](skills/worker/) -- claim, progress, block, complete
-- [skills/reviewer/](skills/reviewer/) -- claim review, approve, reject
+Every command prints stable JSON to stdout. Empty work returns `{}`. Errors go to stderr as `{"error":"..."}` with exit code 2. Skill files (embedded in the binary, written by `kanban init`) teach agents the protocol. No tool-calling framework needed.
 
 ## Integration examples
 

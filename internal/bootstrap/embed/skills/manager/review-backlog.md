@@ -1,3 +1,9 @@
+---
+name: review-backlog
+description: Search tasks by filters to see what is available, blocked, or done.
+role: manager
+type: protocol
+---
 # Review Backlog
 
 List all tasks visible to a manager. Apply optional filters to find specific

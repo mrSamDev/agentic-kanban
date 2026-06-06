@@ -1,3 +1,9 @@
+---
+name: block-task
+description: Mark a task as blocked with an explanation and clear the lease so other agents know the task is stuck.
+role: worker
+type: protocol
+---
 # Block Task
 
 Mark your current task as BLOCKED because of an external dependency or

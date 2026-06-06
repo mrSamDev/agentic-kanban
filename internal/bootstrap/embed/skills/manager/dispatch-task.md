@@ -1,3 +1,9 @@
+---
+name: dispatch-task
+description: Create a new task in the kanban board. Tasks start as TODO and are picked up by workers via claim-next.
+role: manager
+type: protocol
+---
 # Dispatch Task
 
 Dispatch a new task into the kanban board. The task starts as `TODO` and will be

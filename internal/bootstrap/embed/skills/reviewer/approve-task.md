@@ -1,3 +1,9 @@
+---
+name: approve-task
+description: Approve a task in IN_REVIEW state, marking it DONE. Any reviewer can approve.
+role: reviewer
+type: protocol
+---
 # Approve Task
 
 Approve a task that is in `IN_REVIEW` state, marking it as `DONE`. Only

@@ -1,3 +1,9 @@
+---
+name: reject-task
+description: Reject a task in IN_REVIEW state, sending it back to TODO for rework.
+role: reviewer
+type: protocol
+---
 # Reject Task
 
 Reject a task that is in `IN_REVIEW` state, sending it **back to TODO** so a

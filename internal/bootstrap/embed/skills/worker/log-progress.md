@@ -1,3 +1,9 @@
+---
+name: log-progress
+description: Log a progress note and renew your lease (heartbeat) to prevent lease expiry.
+role: worker
+type: protocol
+---
 # Log Progress
 
 Report progress on your current task. This appends a note and **renews your

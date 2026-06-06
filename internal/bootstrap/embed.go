@@ -48,21 +48,49 @@ func readSkillFile(filename string) (string, error) {
 	return "", fmt.Errorf("skill %s not found", filename)
 }
 
-func loadRoleSkills() (map[string]map[string]string, error) {
-	roles := map[string][]string{
-		"manager":  {"dispatch-task.md", "dispatch-plan.md", "approve-plan.md", "review-backlog.md", "view-task.md"},
-		"worker":   {"claim-next-task.md", "log-progress.md", "block-task.md", "complete-task.md"},
-		"reviewer": {"claim-review.md", "approve-task.md", "reject-task.md"},
+type SkillInfo struct {
+	Name string
+	Role string
+	File string
+}
+
+var SkillNames = map[string][]string{
+	"manager":  {"dispatch-task", "dispatch-plan", "approve-plan", "review-backlog", "view-task"},
+	"worker":   {"claim-next-task", "log-progress", "block-task", "complete-task"},
+	"reviewer": {"claim-review", "approve-task", "reject-task"},
+}
+
+func ListSkills() []SkillInfo {
+	var out []SkillInfo
+	for role, names := range SkillNames {
+		for _, name := range names {
+			out = append(out, SkillInfo{Name: name, Role: role, File: name + ".md"})
+		}
 	}
+	return out
+}
+
+func ReadSkill(name string) (string, string, error) {
+	for _, dir := range []string{"manager", "worker", "reviewer"} {
+		data, err := skillFiles.ReadFile(filepath.Join("embed", "skills", dir, name+".md"))
+		if err == nil {
+			return string(data), dir, nil
+		}
+	}
+	return "", "", fmt.Errorf("skill %q not found", name)
+}
+
+func loadRoleSkills() (map[string]map[string]string, error) {
+	roles := SkillNames
 	result := make(map[string]map[string]string, len(roles))
-	for role, filenames := range roles {
-		skills := make(map[string]string, len(filenames))
-		for _, f := range filenames {
-			content, err := readSkillFile(f)
+	for role, names := range roles {
+		skills := make(map[string]string, len(names))
+		for _, name := range names {
+			content, err := readSkillFile(name + ".md")
 			if err != nil {
 				return nil, err
 			}
-			skills[f] = content
+			skills[name+".md"] = content
 		}
 		result[role] = skills
 	}

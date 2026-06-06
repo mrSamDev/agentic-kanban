@@ -32,6 +32,7 @@ func main() {
 	rootCmd.SilenceErrors = true
 
 	rootCmd.AddCommand(taskCmd())
+	rootCmd.AddCommand(skillCmd())
 	rootCmd.AddCommand(eventsCmd())
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(initCmd())

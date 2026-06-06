@@ -1,3 +1,9 @@
+---
+name: claim-next-task
+description: Claim the highest-priority unclaimed task for a role, with lease reclamation on stale tasks.
+role: worker
+type: protocol
+---
 # Claim Next Task
 
 Claim the highest-priority unclaimed task for your role. If no work is

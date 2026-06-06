@@ -1,7 +1,10 @@
 ---
 name: dispatch-plan
 description: Read a plan file (spec, roadmap, product brief), extract tasks using your own intelligence, write a review file for user approval.
+role: manager
+type: protocol
 ---
+
 
 # Dispatch Plan (LLM-Driven)
 

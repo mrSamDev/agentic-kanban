@@ -1,3 +1,9 @@
+---
+name: complete-task
+description: Mark a task as done, optionally submitting for review instead.
+role: worker
+type: protocol
+---
 # Complete Task
 
 Mark your current task as DONE. If a review is needed, use `--review` to
