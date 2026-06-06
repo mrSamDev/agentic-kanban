@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "0.1.4"
+var version = "0.1.6"
 
 func main() {
 	var dbPath string
