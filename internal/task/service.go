@@ -12,6 +12,12 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 	if len(title) > maxTitleLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("title too long (max %d)", maxTitleLength)}
 	}
+	if priority < 0 || priority > 999 {
+		return Task{}, &ExitError{Code: 2, Message: "priority must be between 0 and 999"}
+	}
+	if roleBoundary == "" {
+		return Task{}, &ExitError{Code: 2, Message: "role cannot be empty"}
+	}
 	if project == "" {
 		project = "default"
 	}
@@ -44,7 +50,9 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert history: %w", err)
 	}
 
-	insertEvent(tx, "task.created", map[string]string{"task_id": id})
+	if err := insertEvent(tx, "task.created", map[string]string{"task_id": id}); err != nil {
+		return Task{}, fmt.Errorf("insert event: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return Task{}, fmt.Errorf("commit dispatch: %w", err)
@@ -113,9 +121,13 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 		}
 
 		if !toReview {
-			insertEvent(tx, "task.completed", map[string]string{"task_id": id, "agent": agent})
+			if err := insertEvent(tx, "task.completed", map[string]string{"task_id": id, "agent": agent}); err != nil {
+				return fmt.Errorf("insert event: %w", err)
+			}
 		} else {
-			insertEvent(tx, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent})
+			if err := insertEvent(tx, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent}); err != nil {
+				return fmt.Errorf("insert event: %w", err)
+			}
 		}
 
 		if err := tx.Commit(); err != nil {
@@ -192,7 +204,9 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 			return fmt.Errorf("insert progress history for task %s agent %s: %w", id, agent, err)
 		}
 
-		insertEvent(tx, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType})
+		if err := insertEvent(tx, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
 
 		if err := tx.Commit(); err != nil {
 			return err
@@ -263,7 +277,9 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 			return fmt.Errorf("insert block history for task %s agent %s: %w", id, agent, err)
 		}
 
-		insertEvent(tx, "task.blocked", map[string]string{"task_id": id, "agent": agent})
+		if err := insertEvent(tx, "task.blocked", map[string]string{"task_id": id, "agent": agent}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
 
 		if err := tx.Commit(); err != nil {
 			return err

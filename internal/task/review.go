@@ -5,7 +5,6 @@ import (
 	"fmt"
 )
 
-// ReviewApprove approves a task in IN_REVIEW state, marking it DONE.
 // Any reviewer can approve — no lease ownership check needed.
 func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
@@ -49,7 +48,9 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 			return fmt.Errorf("insert review history for task %s agent %s: %w", id, agent, err)
 		}
 
-		insertEvent(tx, "review.approved", map[string]string{"task_id": id, "agent": agent})
+		if err := insertEvent(tx, "review.approved", map[string]string{"task_id": id, "agent": agent}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
 
 		if err := tx.Commit(); err != nil {
 			return err
@@ -64,7 +65,6 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 	return task, err
 }
 
-// ReviewReject rejects a task in IN_REVIEW state, sending it back to TODO.
 // Any reviewer can reject — no lease ownership check needed.
 func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
@@ -120,7 +120,9 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 			return fmt.Errorf("insert reject history for task %s agent %s: %w", id, agent, err)
 		}
 
-		insertEvent(tx, "review.rejected", map[string]string{"task_id": id, "agent": agent})
+		if err := insertEvent(tx, "review.rejected", map[string]string{"task_id": id, "agent": agent}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
 
 		if err := tx.Commit(); err != nil {
 			return err

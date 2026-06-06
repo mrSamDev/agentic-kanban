@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"agent-kanban/internal/task"
 
 	"github.com/spf13/cobra"
@@ -24,7 +22,7 @@ func completeCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.Complete(context.Background(), args[0], agent, toReview)
+			t, err := s.Complete(cmd.Context(), args[0], agent, toReview)
 			if err != nil {
 				return err
 			}
@@ -53,7 +51,7 @@ func logProgressCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.LogProgress(context.Background(), args[0], agent, note, noteType)
+			t, err := s.LogProgress(cmd.Context(), args[0], agent, note, noteType)
 			if err != nil {
 				return err
 			}
@@ -90,7 +88,7 @@ func blockCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.Block(context.Background(), args[0], agent, reason)
+			t, err := s.Block(cmd.Context(), args[0], agent, reason)
 			if err != nil {
 				return err
 			}

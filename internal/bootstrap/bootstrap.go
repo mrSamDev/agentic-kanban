@@ -140,7 +140,6 @@ func harnessBase(h Harness, projectDir string) string {
 	}
 }
 
-// roleSkills maps each role to its skill files.
 var roleSkills = map[string]map[string]string{
 	"manager": {
 		"dispatch-task.md":  SkillDispatchTask,

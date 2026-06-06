@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"os/signal"
@@ -32,7 +31,7 @@ func eventsListCmd() *cobra.Command {
 			}
 			defer close()
 
-			events, err := s.ListEvents(context.Background(), limit)
+			events, err := s.ListEvents(cmd.Context(), limit)
 			if err != nil {
 				return err
 			}
@@ -58,7 +57,7 @@ func eventsTailCmd() *cobra.Command {
 			}
 			defer close()
 
-			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer cancel()
 
 			var cursor int64

@@ -25,7 +25,6 @@ func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	return t, nil
 }
 
-// 0 means default limit (20).
 func (s *Service) ViewDetail(ctx context.Context, id string, noteLimit, historyLimit int) (TaskDetail, error) {
 	t, err := s.View(ctx, id)
 	if err != nil {
@@ -180,6 +179,9 @@ type SearchParams struct {
 }
 
 func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, error) {
+	if params.Status != "" && !ValidStatuses[params.Status] {
+		return nil, &ExitError{Code: 2, Message: fmt.Sprintf("invalid status: %q", params.Status)}
+	}
 	var conditions []string
 	var args []any
 

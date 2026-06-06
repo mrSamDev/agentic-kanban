@@ -76,6 +76,9 @@ kanban task complete TASK-1 --agent my-agent
 | `task search [--status] [--role] [--agent]` | manager | Filter task list |
 | `task approve <id> --agent` | reviewer | Approve IN_REVIEW → DONE (no claim needed) |
 | `task reject <id> --agent --reason` | reviewer | Reject IN_REVIEW → TODO (no claim needed) |
+| `batch set-priority --ids --priority` | manager | Set priority for multiple tasks (fires events + hooks) |
+| `batch set-project --ids --project` | manager | Set project for multiple tasks (fires events + hooks) |
+| `prune [--before] [--dry-run]` | ops | Delete old events, history, and notes |
 | `init [--harness] [--plan] [--dir]` | setup | Scaffold DB + skills for pi, claude, or generic |
 | `--debug` (global flag) | ops | Enable debug logging for database operations |
 
@@ -112,7 +115,9 @@ Useful for:
 
 **Backup**: The `.db` file is your state. Back it up like any database. WAL mode means you can safely copy the main database file while the system is running.
 
-**Migration**: Schema changes require manual intervention in v0.1.0. The schema uses `CREATE IF NOT EXISTS` so it's safe to re-apply, but there's no versioned migration system yet.
+**Migration**: Schema changes are handled automatically on open. The schema uses `CREATE IF NOT EXISTS` and column existence checks via `PRAGMA table_info` before ALTER TABLE. No manual migration steps needed.
+
+**Event TTL**: Events auto-expire 3 days after creation (configurable via `ttl_seconds` column). Set `ttl_seconds = NULL` to make an event permanent. Use `kanban prune --before 30d` to manually clean old events, history, and notes. After pruning, run `VACUUM` to reclaim disk space.
 
 ## How it works
 
@@ -145,6 +150,8 @@ Hooks let you run scripts when tasks change state. Drop an executable in `.kanba
 | `task.blocked` | A task is blocked | `task_id`, `agent` |
 | `review.approved` | A reviewer approves | `task_id`, `agent` |
 | `review.rejected` | A reviewer rejects | `task_id`, `agent` |
+| `task.priority_updated` | Batch priority update | `task_id`, `priority` |
+| `task.project_updated` | Batch project update | `task_id`, `project` |
 
 You can chain multiple hooks for the same event by adding a `.d/` directory. The single-file hook runs synchronously. The `.d/` hooks run concurrently, so a slow Slack notifier won't block the caller. Each hook gets a 30-second timeout. If it fails, the error goes to stderr but the operation keeps going. Missing hooks are silently ignored.
 

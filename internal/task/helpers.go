@@ -52,7 +52,6 @@ func (s *Service) withTimeout(ctx context.Context) (context.Context, context.Can
 }
 
 // sqliteError matches modernc.org/sqlite.Error without importing the driver.
-// Code returns the SQLite error code (5 = BUSY, 6 = LOCKED).
 type sqliteError interface {
 	Code() int
 	error

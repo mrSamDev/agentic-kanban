@@ -9,7 +9,6 @@ import (
 
 const maxPlanSize = 1 << 20 // 1MB
 
-// PlanTask is one task extracted from a plan file.
 type PlanTask struct {
 	Title    string
 	Role     string // defaults to "worker"

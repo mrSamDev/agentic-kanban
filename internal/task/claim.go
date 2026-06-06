@@ -6,9 +6,7 @@ import (
 	"fmt"
 )
 
-// ClaimNext atomically claims the highest-priority unclaimed task for the given role.
 // Uses Serializable isolation so two concurrent claimers never get the same task.
-// Retries on SQLITE_BUSY to handle contention gracefully.
 // Also reclaims tasks where the previous agent's lease expired.
 func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
@@ -77,7 +75,9 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 			return fmt.Errorf("insert claim history for task %s agent %s: %w", t.ID, agent, err)
 		}
 
-		insertEvent(tx, "task.claimed", map[string]string{"task_id": t.ID, "agent": agent})
+		if err := insertEvent(tx, "task.claimed", map[string]string{"task_id": t.ID, "agent": agent}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
 
 		if err := tx.Commit(); err != nil {
 			return err

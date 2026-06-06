@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +19,7 @@ func dispatchCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.Dispatch(context.Background(), title, role, project, priority)
+			t, err := s.Dispatch(cmd.Context(), title, role, project, priority)
 			if err != nil {
 				return err
 			}
@@ -61,7 +59,7 @@ func claimNextCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.ClaimNext(context.Background(), agent, role, project)
+			t, err := s.ClaimNext(cmd.Context(), agent, role, project)
 			if err != nil {
 				return err
 			}

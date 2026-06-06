@@ -1,7 +1,5 @@
 package bootstrap
 
-// Skill templates for agent harness scaffolding.
-
 const SkillDispatchTask = `# Dispatch Task
 
 Create a new task in the kanban board. Tasks start as TODO and are picked

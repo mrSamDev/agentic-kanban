@@ -20,7 +20,6 @@ type DB struct {
 	debug bool
 }
 
-// Open opens (or creates) the SQLite database, sets pragmas, and runs migrations.
 func Open(path string, debug bool) (*DB, error) {
 	// SQLite won't create intermediate dirs.
 	dir := filepath.Dir(path)
@@ -81,16 +80,34 @@ func Open(path string, debug bool) (*DB, error) {
 		log.Println("[db] schema applied")
 	}
 
-	// Add project column if missing. Error expected if already present.
-	_, _ = db.Exec("ALTER TABLE tasks ADD COLUMN project TEXT NOT NULL DEFAULT 'default'")
-	if debug {
-		log.Println("[db] project column migration applied")
+	var hasProject bool
+	db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'project'`).Scan(&hasProject)
+	if !hasProject {
+		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN project TEXT NOT NULL DEFAULT 'default'"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("add project column: %w", err)
+		}
+		if debug {
+			log.Println("[db] project column migration applied")
+		}
+	}
+
+	var hasTTL bool
+	db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('events') WHERE name = 'ttl_seconds'`).Scan(&hasTTL)
+	if !hasTTL {
+		if _, err := db.Exec("ALTER TABLE events ADD COLUMN ttl_seconds INTEGER DEFAULT 259200"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("add ttl_seconds column: %w", err)
+		}
+		if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_events_ttl ON events(ttl_seconds, created_at)"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("create events ttl index: %w", err)
+		}
 	}
 
 	return &DB{db, debug}, nil
 }
 
-// Close checkpoints WAL and closes the database.
 func (db *DB) Close() error {
 	// Prevent unbounded WAL growth.
 	if db.debug {

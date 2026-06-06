@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"agent-kanban/internal/task"
 
 	"github.com/spf13/cobra"
@@ -23,7 +21,7 @@ func viewCmd() *cobra.Command {
 			}
 			defer close()
 
-			detail, err := s.ViewDetail(context.Background(), args[0], noteLimit, historyLimit)
+			detail, err := s.ViewDetail(cmd.Context(), args[0], noteLimit, historyLimit)
 			if err != nil {
 				return err
 			}
@@ -59,7 +57,7 @@ func searchCmd() *cobra.Command {
 				Limit:   limit,
 			}
 
-			tasks, err := s.Search(context.Background(), params)
+			tasks, err := s.Search(cmd.Context(), params)
 			if err != nil {
 				return err
 			}
@@ -87,7 +85,7 @@ func statsCmd() *cobra.Command {
 			}
 			defer close()
 
-			stats, err := s.Stats(context.Background())
+			stats, err := s.Stats(cmd.Context())
 			if err != nil {
 				return err
 			}

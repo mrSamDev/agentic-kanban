@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -40,11 +38,14 @@ func batchPriorityCmd() *cobra.Command {
 				idList[i] = strings.TrimSpace(idList[i])
 			}
 
-			updated, err := s.BatchUpdatePriority(context.Background(), idList, priority)
+			updated, err := s.BatchUpdatePriority(cmd.Context(), idList, priority)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Updated %d tasks to priority %d\n", updated, priority)
+			writeJSON(map[string]any{
+				"updated":  updated,
+				"priority": priority,
+			})
 			return nil
 		},
 	}
@@ -75,11 +76,14 @@ func batchProjectCmd() *cobra.Command {
 				idList[i] = strings.TrimSpace(idList[i])
 			}
 
-			updated, err := s.BatchUpdateProject(context.Background(), idList, project)
+			updated, err := s.BatchUpdateProject(cmd.Context(), idList, project)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Updated %d tasks to project '%s'\n", updated, project)
+			writeJSON(map[string]any{
+				"updated": updated,
+				"project": project,
+			})
 			return nil
 		},
 	}

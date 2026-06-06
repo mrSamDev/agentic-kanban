@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +19,7 @@ func approveCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.ReviewApprove(context.Background(), args[0], agent)
+			t, err := s.ReviewApprove(cmd.Context(), args[0], agent)
 			if err != nil {
 				return err
 			}
@@ -49,7 +47,7 @@ func rejectCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.ReviewReject(context.Background(), args[0], agent, reason)
+			t, err := s.ReviewReject(cmd.Context(), args[0], agent, reason)
 			if err != nil {
 				return err
 			}
