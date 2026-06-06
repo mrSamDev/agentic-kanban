@@ -723,3 +723,114 @@ func TestHookNonZeroExitIsSilent(t *testing.T) {
 		t.Fatalf("Dispatch failed with non-zero hook exit: %v", err)
 	}
 }
+
+func makeHookD(t *testing.T, hooksDir, eventType, name, script string) {
+	t.Helper()
+	dir := filepath.Join(hooksDir, strings.ReplaceAll(eventType, ".", "-")+".d")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHookDAllFire(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	s1 := filepath.Join(dir, "s1")
+	s2 := filepath.Join(dir, "s2")
+	makeHookD(t, hooksDir, "task.created", "slack", "touch "+s1)
+	makeHookD(t, hooksDir, "task.created", "metrics", "touch "+s2)
+	s.SetHooksDir(hooksDir)
+
+	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(s1); err != nil {
+		t.Error("slack sentinel not written")
+	}
+	if _, err := os.Stat(s2); err != nil {
+		t.Error("metrics sentinel not written")
+	}
+}
+
+func TestHookDLexOrder(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	log := filepath.Join(dir, "log")
+	makeHookD(t, hooksDir, "task.created", "a", "echo a >> "+log)
+	makeHookD(t, hooksDir, "task.created", "b", "echo b >> "+log)
+	s.SetHooksDir(hooksDir)
+
+	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 || lines[0] != "a" || lines[1] != "b" {
+		t.Fatalf("expected [a b], got %v", lines)
+	}
+}
+
+func TestHookDNonExecutableSkipped(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	dDir := filepath.Join(hooksDir, "task-created.d")
+	sentinel := filepath.Join(dir, "fired")
+	os.MkdirAll(dDir, 0755)
+	// write without execute bit
+	os.WriteFile(filepath.Join(dDir, "nope"), []byte("#!/bin/sh\ntouch "+sentinel+"\n"), 0644)
+	s.SetHooksDir(hooksDir)
+
+	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sentinel); err == nil {
+		t.Error("non-executable hook should not have fired")
+	}
+}
+
+func TestHookDAndSingleFileBothFire(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	single := filepath.Join(dir, "single")
+	multi := filepath.Join(dir, "multi")
+	makeHook(t, hooksDir, "task.created", "touch "+single)
+	makeHookD(t, hooksDir, "task.created", "extra", "touch "+multi)
+	s.SetHooksDir(hooksDir)
+
+	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(single); err != nil {
+		t.Error("single-file hook did not fire")
+	}
+	if _, err := os.Stat(multi); err != nil {
+		t.Error(".d/ hook did not fire")
+	}
+}
+
+func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	sentinel := filepath.Join(dir, "fired")
+	makeHookD(t, hooksDir, "task.created", "a", "exit 1")
+	makeHookD(t, hooksDir, "task.created", "b", "touch "+sentinel)
+	s.SetHooksDir(hooksDir)
+
+	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
+		t.Fatalf("Dispatch failed: %v", err)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Error("sibling hook did not fire after failing entry")
+	}
+}

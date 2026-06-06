@@ -214,6 +214,10 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 			if err := insertEvent(tx, "task.completed", map[string]string{"task_id": id, "agent": agent}); err != nil {
 				return fmt.Errorf("insert event: %w", err)
 			}
+		} else {
+			if err := insertEvent(tx, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent}); err != nil {
+				return fmt.Errorf("insert event: %w", err)
+			}
 		}
 
 		if err := tx.Commit(); err != nil {
@@ -225,6 +229,9 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 	})
 	if err == nil && !toReview {
 		runHook(s.hooksDir, "task.completed", map[string]string{"task_id": id, "agent": agent})
+	}
+	if err == nil && toReview {
+		runHook(s.hooksDir, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent})
 	}
 	return task, err
 }
@@ -288,6 +295,10 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 			return fmt.Errorf("insert progress history for task %s agent %s: %w", id, agent, err)
 		}
 
+		if err := insertEvent(tx, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType}); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
+
 		if err := tx.Commit(); err != nil {
 			return err
 		}
@@ -295,6 +306,9 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 		task, err = s.View(ctx, id)
 		return err
 	})
+	if err == nil {
+		runHook(s.hooksDir, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType})
+	}
 	return task, err
 }
 
