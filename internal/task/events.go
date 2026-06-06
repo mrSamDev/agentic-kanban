@@ -25,6 +25,49 @@ func eventPayload(tx *sql.Tx, taskID string, extra map[string]string) map[string
 	return p
 }
 
+// taskMeta holds the stable fields of a task needed for event payloads.
+type taskMeta struct {
+	Title    string
+	Project  string
+	Priority int
+}
+
+// loadTaskMetas fetches metadata for all given task IDs in a single query.
+// Missing IDs are silently omitted from the returned map.
+func loadTaskMetas(tx *sql.Tx, ids []string) (map[string]taskMeta, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf("SELECT id, title, project, priority FROM tasks WHERE id IN (%s)", joinStrings(placeholders, ","))
+	rows, err := tx.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("load task metas: %w", err)
+	}
+	defer rows.Close()
+
+	metas := make(map[string]taskMeta, len(ids))
+	for rows.Next() {
+		var id, title, project string
+		var priority int
+		if err := rows.Scan(&id, &title, &project, &priority); err != nil {
+			return nil, fmt.Errorf("scan task meta: %w", err)
+		}
+		metas[id] = taskMeta{Title: title, Project: project, Priority: priority}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate task metas: %w", err)
+	}
+	return metas, nil
+}
+
 func insertEvent(tx *sql.Tx, eventType string, payload any) error {
 	b, err := json.Marshal(payload)
 	if err != nil {

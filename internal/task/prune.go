@@ -36,7 +36,18 @@ func (s *Service) Prune(ctx context.Context, before time.Time, dryRun bool) (Pru
 	return result, nil
 }
 
+// allowedPruneTables prevents SQL injection via table name interpolation.
+var allowedPruneTables = map[string]bool{
+	"events":  true,
+	"history": true,
+	"notes":   true,
+}
+
 func (s *Service) pruneTable(ctx context.Context, table string, before time.Time, dryRun bool) (int64, error) {
+	if !allowedPruneTables[table] {
+		return 0, fmt.Errorf("prune: invalid table %q", table)
+	}
+
 	var query string
 	if dryRun {
 		query = fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE created_at < ?", table)

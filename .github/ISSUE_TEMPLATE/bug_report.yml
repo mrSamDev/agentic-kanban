@@ -1,0 +1,48 @@
+name: Bug report
+description: Something is broken or not working as expected
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: To reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Run `kanban ...`
+        2. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened. Include error output and exit codes.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Go version, kanban version, number of concurrent agents
+      placeholder: |
+        OS: macOS 14, Ubuntu 22.04
+        Kanban version: (from --version or binary SHA)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug logs
+      description: Output with `--debug` flag if applicable
+      render: shell
