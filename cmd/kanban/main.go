@@ -46,6 +46,7 @@ func main() {
 	rootCmd.SilenceErrors = true
 
 	rootCmd.AddCommand(taskCmd())
+	rootCmd.AddCommand(eventsCmd())
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(initCmd())
 
@@ -58,6 +59,46 @@ func main() {
 		writeStderr(err.Error())
 		os.Exit(1)
 	}
+}
+
+func eventsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "events",
+		Short: "View event log",
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			if dbPath == ".kanban/kanban.db" {
+				if env := os.Getenv("KANBAN_DB"); env != "" {
+					dbPath = env
+				}
+			}
+			return nil
+		},
+	}
+	cmd.AddCommand(eventsListCmd())
+	return cmd
+}
+
+func eventsListCmd() *cobra.Command {
+	var limit int
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all events",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+			events, err := s.ListEvents(context.Background(), limit)
+			if err != nil {
+				return err
+			}
+			writeJSON(events)
+			return nil
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 0, "max events to return (0 = all)")
+	return cmd
 }
 
 func versionCmd() *cobra.Command {

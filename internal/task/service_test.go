@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
@@ -380,6 +381,144 @@ func TestErrInvalidState(t *testing.T) {
 	_, err := s.Complete(t.Context(), "TASK-1", "alice", false)
 	if err == nil {
 		t.Fatal("expected error completing unassigned task")
+	}
+}
+
+func TestListEvents(t *testing.T) {
+	s := newTestService(t)
+
+	// No events yet
+	events, err := s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events, got %d", len(events))
+	}
+
+	// Dispatch → task.created
+	s.Dispatch(t.Context(), "test", "worker", "default", 1)
+	events, err = s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event after dispatch, got %d", len(events))
+	}
+	if events[0].EventType != "task.created" {
+		t.Fatalf("expected task.created, got %s", events[0].EventType)
+	}
+
+	// Claim → task.claimed
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	events, err = s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events after claim, got %d", len(events))
+	}
+	if events[1].EventType != "task.claimed" {
+		t.Fatalf("expected task.claimed, got %s", events[1].EventType)
+	}
+
+	// Complete → task.completed
+	s.Complete(t.Context(), "TASK-1", "alice", false)
+	events, err = s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events after complete, got %d", len(events))
+	}
+	if events[2].EventType != "task.completed" {
+		t.Fatalf("expected task.completed, got %s", events[2].EventType)
+	}
+
+	// Verify payloads are inline JSON, not double-encoded strings
+	var payload map[string]string
+	if err := json.Unmarshal(events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal task.created payload: %v", err)
+	}
+	if payload["task_id"] != "TASK-1" {
+		t.Fatalf("expected task_id TASK-1, got %s", payload["task_id"])
+	}
+
+	// Limit test
+	events, err = s.ListEvents(t.Context(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events with limit=2, got %d", len(events))
+	}
+}
+
+func TestListEventsReviewPath(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch + claim + complete with --review → no task.completed event
+	s.Dispatch(t.Context(), "needs review", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	events, err := s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have task.created + task.claimed, but NOT task.completed
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events (no task.completed for review path), got %d", len(events))
+	}
+
+	// Approve → review.approved
+	s.ReviewApprove(t.Context(), "TASK-1", "dave")
+	events, err = s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events after approve, got %d", len(events))
+	}
+	if events[2].EventType != "review.approved" {
+		t.Fatalf("expected review.approved, got %s", events[2].EventType)
+	}
+}
+
+func TestListEventsBlockAndReject(t *testing.T) {
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+
+	// Block → task.blocked
+	s.Block(t.Context(), "TASK-1", "alice", "blocked")
+	events, err := s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events after block, got %d", len(events))
+	}
+	if events[2].EventType != "task.blocked" {
+		t.Fatalf("expected task.blocked, got %s", events[2].EventType)
+	}
+
+	// Dispatch a separate task for the review+reject path
+	s.Dispatch(t.Context(), "needs review", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "bob", "worker", "")
+	s.Complete(t.Context(), "TASK-2", "bob", true)
+	s.ReviewReject(t.Context(), "TASK-2", "dave", "needs work")
+	events, err = s.ListEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events total, got %d", len(events))
+	}
+	if events[5].EventType != "review.rejected" {
+		t.Fatalf("expected review.rejected, got %s", events[6].EventType)
 	}
 }
 

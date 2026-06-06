@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -109,6 +110,35 @@ func (s *Service) listHistory(ctx context.Context, taskID string, limit int) ([]
 		history = []HistoryEntry{}
 	}
 	return history, rows.Err()
+}
+
+func (s *Service) ListEvents(ctx context.Context, limit int) ([]Event, error) {
+	q := `SELECT id, created_at, event_type, payload FROM events ORDER BY id ASC`
+	var args []any
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var e Event
+		var payloadStr string
+		if err := rows.Scan(&e.ID, &e.CreatedAt, &e.EventType, &payloadStr); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		e.Payload = json.RawMessage(payloadStr)
+		events = append(events, e)
+	}
+	if events == nil {
+		events = []Event{}
+	}
+	return events, rows.Err()
 }
 
 type SearchParams struct {
