@@ -129,12 +129,11 @@ func scaffoldClaude(dir string) error {
 		return fmt.Errorf("create .claude/agents dir: %w", err)
 	}
 
-	claudeAgents := map[string]string{
-		"manager.md":  AgentClaudeManager,
-		"worker.md":   AgentClaudeWorker,
-		"reviewer.md": AgentClaudeReviewer,
+	agentDefs, err := readAgentDefs(HarnessClaude)
+	if err != nil {
+		return err
 	}
-	for filename, content := range claudeAgents {
+	for filename, content := range agentDefs {
 		path := filepath.Join(agentsDir, filename)
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write .claude/agents/%s: %w", filename, err)
@@ -159,10 +158,9 @@ func scaffoldPi(dir string) error {
 		return fmt.Errorf("create .pi/agents dir: %w", err)
 	}
 
-	agentDefs := map[string]string{
-		"manager.md":  AgentManager,
-		"worker.md":   AgentWorker,
-		"reviewer.md": AgentReviewer,
+	agentDefs, err := readAgentDefs(HarnessPi)
+	if err != nil {
+		return err
 	}
 	for filename, content := range agentDefs {
 		path := filepath.Join(agentsDir, filename)
@@ -180,12 +178,11 @@ func scaffoldGeneric(dir string) error {
 		return fmt.Errorf("create .agents dir: %w", err)
 	}
 
-	genericAgents := map[string]string{
-		"manager.md":  AgentGenericManager,
-		"worker.md":   AgentGenericWorker,
-		"reviewer.md": AgentGenericReviewer,
+	agentDefs, err := readAgentDefs(HarnessGeneric)
+	if err != nil {
+		return err
 	}
-	for filename, content := range genericAgents {
+	for filename, content := range agentDefs {
 		path := filepath.Join(agentsDir, filename)
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write .agents/%s: %w", filename, err)
@@ -200,8 +197,13 @@ func writeFlatSkills(skillsDir string) error {
 		return fmt.Errorf("create skills dir: %w", err)
 	}
 
+	roleSkillMap, err := loadRoleSkills()
+	if err != nil {
+		return err
+	}
+
 	allSkills := map[string]string{}
-	for _, skills := range roleSkills {
+	for _, skills := range roleSkillMap {
 		for name, content := range skills {
 			allSkills[name] = content
 		}
@@ -213,25 +215,4 @@ func writeFlatSkills(skillsDir string) error {
 		}
 	}
 	return nil
-}
-
-var roleSkills = map[string]map[string]string{
-	"manager": {
-		"dispatch-task.md":   SkillDispatchTask,
-		"dispatch-plan.md":   SkillDispatchPlan,
-		"approve-plan.md":    SkillApprovePlan,
-		"review-backlog.md":  SkillReviewBacklog,
-		"view-task.md":       SkillViewTask,
-	},
-	"worker": {
-		"claim-next-task.md": SkillClaimNextTask,
-		"log-progress.md":    SkillLogProgress,
-		"block-task.md":      SkillBlockTask,
-		"complete-task.md":   SkillCompleteTask,
-	},
-	"reviewer": {
-		"claim-review.md": SkillClaimReview,
-		"approve-task.md": SkillApproveTask,
-		"reject-task.md":  SkillRejectTask,
-	},
 }
