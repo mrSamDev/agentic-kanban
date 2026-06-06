@@ -8,10 +8,9 @@ import (
 	"time"
 )
 
-// View returns the task without notes or history.
 func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, title, status, role_boundary, priority,
+		`SELECT id, title, status, role_boundary, project, priority,
 		        assigned_agent, lease_until, created_at, updated_at
 		   FROM tasks WHERE id = ?`, id,
 	)
@@ -25,7 +24,6 @@ func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	return t, nil
 }
 
-// ViewDetail returns the full task detail including notes and history.
 // noteLimit and historyLimit control pagination; 0 means no limit.
 func (s *Service) ViewDetail(ctx context.Context, id string, noteLimit, historyLimit int) (TaskDetail, error) {
 	t, err := s.View(ctx, id)
@@ -106,16 +104,15 @@ func (s *Service) listHistory(ctx context.Context, taskID string, limit int) ([]
 	return history, rows.Err()
 }
 
-// SearchParams defines optional filters for Search.
 type SearchParams struct {
-	Status TaskStatus
-	Role   string
-	Agent  string
-	Limit  int
-	Offset int
+	Status  TaskStatus
+	Role    string
+	Agent   string
+	Project string
+	Limit   int
+	Offset  int
 }
 
-// Search returns tasks matching the given filters.
 func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, error) {
 	var conditions []string
 	var args []any
@@ -132,8 +129,12 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 		conditions = append(conditions, "assigned_agent = ?")
 		args = append(args, params.Agent)
 	}
+	if params.Project != "" {
+		conditions = append(conditions, "project = ?")
+		args = append(args, params.Project)
+	}
 
-	query := "SELECT id, title, status, role_boundary, priority, assigned_agent, lease_until, created_at, updated_at FROM tasks"
+	query := "SELECT id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at FROM tasks"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -166,7 +167,6 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 	return tasks, rows.Err()
 }
 
-// TaskStats represents aggregate task statistics.
 type TaskStats struct {
 	ByStatus     map[string]int `json:"by_status"`
 	ByRole       map[string]int `json:"by_role"`
@@ -174,7 +174,6 @@ type TaskStats struct {
 	TotalTasks   int            `json:"total_tasks"`
 }
 
-// Stats returns aggregate statistics about tasks in the system.
 func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
 	stats := TaskStats{
 		ByStatus:   make(map[string]int),

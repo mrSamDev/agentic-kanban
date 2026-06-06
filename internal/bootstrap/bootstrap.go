@@ -13,7 +13,6 @@ import (
 	"agent-kanban/internal/task"
 )
 
-// Harness identifies the agent platform to scaffold for.
 type Harness string
 
 const (
@@ -22,12 +21,10 @@ const (
 	HarnessGeneric Harness = "generic"
 )
 
-// ValidHarnesses is the set of all supported harness names.
 var ValidHarnesses = map[Harness]bool{
 	HarnessPi: true, HarnessClaude: true, HarnessGeneric: true,
 }
 
-// InitOptions controls what bootstrap creates.
 type InitOptions struct {
 	Dir      string
 	DBPath   string
@@ -35,7 +32,6 @@ type InitOptions struct {
 	PlanPath string
 }
 
-// Init scaffolds a project: kanban DB, agent skill files, optional task dispatch.
 func Init(opts InitOptions) error {
 	if opts.Dir == "" {
 		opts.Dir = "."
@@ -114,7 +110,7 @@ func dispatchPlan(sqlDB *sql.DB, planPath string) error {
 		if priority == 0 {
 			priority = 100
 		}
-		if _, err := svc.Dispatch(context.Background(), pt.Title, role, priority); err != nil {
+		if _, err := svc.Dispatch(context.Background(), pt.Title, role, "default", priority); err != nil {
 			return fmt.Errorf("dispatch %q: %w", pt.Title, err)
 		}
 	}
@@ -149,7 +145,7 @@ func harnessBase(h Harness, projectDir string) string {
 	}
 }
 
-// roleSkills maps role → filename → skill markdown content.
+// Each role gets only the skills matching its responsibility — worker cannot complete, manager cannot claim.
 var roleSkills = map[string]map[string]string{
 	"manager": {
 		"dispatch-task.md":  SkillDispatchTask,

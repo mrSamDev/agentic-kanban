@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-// --- Command implementations ---
-
-// Dispatch inserts a new TODO task and returns it.
-func (s *Service) Dispatch(ctx context.Context, title, roleBoundary string, priority int) (Task, error) {
+func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project string, priority int) (Task, error) {
 	if len(title) > maxTitleLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("title too long (max %d)", maxTitleLength)}
+	}
+	if project == "" {
+		project = "default"
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -28,9 +28,9 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary string, prio
 	}
 
 	_, err = tx.Exec(
-		`INSERT INTO tasks (id, title, status, role_boundary, priority)
-		 VALUES (?, ?, 'TODO', ?, ?)`,
-		id, title, roleBoundary, priority,
+		`INSERT INTO tasks (id, title, status, role_boundary, project, priority)
+		 VALUES (?, ?, 'TODO', ?, ?, ?)`,
+		id, title, roleBoundary, project, priority,
 	)
 	if err != nil {
 		return Task{}, fmt.Errorf("insert task: %w", err)
@@ -51,9 +51,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary string, prio
 	return s.View(ctx, id)
 }
 
-// ClaimNext atomically claims the highest-priority available task for a role.
-// Returns empty Task with nil error when no work is available (exit 0, JSON {}).
-func (s *Service) ClaimNext(ctx context.Context, agent, role string) (Task, error) {
+func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
 	// Serializable isolation → write lock up front.
 	// Required: two concurrent claimers must never get the same task.
 	// Retry on SQLITE_BUSY to handle contention gracefully.
@@ -70,23 +68,45 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role string) (Task, erro
 			return Task{}, fmt.Errorf("claim begin: %w", err)
 		}
 
-		row := tx.QueryRow(
-			`UPDATE tasks
-			   SET status         = 'IN_PROGRESS',
-			       assigned_agent = ?,
-			       lease_until    = datetime('now', '+' || ? || ' minutes'),
-			       updated_at     = CURRENT_TIMESTAMP
-			 WHERE id = (
-			   SELECT id FROM tasks
-			    WHERE role_boundary = ?
-			      AND (status = 'TODO'
-			           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
-			    ORDER BY priority ASC, created_at ASC
-			    LIMIT 1
-			 )
-			 RETURNING id, title, status, role_boundary, priority, assigned_agent, lease_until, created_at, updated_at`,
-			agent, defaultLeaseMinutes, role,
-		)
+		var row *sql.Row
+		if project != "" {
+			row = tx.QueryRow(
+				`UPDATE tasks
+				   SET status         = 'IN_PROGRESS',
+				       assigned_agent = ?,
+				       lease_until    = datetime('now', '+' || ? || ' minutes'),
+				       updated_at     = CURRENT_TIMESTAMP
+				 WHERE id = (
+				   SELECT id FROM tasks
+				    WHERE role_boundary = ?
+				      AND project = ?
+				      AND (status = 'TODO'
+				           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
+				    ORDER BY priority ASC, created_at ASC
+				    LIMIT 1
+				 )
+				 RETURNING id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at`,
+				agent, defaultLeaseMinutes, role, project,
+			)
+		} else {
+			row = tx.QueryRow(
+				`UPDATE tasks
+				   SET status         = 'IN_PROGRESS',
+				       assigned_agent = ?,
+				       lease_until    = datetime('now', '+' || ? || ' minutes'),
+				       updated_at     = CURRENT_TIMESTAMP
+				 WHERE id = (
+				   SELECT id FROM tasks
+				    WHERE role_boundary = ?
+				      AND (status = 'TODO'
+				           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
+				    ORDER BY priority ASC, created_at ASC
+				    LIMIT 1
+				 )
+				 RETURNING id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at`,
+				agent, defaultLeaseMinutes, role,
+			)
+		}
 
 		t, err := scanTask(row)
 		if err != nil {
@@ -118,7 +138,6 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role string) (Task, erro
 	return Task{}, fmt.Errorf("claim after retries: %w", lastErr)
 }
 
-// Complete transitions a task to DONE (or IN_REVIEW) and clears the lease.
 // Uses a single UPDATE with WHERE guards so the check+update is atomic —
 // the write lock is acquired at first write, and SQLite serializes at commit time.
 func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool) (Task, error) {
@@ -160,6 +179,12 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 			return Task{}, ErrNotFound
 		}
 		// Existing task — must be wrong agent or wrong state.
+		// Fetch actual assigned_agent for helpful error.
+		var actualAgent sql.NullString
+		tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+		if actualAgent.Valid {
+			return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("task not assigned to this agent (assigned to: %s)", actualAgent.String)}
+		}
 		return Task{}, ErrNotAssigned
 	}
 
@@ -178,7 +203,6 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 	return s.View(ctx, id)
 }
 
-// LogProgress appends a note and renews the lease (heartbeat).
 func (s *Service) LogProgress(ctx context.Context, id, agent, content string, noteType string) (Task, error) {
 	if len(content) > maxNoteLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("note too long (max %d)", maxNoteLength)}
@@ -241,7 +265,6 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 	return s.View(ctx, id)
 }
 
-// Block transitions a task to BLOCKED, clears the lease, and records the reason.
 func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, error) {
 	if len(reason) > maxReasonLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("reason too long (max %d)", maxReasonLength)}
@@ -301,7 +324,6 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 	return s.View(ctx, id)
 }
 
-// ReviewApprove approves an IN_REVIEW task, marking it DONE.
 // Any reviewer can approve — no lease ownership check needed.
 func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -348,7 +370,6 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 	return s.View(ctx, id)
 }
 
-// ReviewReject sends an IN_REVIEW task back to TODO, clearing the lease.
 // Any reviewer can reject — no lease ownership check needed.
 func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (Task, error) {
 	if len(reason) > maxReasonLength {
@@ -405,4 +426,52 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 	}
 
 	return s.View(ctx, id)
+}
+
+func (s *Service) BatchUpdatePriority(ids []string, priority int) (int, error) {
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("batch priority begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	updated := 0
+	for _, id := range ids {
+		res, err := tx.Exec(
+			`UPDATE tasks SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			priority, id,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("update task %s: %w", id, err)
+		}
+		n, _ := res.RowsAffected()
+		updated += int(n)
+	}
+
+	return updated, tx.Commit()
+}
+
+func (s *Service) BatchUpdateProject(ids []string, project string) (int, error) {
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("batch project begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	updated := 0
+	for _, id := range ids {
+		res, err := tx.Exec(
+			`UPDATE tasks SET project = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			project, id,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("update task %s: %w", id, err)
+		}
+		n, _ := res.RowsAffected()
+		updated += int(n)
+	}
+
+	return updated, tx.Commit()
 }

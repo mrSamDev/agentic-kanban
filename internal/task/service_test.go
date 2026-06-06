@@ -3,6 +3,7 @@ package task
 import (
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -31,7 +32,7 @@ func newTestService(t *testing.T) *Service {
 
 func TestDispatch(t *testing.T) {
 	s := newTestService(t)
-	task, err := s.Dispatch(t.Context(), "test task", "worker", 50)
+	task, err := s.Dispatch(t.Context(), "test task", "worker", "default", 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,9 +52,9 @@ func TestDispatch(t *testing.T) {
 
 func TestDispatchSequentialIDs(t *testing.T) {
 	s := newTestService(t)
-	t1, _ := s.Dispatch(t.Context(), "a", "worker", 100)
-	t2, _ := s.Dispatch(t.Context(), "b", "worker", 100)
-	t3, _ := s.Dispatch(t.Context(), "c", "worker", 100)
+	t1, _ := s.Dispatch(t.Context(), "a", "worker", "default", 100)
+	t2, _ := s.Dispatch(t.Context(), "b", "worker", "default", 100)
+	t3, _ := s.Dispatch(t.Context(), "c", "worker", "default", 100)
 	if t1.ID != "TASK-1" || t2.ID != "TASK-2" || t3.ID != "TASK-3" {
 		t.Fatalf("expected sequential IDs, got %s, %s, %s", t1.ID, t2.ID, t3.ID)
 	}
@@ -61,10 +62,10 @@ func TestDispatchSequentialIDs(t *testing.T) {
 
 func TestClaimNext(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "urgent", "worker", 1)
-	s.Dispatch(t.Context(), "normal", "worker", 100)
+	s.Dispatch(t.Context(), "urgent", "worker", "default", 1)
+	s.Dispatch(t.Context(), "normal", "worker", "default", 100)
 
-	task, err := s.ClaimNext(t.Context(), "alice", "worker")
+	task, err := s.ClaimNext(t.Context(), "alice", "worker", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestClaimNext(t *testing.T) {
 	}
 
 	// Claim again — should get second task
-	task2, err := s.ClaimNext(t.Context(), "bob", "worker")
+	task2, err := s.ClaimNext(t.Context(), "bob", "worker", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestClaimNext(t *testing.T) {
 func TestClaimNextNoWork(t *testing.T) {
 	s := newTestService(t)
 	// No tasks at all
-	task, err := s.ClaimNext(t.Context(), "alice", "worker")
+	task, err := s.ClaimNext(t.Context(), "alice", "worker", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,11 +106,11 @@ func TestClaimNextNoWork(t *testing.T) {
 
 func TestClaimNextOnlyForRole(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "worker task", "worker", 10)
-	s.Dispatch(t.Context(), "reviewer task", "reviewer", 5)
+	s.Dispatch(t.Context(), "worker task", "worker", "default", 10)
+	s.Dispatch(t.Context(), "reviewer task", "reviewer", "default", 5)
 
 	// Reviewer claims — should get the reviewer task despite lower priority
-	task, err := s.ClaimNext(t.Context(), "dave", "reviewer")
+	task, err := s.ClaimNext(t.Context(), "dave", "reviewer", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +119,7 @@ func TestClaimNextOnlyForRole(t *testing.T) {
 	}
 
 	// Worker claims — should get the worker task
-	task2, err := s.ClaimNext(t.Context(), "alice", "worker")
+	task2, err := s.ClaimNext(t.Context(), "alice", "worker", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestClaimNextOnlyForRole(t *testing.T) {
 func TestClaimNextAtomic(t *testing.T) {
 	s := newTestService(t)
 	for i := 0; i < 10; i++ {
-		s.Dispatch(t.Context(), "task", "worker", 100)
+		s.Dispatch(t.Context(), "task", "worker", "default", 100)
 	}
 
 	var mu sync.Mutex
@@ -141,7 +142,7 @@ func TestClaimNextAtomic(t *testing.T) {
 		wg.Add(1)
 		go func(agent string) {
 			defer wg.Done()
-			task, err := s.ClaimNext(t.Context(), agent, "worker")
+			task, err := s.ClaimNext(t.Context(), agent, "worker", "")
 			if err != nil {
 				return // no work left
 			}
@@ -164,8 +165,8 @@ func TestClaimNextAtomic(t *testing.T) {
 
 func TestComplete(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 
 	task, err := s.Complete(t.Context(), "TASK-1", "alice", false)
 	if err != nil {
@@ -181,7 +182,7 @@ func TestComplete(t *testing.T) {
 
 func TestCompleteUnassigned(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
 
 	_, err := s.Complete(t.Context(), "TASK-1", "alice", false)
 	if err != ErrNotAssigned {
@@ -191,19 +192,23 @@ func TestCompleteUnassigned(t *testing.T) {
 
 func TestCompleteWrongAgent(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 
 	_, err := s.Complete(t.Context(), "TASK-1", "bob", false)
-	if err != ErrNotAssigned {
-		t.Fatalf("expected ErrNotAssigned, got %v", err)
+	if err == nil {
+		t.Fatal("expected error when wrong agent")
+	}
+	// Error should include the actual assigned agent
+	if !strings.Contains(err.Error(), "assigned to: alice") {
+		t.Fatalf("expected error to include actual agent, got %v", err)
 	}
 }
 
 func TestCompleteToReview(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 
 	task, err := s.Complete(t.Context(), "TASK-1", "alice", true)
 	if err != nil {
@@ -216,8 +221,8 @@ func TestCompleteToReview(t *testing.T) {
 
 func TestLogProgress(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 
 	// Check lease time before
 	pre, _ := s.View(t.Context(), "TASK-1")
@@ -236,8 +241,8 @@ func TestLogProgress(t *testing.T) {
 
 func TestBlock(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 
 	task, err := s.Block(t.Context(), "TASK-1", "alice", "Blocked on upstream")
 	if err != nil {
@@ -253,8 +258,8 @@ func TestBlock(t *testing.T) {
 
 func TestViewDetail(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 	s.LogProgress(t.Context(), "TASK-1", "alice", "working", "PROGRESS")
 
 	detail, err := s.ViewDetail(t.Context(), "TASK-1", 0, 0)
@@ -277,9 +282,9 @@ func TestViewDetail(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "hotfix", "worker", 1)
-	s.Dispatch(t.Context(), "feature", "worker", 100)
-	s.Dispatch(t.Context(), "review", "reviewer", 50)
+	s.Dispatch(t.Context(), "hotfix", "worker", "default", 1)
+	s.Dispatch(t.Context(), "feature", "worker", "default", 100)
+	s.Dispatch(t.Context(), "review", "reviewer", "default", 50)
 
 	// Search all
 	all, _ := s.Search(t.Context(), SearchParams{})
@@ -294,7 +299,7 @@ func TestSearch(t *testing.T) {
 	}
 
 	// Search by status
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 	todos, _ := s.Search(t.Context(), SearchParams{Status: StatusTODO})
 	if len(todos) != 2 {
 		t.Fatalf("expected 2 TODO tasks, got %d", len(todos))
@@ -308,8 +313,8 @@ func TestSearch(t *testing.T) {
 
 func TestReviewApprove(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 	s.Complete(t.Context(), "TASK-1", "alice", true)
 
 	// Approve directly on IN_REVIEW — no claim needed.
@@ -324,8 +329,8 @@ func TestReviewApprove(t *testing.T) {
 
 func TestReviewReject(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 	s.Complete(t.Context(), "TASK-1", "alice", true)
 
 	// Reject directly on IN_REVIEW — no claim needed.
@@ -340,14 +345,14 @@ func TestReviewReject(t *testing.T) {
 
 func TestLeaseReclaim(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "stale task", "worker", 1)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "stale task", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 
 	// Manually expire the lease in the DB
 	s.db.Exec("UPDATE tasks SET lease_until = datetime('now', '-1 minute') WHERE id = 'TASK-1'")
 
 	// Another agent should be able to reclaim
-	task, err := s.ClaimNext(t.Context(), "bob", "worker")
+	task, err := s.ClaimNext(t.Context(), "bob", "worker", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +374,7 @@ func TestErrNotFound(t *testing.T) {
 
 func TestErrInvalidState(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "task", "worker", 1)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1)
 
 	// Can't complete a TODO task without claiming
 	_, err := s.Complete(t.Context(), "TASK-1", "alice", false)
@@ -382,12 +387,12 @@ func TestReviewerCannotClaimInReview(t *testing.T) {
 	s := newTestService(t)
 
 	// Worker dispatches + claims + completes with review.
-	s.Dispatch(t.Context(), "worker task needing review", "worker", 50)
-	s.ClaimNext(t.Context(), "alice", "worker")
+	s.Dispatch(t.Context(), "worker task needing review", "worker", "default", 50)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
 	s.Complete(t.Context(), "TASK-1", "alice", true)
 
 	// Reviewer should NOT get the IN_REVIEW task via claim-next.
-	empty, err := s.ClaimNext(t.Context(), "dave", "reviewer")
+	empty, err := s.ClaimNext(t.Context(), "dave", "reviewer", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +410,7 @@ func TestReviewerCannotClaimInReview(t *testing.T) {
 	}
 
 	// Worker should NOT be able to claim the done task.
-	empty2, err := s.ClaimNext(t.Context(), "bob", "worker")
+	empty2, err := s.ClaimNext(t.Context(), "bob", "worker", "")
 	if err != nil {
 		t.Fatal(err)
 	}
