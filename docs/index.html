@@ -18,6 +18,7 @@
         <span>agentic-kanban</span>
       </a>
       <div class="nav-links">
+        <a href="#problem">Problem</a>
         <a href="#why">Why</a>
         <a href="#workflow">Workflow</a>
         <a href="#commands">Commands</a>
@@ -40,7 +41,7 @@
       <div class="hero-copy">
         <p class="eyebrow"><span>Open source</span> / Built for agent teams</p>
         <h1 id="hero-title">Give every agent<br>a clear next task.</h1>
-        <p class="hero-lede">Durable task coordination through one SQLite file. Agents claim work atomically, report progress, survive crashes, and hand off reviews without a server in the middle.</p>
+        <p class="hero-lede">No servers. No daemons. No queues. Durable task coordination through one SQLite file. Agents claim work atomically, report progress, survive crashes, and hand off reviews without anything in the middle.</p>
         <div class="hero-actions">
           <a href="#install" class="button button-primary">Get started <span aria-hidden="true">→</span></a>
           <a href="#workflow" class="button button-secondary">See the workflow</a>
@@ -93,9 +94,36 @@
       <p class="install-note">Single Go binary + SQLite. For pinned versions, use <a href="https://github.com/mrSamDev/agentic-kanban/releases">GitHub Releases</a>.</p>
     </section>
 
+    <section id="problem" class="section problem-section" aria-labelledby="problem-title">
+      <div class="section-heading">
+        <p class="section-index">02 / Problem</p>
+        <h2 id="problem-title">One agent is fine.<br>Two agents need coordination.</h2>
+        <p>One edits code. Another writes tests. A third reviews. Without shared state, they conflict, duplicate work, and wait.</p>
+      </div>
+      <div class="problem-split">
+        <div class="problem-narrative">
+          <p>Most setups reach for familiar infrastructure:</p>
+          <ul class="infra-list">
+            <li>Agent frameworks</li>
+            <li>Message queues</li>
+            <li>Redis</li>
+            <li>Postgres</li>
+            <li>Background services</li>
+            <li>Complex orchestration layers</li>
+          </ul>
+          <p class="infra-verdict">That's a lot to run for a handful of agents on the same machine.</p>
+        </div>
+        <div class="approach-callout">
+          <p class="approach-label">The simpler answer</p>
+          <p class="approach-statement">Treat coordination as a <strong>database problem.</strong></p>
+          <p>Every agent reads and writes to the same SQLite file. No RPC. No event bus. No server process. Just durable shared state.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="why" class="section why-section" aria-labelledby="why-title">
       <div class="section-heading">
-        <p class="section-index">02 / Why</p>
+        <p class="section-index">03 / Why</p>
         <h2 id="why-title">Coordination that stays out of the way.</h2>
         <p>Use the filesystem you already share. Keep task ownership explicit and recoverable.</p>
       </div>
@@ -129,7 +157,7 @@
 
     <section id="workflow" class="section workflow-section" aria-labelledby="workflow-title">
       <div class="section-heading">
-        <p class="section-index">03 / Workflow</p>
+        <p class="section-index">04 / Workflow</p>
         <h2 id="workflow-title">A small protocol with clear ownership.</h2>
       </div>
       <div class="workflow-grid">
@@ -164,11 +192,29 @@
         <div><span>03</span><strong>IN_REVIEW</strong></div><i aria-hidden="true">→</i>
         <div class="state-done"><span>04</span><strong>DONE</strong></div>
       </div>
+
+      <div class="arch-terminal" aria-label="Architecture diagram">
+        <div class="terminal-bar"><span></span><span></span><span></span><b>architecture</b></div>
+        <div class="arch-diagram-wrap">
+          <pre><code><span class="arch-db">       SQLite Database</span>
+              │
+ ┌────────────┼────────────┐
+ │            │            │
+<span class="arch-agent">Worker A</span>   <span class="arch-agent">Worker B</span>   <span class="arch-agent">Reviewer</span>
+ │            │            │
+<span class="arch-cmd">claim-next</span>  <span class="arch-cmd">claim-next</span>  <span class="arch-cmd">approve</span>
+ │            │            │
+<span class="arch-cmd">progress</span>    <span class="arch-cmd">progress</span>    <span class="arch-cmd">reject</span>
+ │            │
+<span class="arch-cmd">complete</span>   <span class="arch-cmd">complete</span></code></pre>
+        </div>
+        <div class="arch-caption">No server. No daemon. No coordination service.</div>
+      </div>
     </section>
 
     <section id="commands" class="section commands-section" aria-labelledby="commands-title">
       <div class="section-heading">
-        <p class="section-index">04 / Reference</p>
+        <p class="section-index">05 / Reference</p>
         <h2 id="commands-title">The complete command surface.</h2>
         <p>Small enough to learn, explicit enough to debug.</p>
       </div>
@@ -191,12 +237,26 @@
 
     <section class="section fit-section" aria-labelledby="fit-title">
       <div class="section-heading">
-        <p class="section-index">05 / Fit</p>
+        <p class="section-index">06 / Fit</p>
         <h2 id="fit-title">Built for local agent teams.</h2>
       </div>
+      <div class="no-framework">
+        <div class="no-framework-left">
+          <h3>Not another agent framework.</h3>
+          <p>Agentic Kanban solves one problem: reliable coordination. Bring your own agents, models, and workflow.</p>
+        </div>
+        <ul class="no-framework-list">
+          <li><span>×</span> Agent runtimes</li>
+          <li><span>×</span> Tool calling</li>
+          <li><span>×</span> Memory systems</li>
+          <li><span>×</span> Planning engines</li>
+          <li><span>×</span> Model hosting</li>
+        </ul>
+      </div>
+
       <div class="fit-grid">
         <div class="fit-copy">
-          <p>Best for <strong>3–10 agents</strong> working on the same machine or shared filesystem. Concurrency is tested up to 50 agents.</p>
+          <p>Best for <strong>Claude Code subagents, PI subagents, Codex workflows,</strong> and local coding agents on the same machine or shared filesystem. Concurrency tested up to 50 agents.</p>
           <a href="https://github.com/mrSamDev/agentic-kanban" class="text-link">Read the source <span aria-hidden="true">↗</span></a>
         </div>
         <div class="fit-list fit-good"><h3><span>✓</span> Use it when</h3><ul><li>Agents need durable shared state</li><li>Task ownership must survive crashes</li><li>You want zero infrastructure overhead</li></ul></div>
@@ -206,7 +266,8 @@
 
     <section class="closing">
       <p class="section-index">Ready to coordinate?</p>
-      <h2>One binary.<br>Every agent aligned.</h2>
+      <p class="closing-analogy">Git became the shared source of truth for code.<br>Agentic Kanban becomes the shared source of truth for <em>work</em>.</p>
+      <h2>One database.<br>Every agent aligned.</h2>
       <div class="hero-actions">
         <a href="#install" class="button button-primary">Install agentic-kanban <span aria-hidden="true">→</span></a>
         <a href="https://github.com/mrSamDev/agentic-kanban" class="button button-secondary">View on GitHub</a>

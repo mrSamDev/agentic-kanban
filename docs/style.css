@@ -250,3 +250,40 @@ footer p:last-child { justify-self: end; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Problem section */
+.problem-split { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 8vw, 120px); align-items: start; }
+.infra-list { margin-top: 20px; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.infra-list li { padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 14px; font-family: var(--mono); }
+.infra-list li::before { content: "—  "; color: var(--faint); }
+.infra-verdict { margin-top: 20px; color: var(--muted); font-size: 14px; }
+.approach-callout { padding: clamp(28px, 4vw, 48px); border: 1px solid var(--line); background: var(--surface); }
+.approach-label { margin-bottom: 16px; color: var(--accent); font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.approach-statement { margin-bottom: 16px; font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 650; letter-spacing: -.04em; line-height: 1.1; }
+.approach-callout > p:last-child { color: var(--muted); font-size: 16px; }
+
+/* Architecture terminal */
+.arch-terminal { margin-top: clamp(50px, 8vw, 90px); overflow: hidden; background: var(--terminal); color: var(--terminal-ink); box-shadow: var(--shadow); }
+.arch-diagram-wrap { display: flex; justify-content: center; padding: clamp(32px, 5vw, 60px) clamp(24px, 4vw, 46px) clamp(24px, 4vw, 46px); }
+.arch-terminal pre { overflow-x: auto; padding: 0; font-size: clamp(11px, 1.15vw, 14px); line-height: 1.9; }
+.arch-db { color: oklch(.72 .1 250); font-weight: 600; }
+.arch-agent { color: oklch(.9 .01 120); }
+.arch-cmd { color: oklch(.72 .16 155); }
+.arch-caption { padding: clamp(16px, 2.5vw, 24px) clamp(24px, 4vw, 46px); border-top: 1px solid oklch(.32 .015 130); color: oklch(.52 .015 125); font-family: var(--mono); font-size: clamp(11px, 1vw, 13px); text-align: center; }
+
+/* Not-a-framework strip */
+.no-framework { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 8vw, 120px); align-items: start; margin-bottom: clamp(56px, 8vw, 100px); padding-bottom: clamp(56px, 8vw, 100px); border-bottom: 1px solid var(--line); }
+.no-framework-left h3 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 650; letter-spacing: -.04em; line-height: 1.1; margin-bottom: 16px; }
+.no-framework-left p { color: var(--muted); font-size: 16px; max-width: 40ch; }
+.no-framework-list { padding: 0; border-top: 1px solid var(--line); list-style: none; align-self: start; }
+.no-framework-list li { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+.no-framework-list li span { color: var(--danger); font-weight: 600; }
+
+/* Closing analogy */
+.closing-analogy { max-width: 52ch; margin: 0 auto clamp(32px, 5vw, 56px); color: var(--muted); font-size: clamp(16px, 1.8vw, 20px); line-height: 1.55; }
+.closing-analogy em { color: var(--ink); font-style: normal; font-weight: 600; }
+
+@media (max-width: 760px) {
+  .problem-split, .no-framework { grid-template-columns: 1fr; }
+  .closing-analogy { margin-inline: 0; }
+}
