@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
+	"agent-kanban/internal/bootstrap"
 	"agent-kanban/internal/storage"
 	"agent-kanban/internal/task"
 
@@ -13,6 +15,7 @@ import (
 )
 
 var dbPath string
+var debug bool
 
 var validNoteTypes = map[string]bool{
 	"PROGRESS": true,
@@ -35,12 +38,14 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", ".kanban/kanban.db", "path to SQLite database (or $KANBAN_DB to override)")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
 
 	rootCmd.SilenceUsage = true
 	rootCmd.SilenceErrors = true
 
 	rootCmd.AddCommand(taskCmd())
 	rootCmd.AddCommand(versionCmd())
+	rootCmd.AddCommand(initCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		// ExitError carries exit code 2; generic errors exit 1.
@@ -87,12 +92,13 @@ func taskCmd() *cobra.Command {
 		searchCmd(),
 		approveCmd(),
 		rejectCmd(),
+		statsCmd(),
 	)
 	return cmd
 }
 
 func openService() (*task.Service, func(), error) {
-	db, err := storage.Open(dbPath)
+	db, err := storage.Open(dbPath, debug)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -101,7 +107,11 @@ func openService() (*task.Service, func(), error) {
 }
 
 func writeJSON(v any) {
-	out, _ := json.MarshalIndent(v, "", "  ")
+	out, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		writeStderr(fmt.Sprintf("marshal error: %v", err))
+		os.Exit(1)
+	}
 	fmt.Println(string(out))
 }
 
@@ -111,6 +121,40 @@ func writeStderr(msg string) {
 	if err := json.NewEncoder(os.Stderr).Encode(map[string]string{"error": msg}); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}
+}
+
+// --- init command ---
+
+func initCmd() *cobra.Command {
+	var harness, plan, dir string
+
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize a project for agent coordination",
+		Long: `Scaffold a project with kanban database, skill files, and optional task dispatch from a plan file.
+
+Creates .kanban/kanban.db, agent skill directories, and optionally parses
+--plan to dispatch the first batch of tasks.
+
+  kanban init
+  kanban init --harness pi
+  kanban init --harness pi --plan plan.md
+  kanban init --harness claude --plan plan.md --dir ./my-project
+
+Supported harnesses: pi (default), claude, generic.`,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return bootstrap.Init(bootstrap.InitOptions{
+				Dir:      dir,
+				DBPath:   dbPath,
+				Harness:  bootstrap.Harness(harness),
+				PlanPath: plan,
+			})
+		},
+	}
+	cmd.Flags().StringVar(&harness, "harness", "", "agent harness (pi, claude, generic; prompts if empty)")
+	cmd.Flags().StringVar(&plan, "plan", "", "path to plan.md or plan.json for initial task dispatch")
+	cmd.Flags().StringVar(&dir, "dir", ".", "project root directory")
+	return cmd
 }
 
 // --- subcommands ---
@@ -129,7 +173,7 @@ func dispatchCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.Dispatch(title, role, priority)
+			t, err := s.Dispatch(context.Background(), title, role, priority)
 			if err != nil {
 				return err
 			}
@@ -167,7 +211,7 @@ func claimNextCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.ClaimNext(agent, role)
+			t, err := s.ClaimNext(context.Background(), agent, role)
 			if err != nil {
 				return err
 			}
@@ -188,6 +232,8 @@ func claimNextCmd() *cobra.Command {
 }
 
 func viewCmd() *cobra.Command {
+	var noteLimit, historyLimit int
+
 	cmd := &cobra.Command{
 		Use:   "view <id>",
 		Short: "View task details with notes and history",
@@ -199,7 +245,7 @@ func viewCmd() *cobra.Command {
 			}
 			defer close()
 
-			detail, err := s.ViewDetail(args[0])
+			detail, err := s.ViewDetail(context.Background(), args[0], noteLimit, historyLimit)
 			if err != nil {
 				return err
 			}
@@ -207,6 +253,8 @@ func viewCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().IntVar(&noteLimit, "notes", 0, "max notes to return (0 = all)")
+	cmd.Flags().IntVar(&historyLimit, "history", 0, "max history entries to return (0 = all)")
 	return cmd
 }
 
@@ -225,7 +273,7 @@ func completeCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.Complete(args[0], agent, toReview)
+			t, err := s.Complete(context.Background(), args[0], agent, toReview)
 			if err != nil {
 				return err
 			}
@@ -253,7 +301,7 @@ func logProgressCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.LogProgress(args[0], agent, note, noteType)
+			t, err := s.LogProgress(context.Background(), args[0], agent, note, noteType)
 			if err != nil {
 				return err
 			}
@@ -289,7 +337,7 @@ func blockCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.Block(args[0], agent, reason)
+			t, err := s.Block(context.Background(), args[0], agent, reason)
 			if err != nil {
 				return err
 			}
@@ -325,7 +373,7 @@ func searchCmd() *cobra.Command {
 				Limit:  limit,
 			}
 
-			tasks, err := s.Search(params)
+			tasks, err := s.Search(context.Background(), params)
 			if err != nil {
 				return err
 			}
@@ -354,7 +402,7 @@ func approveCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.ReviewApprove(args[0], agent)
+			t, err := s.ReviewApprove(context.Background(), args[0], agent)
 			if err != nil {
 				return err
 			}
@@ -381,7 +429,7 @@ func rejectCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.ReviewReject(args[0], agent, reason)
+			t, err := s.ReviewReject(context.Background(), args[0], agent, reason)
 			if err != nil {
 				return err
 			}
@@ -393,5 +441,27 @@ func rejectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&reason, "reason", "", "rejection reason (required)")
 	cmd.MarkFlagRequired("agent")
 	cmd.MarkFlagRequired("reason")
+	return cmd
+}
+
+func statsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "stats",
+		Short: "Show aggregate task statistics",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			stats, err := s.Stats(context.Background())
+			if err != nil {
+				return err
+			}
+			writeJSON(stats)
+			return nil
+		},
+	}
 	return cmd
 }

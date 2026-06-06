@@ -1,11 +1,9 @@
 # Claim Review
 
-Claim the next task in `IN_REVIEW` state for review. Works identically to
-`claim-next` but targets tasks submitted for review (`IN_REVIEW` status).
+Claim the next unclaimed reviewer task (TODO tasks tagged `role_boundary: reviewer`).
 
-Note: `claim-next --role reviewer` picks up both `IN_REVIEW` tasks submitted
-by workers AND any unclaimed TODO tasks tagged with `role_boundary: reviewer`.
-This is correct behavior — reviewers can claim either type.
+For reviewing worker-submitted work (`IN_REVIEW` status), use `approve` or `reject`
+directly — no claim step needed.
 
 ## Usage
 
