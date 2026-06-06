@@ -1,24 +1,38 @@
 # Post-Mortem Fixes Plan
 
 Branch: `post-mortem-fixes`
-Target: 7 Go changes + skill changes = all 8 negatives resolved
 
 ---
 
-## Execution Order
+## Release Strategy
 
-Schema changes first → CLI changes → skill changes. No rebases needed.
+Ordered by leverage, not implementation convenience.
 
-| Step | What | Why this order |
-|------|------|----------------|
-| 1 | `depends_on` schema + claim guard | Schema change before anything |
-| 2 | `batch-claim` N tasks in one tx | Builds on ClaimNext logic |
-| 3 | Cross-agent review gate | Pure check, no schema change |
-| 4 | `extend-lease` command | New command, no dependencies |
-| 5 | `kanban status --burndown` | New command, read-only |
-| 6 | Project env auto-detection | Config change |
-| 7 | Skill updates (--all, batch-claim, extend-lease) | References new CLI |
-| 8 | Force subagent usage (agent/skill .md) | Behavioral layer on top of Go changes |
+### Release 1 — Make multi-agent execution safe (v0.4)
+
+Safety before speed. These three changes turn the system from "works in demos" into "safe for real projects."
+
+| Step | What | Why |
+|------|------|-----|
+| 1 | `depends_on` schema + claim guard | Without this, parallel workers produce garbage |
+| 2 | `extend-lease` command | Without this, long tasks get double-claimed |
+| 3 | Cross-agent review gate | Without this, a single agent can approve its own work |
+
+### Release 2 — Make multi-agent execution fast (v0.5)
+
+| Step | What | Why |
+|------|------|-----|
+| 4 | `claim-next --count N` | Atomic batch claim for parallel worker spawning |
+| 5 | Optional subagent delegation | Make parallelism easy, not mandatory |
+| 6 | Project env auto-detection | Subagents in subdirs auto-find the DB |
+
+### Release 3 — Operational maturity (v0.6)
+
+| Step | What | Why |
+|------|------|-----|
+| 7 | `kanban status --burndown` | Progress visibility |
+| 8 | `kanban plan lint` | Catch bad plans before execution |
+| 9 | `approve-plan --all` flag | Minor UX improvement |
 
 ---
 
@@ -141,165 +155,7 @@ kanban task claim-next --agent test --role worker
 
 ---
 
-## Step 2: `batch-claim` — Parallelism (PM#1)
-
-### Files changed
-- `internal/task/claim.go` — new `ClaimBatch` method
-- `cmd/kanban/dispatch.go` — `claim-batch` CLI command
-
-### SQLite batch-claim: select-then-update (not CTE)
-SQLite flattens LIMIT in subquery-UPDATE. Use explicit two-step.
-
-**Design choice**: Instead of `count*3` magic — fetch ALL eligible candidates (up to 100), filter in Go for unmet deps, then claim up to N. If fewer than N remain after filtering, return what's available (no partial failure). This handles worst-case (80% tasks blocked by deps) without wasting claims.
-
-```go
-func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, count int) ([]Task, error) {
-    tx, _ := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-    defer tx.Rollback()
-
-    // Step 1: select ALL eligible candidates (cap at 100 to avoid OOM)
-    maxFetch := count * 5
-    if maxFetch > 100 { maxFetch = 100 }
-
-    rows, _ := tx.Query(`
-        SELECT id, title, status, role_boundary, project, priority,
-               assigned_agent, lease_until, created_at, updated_at, depends_on
-          FROM tasks
-         WHERE role_boundary = ?
-           AND project = ?
-           AND (status = 'TODO'
-                OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
-         ORDER BY priority ASC, created_at ASC
-         LIMIT ?`, role, project, maxFetch,
-    )
-
-    // Filter out tasks with unmet deps
-    var claimable []Task
-    for rows.Next() {
-        t, _ := scanTaskWithDeps(rows)
-        if hasUnmetDeps(tx, t) {
-            continue
-        }
-        claimable = append(claimable, t)
-        if len(claimable) >= count {
-            break
-        }
-    }
-
-    // Step 2: claim up to `count` tasks in same transaction
-    claimed := make([]Task, 0, len(claimable))
-    for _, t := range claimable[:min(count, len(claimable))] {
-        res, _ := tx.Exec(
-            `UPDATE tasks SET status='IN_PROGRESS', assigned_agent=?,
-             lease_until=datetime('now','+? minutes'), updated_at=CURRENT_TIMESTAMP
-             WHERE id=? AND status IN ('TODO','IN_PROGRESS')`,
-            agent, defaultLeaseMinutes, t.ID,
-        )
-        n, _ := res.RowsAffected()
-        if n == 0 { continue } // race lost, skip
-
-        tx.Exec(`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'CLAIM')`, t.ID, agent)
-        insertEvent(tx, "task.claimed", EventPayload{TaskID: t.ID, Agent: agent, Title: t.Title})
-        claimed = append(claimed, t)
-    }
-
-    if err := tx.Commit(); err != nil {
-        return nil, fmt.Errorf("batch claim commit: %w", err)
-    }
-
-    // Fire hooks outside tx
-    for _, t := range claimed {
-        runHook(s.hooksDir, "task.claimed", EventPayload{TaskID: t.ID, Agent: agent, Title: t.Title})
-    }
-    return claimed, nil
-}
-```
-
-### CLI shape
-```bash
-kanban task claim-batch \
-  --agent "worker-1" \
-  --role worker \
-  --count 3 \
-  --project default
-```
-
-Returns JSON array of claimed tasks.
-
-### Verification
-```bash
-# 1. Dispatch 5 independent tasks
-# 2. Claim-batch 3 at once
-kanban task claim-batch --agent worker-bot --role worker --count 3
-# → Returns 3 tasks in JSON array
-# → 3 become IN_PROGRESS, 2 remain TODO
-kanban task search --status TODO | jq length  # → 2
-```
-
----
-
-## Step 3: Cross-agent review gate (PM#3)
-
-### Files changed
-- `internal/task/review.go` — one check in `ReviewApprove` and `ReviewReject`
-
-### Logic
-Query the history table for the last agent who claimed the task:
-
-```sql
-SELECT agent FROM history
- WHERE task_id = ?
-   AND action = 'CLAIM'
- ORDER BY id DESC LIMIT 1
-```
-
-If result matches the reviewing agent → return `ErrSelfReview`.
-
-### Edge case: no CLAIM history
-Tasks created directly in `IN_REVIEW` (manual or script) have no CLAIM entry. Handle gracefully — allow the review:
-
-```go
-var ErrSelfReview = &ExitError{Code: 2, Message: "cannot review your own task — another agent must approve"}
-
-func checkSelfReview(tx *sql.Tx, id, agent string) error {
-    var claimingAgent sql.NullString
-    err := tx.QueryRow(
-        `SELECT agent FROM history WHERE task_id=? AND action='CLAIM' ORDER BY id DESC LIMIT 1`,
-        id,
-    ).Scan(&claimingAgent)
-
-    if err == sql.ErrNoRows {
-        return nil // no CLAIM history — task was created directly in review, allow
-    }
-    if err != nil {
-        return err
-    }
-    if claimingAgent.Valid && claimingAgent.String == agent {
-        return ErrSelfReview
-    }
-    return nil
-}
-```
-
-### Implementation
-Add as first check inside the retry callback in both `ReviewApprove` and `ReviewReject`.
-
-### Verification
-```bash
-# 1. Worker claims and completes a task
-kanban task claim-next --agent worker-1 --role worker
-kanban task complete <id> --agent worker-1 --review
-# 2. Same agent tries to approve → rejected
-kanban task approve <id> --agent worker-1
-# → Error: "cannot review your own task — another agent must approve"
-# 3. Different agent approves → OK
-kanban task approve <id> --agent reviewer-2
-# → Task marked DONE
-```
-
----
-
-## Step 4: `extend-lease` command — Lease renewal (PM#5)
+## Step 2: `extend-lease` — Lease renewal (PM#5)
 
 ### Files changed
 - `internal/task/service.go` — new `ExtendLease` method
@@ -348,7 +204,279 @@ kanban task view <id> | jq '.task.lease_until'
 
 ---
 
-## Step 5: `kanban status --burndown` — Progress visibility (PM#7)
+## Step 3: Cross-agent review gate (PM#3)
+
+### Files changed
+- `internal/task/review.go` — one check in `ReviewApprove` and `ReviewReject`
+- `cmd/kanban/config.go` — `review.require_separate_agent` config key (default: `true`)
+
+### Configurability
+
+The gate is on by default but can be disabled for small single-agent projects:
+
+```bash
+kanban config set review.require_separate_agent=false
+```
+
+Stored in `.kanban/config.toml`. When `false`, self-review is allowed and `checkSelfReview` returns `nil` immediately.
+
+### Logic
+Query the history table for the last agent who claimed the task:
+
+```sql
+SELECT agent FROM history
+ WHERE task_id = ?
+   AND action = 'CLAIM'
+ ORDER BY id DESC LIMIT 1
+```
+
+If result matches the reviewing agent → return `ErrSelfReview`.
+
+### Edge case: no CLAIM history
+Tasks created directly in `IN_REVIEW` (manual or script) have no CLAIM entry. Handle gracefully — allow the review:
+
+```go
+var ErrSelfReview = &ExitError{Code: 2, Message: "cannot review your own task — another agent must approve"}
+
+func checkSelfReview(tx *sql.Tx, id, agent string) error {
+    var claimingAgent sql.NullString
+    err := tx.QueryRow(
+        `SELECT agent FROM history WHERE task_id=? AND action='CLAIM' ORDER BY id DESC LIMIT 1`,
+        id,
+    ).Scan(&claimingAgent)
+
+    if err == sql.ErrNoRows {
+        return nil // no CLAIM history — task was created directly in review, allow
+    }
+    if err != nil {
+        return err
+    }
+    if claimingAgent.Valid && claimingAgent.String == agent {
+        return ErrSelfReview
+    }
+    return nil
+}
+```
+
+### Implementation
+Add as first check inside the retry callback in both `ReviewApprove` and `ReviewReject`. Read `review.require_separate_agent` from config before calling.
+
+### Verification
+```bash
+# 1. Worker claims and completes a task
+kanban task claim-next --agent worker-1 --role worker
+kanban task complete <id> --agent worker-1 --review
+# 2. Same agent tries to approve → rejected
+kanban task approve <id> --agent worker-1
+# → Error: "cannot review your own task — another agent must approve"
+# 3. Different agent approves → OK
+kanban task approve <id> --agent reviewer-2
+# → Task marked DONE
+# 4. Disable gate for single-agent project
+kanban config set review.require_separate_agent=false
+kanban task approve <id> --agent worker-1  # → OK
+```
+
+---
+
+## Step 4: `claim-next --count N` — Batch parallelism (PM#1)
+
+### Files changed
+- `internal/task/claim.go` — new `ClaimBatch` method (internal)
+- `cmd/kanban/dispatch.go` — extend `claim-next` with `--count` flag
+
+### API design
+
+Instead of a separate `claim-batch` command, extend the existing `claim-next`:
+
+```bash
+kanban task claim-next --agent "worker-1" --role worker --count 3
+```
+
+`--count 1` (default) → existing single-task behavior, returns single task JSON.
+`--count N` → returns JSON array of N tasks.
+
+This keeps the API surface clean — one command, one concept.
+
+### SQLite batch-claim: select-then-update (not CTE)
+SQLite flattens LIMIT in subquery-UPDATE. Use explicit two-step.
+
+**Design choice**: Fetch ALL eligible candidates (up to 100), filter in Go for unmet deps, then claim up to N. If fewer than N remain after filtering, return what's available (no partial failure).
+
+```go
+func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, count int) ([]Task, error) {
+    tx, _ := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+    defer tx.Rollback()
+
+    // Step 1: select ALL eligible candidates (cap at 100 to avoid OOM)
+    maxFetch := count * 5
+    if maxFetch > 100 { maxFetch = 100 }
+
+    rows, _ := tx.Query(`
+        SELECT id, title, status, role_boundary, project, priority,
+               assigned_agent, lease_until, created_at, updated_at, depends_on
+          FROM tasks
+         WHERE role_boundary = ?
+           AND project = ?
+           AND (status = 'TODO'
+                OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
+         ORDER BY priority ASC, created_at ASC
+         LIMIT ?`, role, project, maxFetch,
+    )
+
+    // Filter out tasks with unmet deps
+    var claimable []Task
+    for rows.Next() {
+        t, _ := scanTask(rows)
+        if hasUnmetDeps(tx, t) {
+            continue
+        }
+        claimable = append(claimable, t)
+        if len(claimable) >= count {
+            break
+        }
+    }
+
+    // Step 2: claim up to `count` tasks in same transaction
+    claimed := make([]Task, 0, len(claimable))
+    for _, t := range claimable[:min(count, len(claimable))] {
+        res, _ := tx.Exec(
+            `UPDATE tasks SET status='IN_PROGRESS', assigned_agent=?,
+             lease_until=datetime('now','+' || ? || ' minutes'), updated_at=CURRENT_TIMESTAMP
+             WHERE id=? AND status IN ('TODO','IN_PROGRESS')`,
+            agent, defaultLeaseMinutes, t.ID,
+        )
+        n, _ := res.RowsAffected()
+        if n == 0 { continue } // race lost, skip
+
+        tx.Exec(`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'CLAIM')`, t.ID, agent)
+        insertEvent(tx, "task.claimed", EventPayload{TaskID: t.ID, Agent: agent, Title: t.Title})
+        claimed = append(claimed, t)
+    }
+
+    if err := tx.Commit(); err != nil {
+        return nil, fmt.Errorf("batch claim commit: %w", err)
+    }
+
+    // Fire hooks outside tx
+    for _, t := range claimed {
+        runHook(s.hooksDir, "task.claimed", EventPayload{TaskID: t.ID, Agent: agent, Title: t.Title})
+    }
+    return claimed, nil
+}
+```
+
+### Verification
+```bash
+# 1. Dispatch 5 independent tasks
+# 2. Claim 3 at once
+kanban task claim-next --agent worker-bot --role worker --count 3
+# → Returns JSON array of 3 tasks
+# → 3 become IN_PROGRESS, 2 remain TODO
+kanban task search --status TODO | jq length  # → 2
+```
+
+---
+
+
+## Step 5: Optional subagent delegation
+
+### Files changed (agent/skill markdown — no Go code)
+- `internal/bootstrap/embed/agents/pi/manager.md` — add `manager_mode` config, parallel vs serial
+- `internal/bootstrap/embed/agents/pi/worker.md` — update for claim-next --count + extend-lease
+- `internal/bootstrap/embed/agents/pi/reviewer.md` — update for cross-agent gate awareness
+- `internal/bootstrap/embed/skills/manager/approve-plan.md` — document both modes
+- `internal/bootstrap/embed/skills/worker/complete-task.md` — extend-lease instruction
+- `internal/bootstrap/embed/skills/worker/claim-next-task.md` — mention --count as parallel path
+
+### Design
+
+**Don't force parallelism.** Many projects want a single manager + single worker. Make it a config:
+
+```yaml
+# .kanban/config.toml
+[manager]
+mode = "serial"   # or "parallel"
+```
+
+- `serial` (default): manager executes tasks itself, one at a time. Works fine for small projects.
+- `parallel`: manager uses `claim-next --count N` + subagent-creator to spawn parallel workers.
+
+### Manager agent update — mode-aware
+
+```
+You are a kanban manager agent.
+
+manager_mode = serial (default):
+  Plan → dispatch tasks → claim them yourself → execute one at a time
+
+manager_mode = parallel:
+  Plan → dispatch tasks → claim-next --count N → spawn N worker subagents in parallel
+  You NEVER execute tasks in parallel mode — only delegate.
+```
+
+### Worker agent update — claim-next --count + extend-lease awareness
+
+```
+You execute individual tasks claimed from the kanban board.
+
+For long-running work (>15 min), periodically run:
+  kanban task extend-lease <task-id> --agent <name> --minutes 30
+```
+
+### Reviewer agent update — cross-agent gate awareness
+
+```
+You review tasks submitted for review. You MUST NOT review tasks you claimed.
+The system enforces this: if you try, it will reject with "cannot review your own task."
+```
+
+### Post-merge: regenerate skills
+```bash
+kanban init --harness pi
+```
+
+---
+
+## Step 6: Project env auto-detection (PM#8)
+
+### Files changed
+- `cmd/kanban/config.go` — `resolveConfig` logic
+
+### Rule
+1. If `--db` flag explicitly passed (not the default) → use it.
+2. Else if `KANBAN_DB` env var set → use it.
+3. Else → walk up from `os.Getwd()` looking for `.kanban/` directory. First hit wins.
+
+```go
+func findProjectRoot() string {
+    dir, _ := os.Getwd()
+    for dir != "/" && dir != "." {
+        if _, err := os.Stat(filepath.Join(dir, ".kanban")); err == nil {
+            return filepath.Join(dir, ".kanban", "kanban.db")
+        }
+        dir = filepath.Dir(dir)
+    }
+    return ".kanban/kanban.db"
+}
+```
+
+Called only as fallback when no explicit path + no env var.
+
+### Subagent benefit
+A subagent spawned in any subdirectory of a kanban project auto-finds the DB. No more `KANBAN_DB` manual override needed.
+
+### Verification
+```bash
+cd ./deeply/nested/subdir
+kanban task search  # finds the DB in parent .kanban/ automatically
+kanban task search --db .kanban/kanban.db  # explicit path still works
+KANBAN_DB=/custom/path kanban task search  # env var still overrides
+```
+
+---
+
+## Step 7: `kanban status --burndown` — Progress visibility (PM#7)
 
 ### Files changed
 - `internal/task/queries.go` — add `Burndown` method
@@ -404,200 +532,103 @@ kanban status --json | jq '.percent_done'  # → 30
 
 ---
 
-## Step 6: Project env auto-detection (PM#8)
+## Step 8: `kanban plan lint` — Catch bad plans before execution
 
 ### Files changed
-- `cmd/kanban/config.go` — `resolveConfig` logic
+- `internal/task/lint.go` — new `LintPlan` function
+- `cmd/kanban/lint.go` — `plan lint` CLI command
 
-### Rule
-1. If `--db` flag explicitly passed (not the default) → use it.
-2. Else if `KANBAN_DB` env var set → use it.
-3. Else → walk up from `os.Getwd()` looking for `.kanban/` directory. First hit wins.
+### What it checks
+
+```bash
+kanban plan lint          # lint all tasks on the board
+kanban plan lint --json   # machine-readable output
+```
+
+Checks run against the current board state:
+
+| Check | Example warning |
+|-------|----------------|
+| Unknown dependency | `WARN: TASK-12 depends on unknown task TASK-99` |
+| Dependency cycle | `ERROR: Cycle detected: TASK-3 → TASK-5 → TASK-3` |
+| Task with no role | `WARN: TASK-7 has no role_boundary set` |
+| Blocked by nonexistent task | `WARN: TASK-10 is blocked but blocker TASK-4 is DONE` |
+
+### Output
+
+```
+WARN  TASK-12  depends on unknown task TASK-99
+ERROR TASK-3   cycle detected: TASK-3 → TASK-5 → TASK-3
+WARN  TASK-7   no role_boundary set
+
+3 issues found (1 error, 2 warnings)
+```
+
+Exits 0 if no errors (warnings are OK). Exits 1 if any errors.
+
+### Implementation
 
 ```go
-func findProjectRoot() string {
-    dir, _ := os.Getwd()
-    for dir != "/" && dir != "." {
-        if _, err := os.Stat(filepath.Join(dir, ".kanban")); err == nil {
-            return filepath.Join(dir, ".kanban", "kanban.db")
-        }
-        dir = filepath.Dir(dir)
-    }
-    return ".kanban/kanban.db"
+type LintIssue struct {
+    TaskID   string `json:"task_id"`
+    Severity string `json:"severity"` // "error" or "warn"
+    Message  string `json:"message"`
+}
+
+func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, error) {
+    // 1. Load all tasks for project
+    // 2. Build dependency graph
+    // 3. Check each rule: unknown deps, cycles (DFS), missing roles, stale blockers
+    // 4. Return sorted issues (errors first)
 }
 ```
 
-Called only as fallback when no explicit path + no env var.
-
-### Subagent benefit
-A subagent spawned in any subdirectory of a kanban project auto-finds the DB. No more `KANBAN_DB` manual override needed.
+Cycle detection uses iterative DFS — no recursion, no stack overflow on deep chains.
 
 ### Verification
 ```bash
-# In project root:
-cd ./deeply/nested/subdir
-kanban task search  # finds the DB in parent .kanban/ automatically
-kanban task search --db .kanban/kanban.db  # explicit path still works
-KANBAN_DB=/custom/path kanban task search  # env var still overrides
+# 1. Dispatch tasks with bad dependency
+kanban task dispatch --title "Deploy" --role worker --depends-on "TASK-99"
+# 2. Lint → catches it
+kanban plan lint
+# → WARN TASK-X depends on unknown task TASK-99
+# → 1 issue found (0 errors, 1 warning)
 ```
 
 ---
 
-## Step 7: Skill updates
+## Step 9: `approve-plan --all` flag (PM#4)
 
-### Files changed (skill markdown)
+### Files changed (skill markdown only)
 - `internal/bootstrap/embed/skills/manager/approve-plan.md`
-- `internal/bootstrap/embed/skills/manager/dispatch-plan.md`
-- `internal/bootstrap/embed/skills/worker/claim-next-task.md`
-- `internal/bootstrap/embed/skills/worker/claim-batch.md` — new file
-- `internal/bootstrap/embed/skills/worker/complete-task.md`
-- `internal/bootstrap/embed.go` — add `claim-batch` to `SkillNames`
 
-### 7a: `approve-plan --all` flag
+### Change
 Update `approve-plan.md` to say: "If the user passes `--all`, dispatch every task in the proposal regardless of checkbox state. Otherwise, only dispatch `[x]` checked items."
 
-No Go changes — the skill just skips the checkbox check when told `--all`.
+No Go changes — pure skill behavior.
 
-### 7b: New `claim-batch` skill
-Add `batch-claim` to `SkillNames["worker"]` in `embed.go`. New skill markdown:
-
-```markdown
----
-name: claim-batch
-description: Claim multiple tasks at once
-role: worker
-type: protocol
----
-
-# Claim Batch
-
-Claim up to N tasks in one atomic operation.
-
-## Usage
-
+### Verification
 ```bash
-kanban task claim-batch --agent <name> --role <role> --count <N> [--project <project>]
+# Approve all tasks in a plan, ignoring checkboxes
+/approve-plan --all
+# → dispatches every task in the proposal
 ```
-
-Claims up to N available tasks (respecting dependencies) in one transaction.
-Returns JSON array of claimed tasks.
-```
-
-### 7c: Lease extension instruction
-Update `complete-task.md` to include: "For long-running work (>15 min), run `kanban task extend-lease <task-id> --agent <name> --minutes 30` every 10 minutes to prevent lease expiry."
-
-### Post-merge: regenerate skills
-After merging this branch, users should run:
-```bash
-kanban init --harness pi   # regenerates skill files from embedded templates
-```
-This ensures the new/updated skill .md files land in `.pi/skills/`.
-
----
-
-## Step 8: Force subagent usage (behavioral enforcement)
-
-### Files changed (agent/skill markdown — no Go code)
-- `internal/bootstrap/embed/agents/pi/manager.md` — rewrite to mandate subagent delegation
-- `internal/bootstrap/embed/agents/pi/worker.md` — update for claim-batch + extend-lease
-- `internal/bootstrap/embed/agents/pi/reviewer.md` — update for cross-agent gate
-- `internal/bootstrap/embed/skills/manager/approve-plan.md` — add subagent spawn step
-- `internal/bootstrap/embed/skills/worker/claim-batch.md` — new (added in 7b)
-- `internal/bootstrap/embed/skills/worker/complete-task.md` — extend-lease instruction
-- `internal/bootstrap/embed/skills/worker/claim-next-task.md` — mention claim-batch as preferred path
-
-### 8a: Manager agent rewrite — mandate subagent delegation
-
-**Current (weak):**
-```
-You are a kanban manager agent. Manage the task board using the registered kanban tools.
-```
-
-**Proposed (enforced):**
-```
-You are a kanban manager agent. Your ONLY job is to plan work, dispatch tasks,
-and monitor progress. You MUST NEVER execute tasks yourself.
-
-Rule: Every task execution MUST be delegated via the subagent-creator skill
-to a worker subagent. This is not optional — you do not have permission
-to claim, log-progress, or complete tasks.
-
-Workflow:
-1. Review backlog → identify what needs doing
-2. Dispatch plan → create tasks on the board
-3. Claim tasks in batch → `kanban task claim-batch --count N`
-4. Spawn parallel subagents → use subagent-creator with parallel mode,
-   one worker subagent per claimed task
-5. Monitor → poll board status, handle blockers
-6. Review → spawn reviewer subagents for tasks in IN_REVIEW
-
-The subagent-creator skill is your primary execution tool. The kanban
-CLI is your monitoring dashboard — you read from it, you never write to
-it for task execution.
-```
-
-### 8b: Worker agent update — claim-batch + extend-lease awareness
-
-```
-You execute individual tasks claimed from the kanban board.
-
-Available workflow:
-1. Manager spawns you for a specific claimed task
-2. Your task ID is provided in your instructions
-3. For long-running work (>15 min), periodically run:
-   `kanban task extend-lease <task-id> --agent <name> --minutes 30`
-4. Log progress with `kanban task log-progress <task-id> --agent <name> --note "..."`
-5. Complete with `kanban task complete <task-id> --agent <name> --review`
-```
-
-### 8c: Reviewer agent update — cross-agent gate awareness
-
-```
-You review tasks submitted for review. You MUST NOT review tasks you claimed.
-The system enforces this: if you try, it will reject with "cannot review your own task."
-```
-
-### 8d: approve-plan skill — spawn subagents after dispatch
-
-After the "Dispatch checked items" section, add:
-
-```
-After dispatching, use the subagent-creator skill to spawn worker subagents:
-
-1. `kanban task claim-batch --agent <manager-name> --role worker --count <N>`
-2. For each claimed task, spawn a subagent:
-   subagent: {
-     agent: "worker-<task-id>",
-     task: "Execute task <task-id>: <title>. Use kanban task log-progress,
-            extend-lease, and complete commands."
-   }
-```
-
-### Why this works
-Pure behavioral enforcement — no Go code needed. The 7 Go changes above are the infrastructure that makes subagent usage safe:
-
-| Go enabler | Why subagents need it |
-|-----------|----------------------|
-| `batch-claim` | Manager claims N tasks in one call → spawns N subagents in parallel |
-| `extend-lease` | Subagent running 20 min doesn't expire mid-work |
-| `depends_on` | Subagents can't claim before deps are done — manager doesn't need to orchestrate |
-| Cross-agent review gate | Worker subagent ≠ reviewer subagent. Enforced programmatically |
-| Env auto-detection | Subagent spawned in subdir auto-finds the `.kanban/` DB |
 
 ---
 
 ## Summary of changes
 
-| PM# | Change | Go types | Skill markdown | Verification |
-|-----|--------|----------|----------------|--------------|
-| 6 | depends_on | `model.go`, `schema.sql`, `claim.go`, `service.go`, `dispatch.go` | — | claim skips until dep done, then claims |
-| 1 | batch-claim | `claim.go`, `dispatch.go` | New `claim-batch.md` | claim-batch --count 3 returns 3 tasks |
-| 3 | Review gate | `review.go` | — | same-agent approve rejected, different-agent OK |
-| 5 | extend-lease | `service.go`, `update.go` | Update `complete-task.md` | view shows extended lease_until |
-| 7 | kanban status | `queries.go`, `view.go` | — | table output, --json flag |
-| 8 | Env auto-detection | `config.go` | — | subdir kanban finds parent .kanban/ |
-| 4 | --all flag | — | Update `approve-plan.md` | dispatches all tasks, ignores checkboxes |
-| 9 | Force subagents | — | 7 agent/skill .md files | manager MUST delegate, never execute |
+| Release | Step | Change | Files | Verification |
+|---------|------|--------|-------|--------------|
+| v0.4 | 1 | `depends_on` | `model.go`, `schema.sql`, `claim.go`, `service.go`, `dispatch.go` | claim skips until dep done, then claims |
+| v0.4 | 2 | `extend-lease` | `service.go`, `update.go` | view shows extended `lease_until` |
+| v0.4 | 3 | Review gate (configurable) | `review.go`, `config.go` | same-agent approve rejected; gate disableable |
+| v0.5 | 4 | `claim-next --count N` | `claim.go`, `dispatch.go` | claim-next --count 3 returns 3 tasks |
+| v0.5 | 5 | Optional subagent delegation | 6 agent/skill `.md` files | manager serial by default, parallel opt-in |
+| v0.5 | 6 | Env auto-detection | `config.go` | subdir kanban finds parent `.kanban/` |
+| v0.6 | 7 | `kanban status` | `queries.go`, `view.go` | table output, `--json` flag |
+| v0.6 | 8 | `kanban plan lint` | `lint.go`, `cmd/kanban/lint.go` | catches unknown deps, cycles, missing roles |
+| v0.6 | 9 | `approve-plan --all` | `approve-plan.md` | dispatches all tasks, ignores checkboxes |
 
 All changes are incremental. No structural rewrites, no new dependencies, no breaking schema changes. The DB remains compatible with existing boards. Migration runs at `storage.Open()` — no manual step needed.
 
@@ -605,6 +636,7 @@ All changes are incremental. No structural rewrites, no new dependencies, no bre
 
 ## What we're skipping (for now)
 
-- **Worker discovery / load balancing** — a coordinator process. Defer until `batch-claim` is proven.
+- **Worker discovery / load balancing** — a coordinator process. Defer until `claim-next --count N` is proven.
 - **Cycle-time metrics** — needs timestamps per transition. Schema change. Defer.
 - **.env file extension** — MCP host limitation, not ours to fix.
+- **Dependency visualization** — nice-to-have, deferred to v0.6+.

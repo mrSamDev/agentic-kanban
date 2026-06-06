@@ -1,5 +1,31 @@
 # Roadmap
 
+## v0.4 — Safe multi-agent execution
+
+- [ ] `depends_on` column + claim guard — parallel workers can't claim blocked tasks
+- [ ] `extend-lease` command — long-running workers renew leases before expiry
+- [ ] Cross-agent review gate (default on, configurable off) — workers can't approve their own tasks
+
+## v0.5 — Fast multi-agent execution
+
+- [ ] `claim-next --count N` — claim up to N tasks atomically in one call
+- [ ] Optional subagent delegation — `manager_mode = serial | parallel` in config
+- [ ] Project env auto-detection — walk up from CWD to find `.kanban/` DB
+
+## v0.6 — Operational maturity
+
+- [ ] `kanban status` with `--burndown` and `--json` flags
+- [ ] `kanban plan lint` — catch cycles, unknown deps, missing roles before execution
+- [ ] `approve-plan --all` flag — dispatch all tasks regardless of checkbox state
+
+## v0.7 — Worker pools and scheduling
+
+- [ ] Worker pools with load balancing
+- [ ] Automatic task assignment
+- [ ] Scheduler / coordinator process
+
+---
+
 ## Phase 1 — Skills First-Class CLI
 
 Goal: make skills visible and operable from the CLI, not just files on disk.
