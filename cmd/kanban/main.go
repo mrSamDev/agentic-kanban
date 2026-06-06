@@ -63,7 +63,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Println("kanban v0.1.0")
+			fmt.Println("kanban v0.1.2")
 		},
 	}
 }
