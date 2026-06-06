@@ -246,46 +246,86 @@ Exit: 0 = success, 2 = wrong state or not found.
 
 const SkillDispatchPlan = `---
 name: dispatch-plan
-description: Dispatch tasks from a plan file (plan.md or plan.json) to the kanban board. Use as a product owner when breaking work into tasks.
+description: Read a plan file (spec, roadmap, product brief), extract tasks using your own intelligence, write a review file for user approval.
 ---
 
-# Dispatch Plan
+# Dispatch Plan (LLM-Driven)
 
-Read a plan file and dispatch all tasks to the kanban board as TODO items.
-Use this skill when you have a product plan, roadmap, or spec and need to
-break it into trackable tasks for workers.
+You are the product owner. Read the plan file, extract meaningful tasks
+using your own understanding of the document, and write a review file
+so the user can approve before tasks are dispatched.
 
-Plan file formats:
+## Workflow
 
-## plan.md (Markdown)
+1. Read the plan file (plan.md, spec.md, PRD, etc.)
+2. Analyze it — identify every actionable work item the plan describes:
+   - Features, components, pages, API endpoints, DB changes
+   - Bug fixes, tests, deployment steps
+   - Research spikes, documentation tasks
+3. For each task determine:
+   - Title (clear, actionable)
+   - Priority (1-100, lower = more urgent)
+   - Role (worker, reviewer, etc.) — defaults to worker
+4. Write a proposal file at .kanban/tasks-proposal.md in this format:
 
-Each task is a bullet point with optional priority and role:
+       # Task Proposal
 
-  - Build auth system (p5, role: worker)
-  - Write tests for auth (p10, role: reviewer)
+       1. [ ] Implement user login (p10, role: worker)
+           - Sign up with email, log in/out
+       2. [ ] Build task list view (p20, role: worker)
+           - Filter by all/completed/pending
 
-## plan.json (JSON)
+5. Present the proposal to the user: I've created a task proposal
+   at .kanban/tasks-proposal.md. Review and run approve-plan to dispatch.
 
-  [
-    { "title": "Build auth system", "role": "worker", "priority": 5 },
-    { "title": "Write tests", "role": "reviewer", "priority": 10 }
-  ]
+## Guidelines
 
-Usage:
+- Break large features into discrete tasks (each should be 1-2 days work)
+- Use your judgment — don't parse mechanically, understand the plan
+- Prioritize core features first (p1-p20), enhancements later (p50+)
+- Add context under each task with a bullet-point description
+- If the plan has a timeline/sprint section, group related tasks
 
-  kanban init --plan plan.md
-  kanban init --plan plan.json --dir ./project
+## Output
 
-Flags:
-  --plan (required) Path to plan.md or plan.json
-  --dir  (optional) Project root directory (default: current directory)
+File: .kanban/tasks-proposal.md
+The user reviews this file then runs approve-plan to dispatch.
+`
 
-What happens:
-  1. Creates .kanban/kanban.db if not exists
-  2. Parses plan file into tasks
-  3. Dispatches each as TODO with priority and role
+const SkillApprovePlan = `---
+name: approve-plan
+description: Read the approved task proposal at .kanban/tasks-proposal.md and dispatch all tasks to the kanban board.
+---
 
-JSON output: array of dispatched task objects.
+# Approve Plan
 
-Exit: 0 = success, 2 = parse or dispatch error.
+Read .kanban/tasks-proposal.md, parse the approved tasks, and dispatch
+each to the kanban board as a TODO item. Run this after the user has
+reviewed and approved the proposal written by dispatch-plan.
+
+## Workflow
+
+1. Read .kanban/tasks-proposal.md
+2. For each checked [x] item, dispatch a task:
+
+       kanban task dispatch --title "Implement user login" --priority 10 --role worker
+
+3. Skip unchecked items: [ ]
+4. Report results: how many dispatched, how many skipped
+
+## Proposal format expected
+
+Each approved task is a markdown item with [x]:
+
+   1. [x] Implement user login (p10, role: worker)
+       - Sign up with email, log in/out
+   2. [ ] Nice-to-have: dark mode (p60, role: worker)
+
+Priority is extracted from (pN) pattern, role from (role: X) pattern.
+Defaults: priority=100, role=worker.
+
+## Important
+
+Do NOT parse — use dispatch_task tool for each task.
+One dispatch_task call per task. Report summary at end.
 `
