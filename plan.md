@@ -340,6 +340,102 @@ Update `complete-task.md` (or the manager dispatch skill) to include: "For long-
 
 ---
 
+## Step 8: Force subagent usage (behavioral enforcement)
+
+### Files changed (agent/skill markdown — no Go code)
+- `internal/bootstrap/embed/agents/pi/manager.md` — rewrite to mandate subagent delegation
+- `internal/bootstrap/embed/agents/pi/worker.md` — update for claim-batch + extend-lease
+- `internal/bootstrap/embed/agents/pi/reviewer.md` — update for cross-agent gate
+- `internal/bootstrap/embed/skills/manager/approve-plan.md` — spawn subagents post-dispatch
+- `internal/bootstrap/embed/skills/worker/claim-batch.md` — new skill (already added in 7b)
+- `internal/bootstrap/embed/skills/worker/complete-task.md` — extend-lease instruction
+- `internal/bootstrap/embed/skills/worker/claim-next-task.md` — mention claim-batch as preferred path
+
+### 8a: Manager agent rewrite — mandate subagent delegation
+
+The manager's job changes from "you can use these tools" to "you MUST delegate all execution to subagents."
+
+**Current (weak):**
+```
+You are a kanban manager agent. Manage the task board using the registered kanban tools.
+```
+
+**Proposed (enforced):**
+```
+You are a kanban manager agent. Your ONLY job is to plan work, dispatch tasks,
+and monitor progress. You MUST NEVER execute tasks yourself.
+
+Rule: Every task execution MUST be delegated via the subagent-creator skill
+to a worker subagent. This is not optional — you do not have permission
+to claim, log-progress, or complete tasks.
+
+Workflow:
+1. Review backlog → identify what needs doing
+2. Dispatch plan → create tasks on the board
+3. Claim tasks in batch → `kanban task claim-batch --count N`
+4. Spawn parallel subagents → use subagent-creator with parallel mode,
+   one worker subagent per claimed task
+5. Monitor → poll board status, handle blockers
+6. Review → spawn reviewer subagents for tasks in IN_REVIEW
+
+The subagent-creator skill is your primary execution tool. The kanban
+CLI is your monitoring dashboard — you read from it, you never write to
+it for task execution.
+```
+
+### 8b: Worker agent update — claim-batch + extend-lease awareness
+
+Add to worker definition:
+```
+You execute individual tasks claimed from the kanban board.
+
+Available workflow:
+1. Manager spawns you for a specific claimed task
+2. Your task ID is provided in your instructions
+3. For long-running work (>15 min), periodically run:
+   `kanban task extend-lease <task-id> --agent <name> --minutes 30`
+4. Log progress with `kanban task log-progress <task-id> --agent <name> --note "..."`
+5. Complete with `kanban task complete <task-id> --agent <name> --review`
+```
+
+### 8c: Reviewer agent update — cross-agent gate awareness
+
+Add to reviewer definition:
+```
+You review tasks submitted for review. You MUST NOT review tasks you claimed.
+The system enforces this: if you try, it will reject with "cannot review your own task."
+```
+
+### 8d: approve-plan skill — spawn subagents after dispatch
+
+After the "Dispatch checked items" section, add:
+```
+After dispatching, use the subagent-creator skill to spawn worker subagents:
+
+1. `kanban task claim-batch --agent <manager-name> --role worker --count <N>`
+2. For each claimed task, spawn a subagent:
+   subagent: {
+     agent: "worker-<task-id>",
+     task: "Execute task <task-id>: <title>. Use kanban task log-progress,
+            extend-lease, and complete commands."
+   }
+```
+
+### Why this works
+
+This is pure behavioral enforcement — no Go code needed. The 7 Go changes above
+are the infrastructure that makes subagent usage safe:
+
+| Go enabler | Why subagents need it |
+|-----------|----------------------|
+| `batch-claim` | Manager claims N tasks in one call → spawns N subagents in parallel |
+| `extend-lease` | Subagent running 20 min doesn't expire mid-work |
+| `depends_on` | Subagents can't claim before deps are done — manager doesn't need to orchestrate |
+| Cross-agent review gate | Worker subagent ≠ reviewer subagent. Enforced programmatically |
+| Env auto-detection | Subagent spawned in subdir auto-finds the `.kanban/` DB |
+
+---
+
 ## Summary of changes
 
 | # | Change | Go types | Skill markdown |
@@ -351,6 +447,7 @@ Update `complete-task.md` (or the manager dispatch skill) to include: "For long-
 | 7 | kanban status | `queries.go`, `view.go` | — |
 | 8 | Env auto-detection | `config.go` | — |
 | 4 | --all flag | — | Update `approve-plan.md` |
+| 9 | Force subagents | — | 7 agent/skill .md files (manager, worker, reviewer, approve-plan, claim-batch, complete-task, claim-next-task) |
 
 All changes are incremental. No structural rewrites, no new dependencies, no breaking schema changes. The DB remains compatible with existing boards.
 
