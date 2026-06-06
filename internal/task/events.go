@@ -6,9 +6,7 @@ import (
 	"log"
 )
 
-// insertEvent writes an event to the events table.
-// Events are best-effort observability — marshal or insert failures are logged
-// but do not abort the calling transaction.
+// insertEvent logs an event. Failures are logged but do not abort the caller.
 func insertEvent(tx *sql.Tx, eventType string, payload any) {
 	b, err := json.Marshal(payload)
 	if err != nil {

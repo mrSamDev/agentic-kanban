@@ -25,7 +25,7 @@ func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	return t, nil
 }
 
-// noteLimit and historyLimit control pagination; 0 means default limit (20).
+// 0 means default limit (20).
 func (s *Service) ViewDetail(ctx context.Context, id string, noteLimit, historyLimit int) (TaskDetail, error) {
 	t, err := s.View(ctx, id)
 	if err != nil {
@@ -247,7 +247,6 @@ func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
 		TotalTasks: 0,
 	}
 
-	// Count by status
 	rows, err := s.db.QueryContext(ctx, "SELECT status, COUNT(*) FROM tasks GROUP BY status")
 	if err != nil {
 		return stats, fmt.Errorf("stats by status: %w", err)
@@ -268,7 +267,6 @@ func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
 	}
 	rows.Close()
 
-	// Count by role
 	rows, err = s.db.QueryContext(ctx, "SELECT role_boundary, COUNT(*) FROM tasks GROUP BY role_boundary")
 	if err != nil {
 		return stats, fmt.Errorf("stats by role: %w", err)
@@ -288,7 +286,6 @@ func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
 	}
 	rows.Close()
 
-	// Count expired leases
 	row := s.db.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM tasks WHERE status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP",
 	)

@@ -16,8 +16,7 @@ func writeJSON(v any) {
 }
 
 func writeStderr(msg string) {
-	// JSON is the primary format; fall back to plain text on encode error
-	// (os.Stderr.Write failure is deliberately ignored — nothing useful to do).
+	// os.Stderr.Write failure is deliberately ignored — nothing useful to do.
 	if err := json.NewEncoder(os.Stderr).Encode(map[string]string{"error": msg}); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}

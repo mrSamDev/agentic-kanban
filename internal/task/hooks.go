@@ -22,11 +22,8 @@ func runHook(hooksDir, eventType string, payload any) {
 		return
 	}
 
-	// Single-file hook runs synchronously (primary action).
 	execHook(filepath.Join(hooksDir, name), b, name)
 
-	// .d/ hooks run concurrently so slow secondary hooks don't block the caller.
-	// Each has its own 30s timeout via execHook.
 	dirPath := filepath.Join(hooksDir, name+".d")
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {

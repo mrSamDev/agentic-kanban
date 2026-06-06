@@ -185,10 +185,10 @@ Plan file formats:
 
 ## Add CI pipeline
 
-## Review everything 🔥
+## Review everything [p1]
 ```
 
-Priority hints: `[p1]`-`[p999]` in headings, or `🔥` = priority 1.
+Priority hints: `[p1]`-`[p999]` in headings.
 
 Or JSON:
 

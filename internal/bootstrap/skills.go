@@ -1,6 +1,6 @@
 package bootstrap
 
-// Skill templates scaffolded for agent harnesses.
+// Skill templates for agent harness scaffolding.
 
 const SkillDispatchTask = `# Dispatch Task
 

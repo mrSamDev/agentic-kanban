@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-const maxPlanSize = 1 << 20 // 1MB — plan files should be concise task lists
+const maxPlanSize = 1 << 20 // 1MB
 
-// PlanTask is one extracted task from a plan file.
+// PlanTask is one task extracted from a plan file.
 type PlanTask struct {
 	Title    string
 	Role     string // defaults to "worker"
@@ -20,9 +20,7 @@ type PlanTask struct {
 // Markdown: ## headings become task titles, - list items become notes.
 // JSON: array of {title, role, priority}.
 //
-// Priority hints: [p1]-[p999] or 🔥 in heading text → priority 1.
-// Empty headings (## with no text) are silently skipped.
-// Files larger than maxPlanSize (1MB) are rejected to prevent OOM.
+// Files larger than 1MB are rejected to prevent OOM.
 func ParsePlan(path string) ([]PlanTask, []string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -39,12 +37,10 @@ func ParsePlan(path string) ([]PlanTask, []string, error) {
 
 	content := string(data)
 
-	// Try JSON first: array of {title, role, priority}.
 	if trimmed := strings.TrimSpace(content); strings.HasPrefix(trimmed, "[") {
 		return parseJSONPlan(trimmed)
 	}
 
-	// Fallback: markdown heading-based parsing.
 	return parseMarkdownPlan(content)
 }
 
@@ -55,24 +51,27 @@ func parseMarkdownPlan(content string) ([]PlanTask, []string, error) {
 	var currentNotes []string
 	priority := 100
 
+	flushTask := func() {
+		if currentTitle == "" {
+			return
+		}
+		tasks = append(tasks, PlanTask{
+			Title:    currentTitle,
+			Role:     "worker",
+			Priority: priority,
+		})
+		if len(currentNotes) > 0 {
+			notes = append(notes, currentNotes...)
+		}
+		currentNotes = nil
+	}
+
 	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Detect headings: ## or ###
 		if strings.HasPrefix(trimmed, "##") {
-			// Flush previous task. Empty headings silently skipped.
-			if currentTitle != "" {
-				tasks = append(tasks, PlanTask{
-					Title:    currentTitle,
-					Role:     "worker",
-					Priority: priority,
-				})
-				if len(currentNotes) > 0 {
-					notes = append(notes, currentNotes...)
-				}
-				currentNotes = nil
-			}
+			flushTask()
 
 			title := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
 			if title == "" {
@@ -88,17 +87,7 @@ func parseMarkdownPlan(content string) ([]PlanTask, []string, error) {
 		}
 	}
 
-	// Flush last task.
-	if currentTitle != "" {
-		tasks = append(tasks, PlanTask{
-			Title:    currentTitle,
-			Role:     "worker",
-			Priority: priority,
-		})
-		if len(currentNotes) > 0 {
-			notes = append(notes, currentNotes...)
-		}
-	}
+	flushTask()
 
 	if len(tasks) == 0 {
 		return nil, nil, fmt.Errorf("no tasks found in plan (use ## headings for task titles)")
@@ -107,7 +96,6 @@ func parseMarkdownPlan(content string) ([]PlanTask, []string, error) {
 	return tasks, notes, nil
 }
 
-// extractPriority looks for [pN] or 🔥 in title, removes it, returns priority.
 func extractPriority(title string, cleaned *string) int {
 	// [p1]..[p999] pattern.
 	idx := strings.Index(title, "[p")
@@ -120,13 +108,6 @@ func extractPriority(title string, cleaned *string) int {
 				return p
 			}
 		}
-	}
-
-	// 🔥 = priority 1.
-	if strings.Contains(title, "🔥") {
-		*cleaned = strings.ReplaceAll(title, "🔥", "")
-		*cleaned = strings.TrimSpace(*cleaned)
-		return 1
 	}
 
 	*cleaned = title

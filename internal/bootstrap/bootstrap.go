@@ -40,19 +40,16 @@ func Init(opts InitOptions) error {
 		opts.DBPath = filepath.Join(opts.Dir, ".kanban", "kanban.db")
 	}
 
-	// Validate harness before any I/O.
 	if opts.Harness != "" && !ValidHarnesses[opts.Harness] {
 		return fmt.Errorf("invalid harness: %q (choose pi, claude, or generic)", opts.Harness)
 	}
 
-	// Open DB once, reuse for plan dispatch.
 	db, err := storage.Open(opts.DBPath, false)
 	if err != nil {
 		return fmt.Errorf("create db: %w", err)
 	}
 	defer db.Close()
 
-	// Resolve harness interactively if not set.
 	harness := opts.Harness
 	if harness == "" {
 		h, err := promptHarness()
@@ -62,12 +59,10 @@ func Init(opts InitOptions) error {
 		harness = h
 	}
 
-	// Scaffold skill files.
 	if err := scaffoldHarness(harness, opts.Dir); err != nil {
 		return fmt.Errorf("scaffold %s harness: %w", harness, err)
 	}
 
-	// Optionally dispatch tasks from a plan file.
 	if opts.PlanPath != "" {
 		if err := dispatchPlan(db.DB, opts.PlanPath); err != nil {
 			return fmt.Errorf("dispatch plan: %w", err)
@@ -145,7 +140,7 @@ func harnessBase(h Harness, projectDir string) string {
 	}
 }
 
-// Each role gets only the skills matching its responsibility — worker cannot complete, manager cannot claim.
+// roleSkills maps each role to its skill files.
 var roleSkills = map[string]map[string]string{
 	"manager": {
 		"dispatch-task.md":  SkillDispatchTask,
