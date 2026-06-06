@@ -218,6 +218,7 @@ func writeFlatSkills(skillsDir string) error {
 var roleSkills = map[string]map[string]string{
 	"manager": {
 		"dispatch-task.md":  SkillDispatchTask,
+		"dispatch-plan.md":  SkillDispatchPlan,
 		"review-backlog.md": SkillReviewBacklog,
 		"view-task.md":      SkillViewTask,
 	},

@@ -243,3 +243,49 @@ JSON output: task object with status "TODO".
 
 Exit: 0 = success, 2 = wrong state or not found.
 `
+
+const SkillDispatchPlan = `---
+name: dispatch-plan
+description: Dispatch tasks from a plan file (plan.md or plan.json) to the kanban board. Use as a product owner when breaking work into tasks.
+---
+
+# Dispatch Plan
+
+Read a plan file and dispatch all tasks to the kanban board as TODO items.
+Use this skill when you have a product plan, roadmap, or spec and need to
+break it into trackable tasks for workers.
+
+Plan file formats:
+
+## plan.md (Markdown)
+
+Each task is a bullet point with optional priority and role:
+
+  - Build auth system (p5, role: worker)
+  - Write tests for auth (p10, role: reviewer)
+
+## plan.json (JSON)
+
+  [
+    { "title": "Build auth system", "role": "worker", "priority": 5 },
+    { "title": "Write tests", "role": "reviewer", "priority": 10 }
+  ]
+
+Usage:
+
+  kanban init --plan plan.md
+  kanban init --plan plan.json --dir ./project
+
+Flags:
+  --plan (required) Path to plan.md or plan.json
+  --dir  (optional) Project root directory (default: current directory)
+
+What happens:
+  1. Creates .kanban/kanban.db if not exists
+  2. Parses plan file into tasks
+  3. Dispatches each as TODO with priority and role
+
+JSON output: array of dispatched task objects.
+
+Exit: 0 = success, 2 = parse or dispatch error.
+`

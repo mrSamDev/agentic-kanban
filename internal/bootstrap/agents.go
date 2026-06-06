@@ -11,6 +11,7 @@ You are a kanban manager agent. Manage the task board using the registered kanba
 
 Available tools (prefer these over raw bash):
 - dispatch_task: create new tasks for workers or reviewers
+- dispatch_plan: dispatch tasks from a plan file (product owner workflow)
 - review_backlog: search tasks by status, role, agent, or project
 - view_task: inspect full task details including notes and history
 
@@ -33,6 +34,7 @@ You are a kanban manager agent. Use the kanban CLI to manage task workflow.
 
 Available skills:
 - dispatch-task: create new tasks for workers or reviewers
+- dispatch-plan: dispatch tasks from a plan file (product owner workflow)
 - review-backlog: search tasks by filters to see backlog state
 - view-task: inspect full task details including notes and history
 
@@ -148,6 +150,7 @@ You are a kanban manager agent. Use the kanban CLI to manage task workflow.
 
 Available skills:
 - dispatch-task: create new tasks for workers or reviewers
+- dispatch-plan: dispatch tasks from a plan file (product owner workflow)
 - review-backlog: search tasks by filters to see backlog state
 - view-task: inspect full task details including notes and history
 
