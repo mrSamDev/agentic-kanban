@@ -2,6 +2,7 @@ package task
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -836,4 +837,138 @@ func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
 		t.Fatalf("Dispatch failed: %v", err)
 	}
 	waitForSentinel(t, sentinel)
+}
+
+func TestBatchPriorityHookFiresPerTask(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task-a", "worker", "default", 10)
+	s.Dispatch(t.Context(), "task-b", "worker", "default", 20)
+
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	s.SetHooksDir(hooksDir)
+	// Each hook invocation touches a unique file named after the task_id from stdin
+	makeHook(t, hooksDir, "task.priority_updated", `cat > /dev/null; echo $(( $(cat `+filepath.Join(dir, `count`)+` 2>/dev/null || echo 0) + 1 )) > `+filepath.Join(dir, `count`))
+
+	n, err := s.BatchUpdatePriority(t.Context(), []string{"TASK-1", "TASK-2"}, 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 updated, got %d", n)
+	}
+
+	var count int
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		data, _ := os.ReadFile(filepath.Join(dir, "count"))
+		if len(data) > 0 {
+			fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &count)
+			if count == 2 {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if count != 2 {
+		t.Fatalf("expected hook to fire 2 times, got %d", count)
+	}
+}
+
+func TestBatchProjectHookFiresPerTask(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task-a", "worker", "default", 10)
+	s.Dispatch(t.Context(), "task-b", "worker", "default", 20)
+
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	s.SetHooksDir(hooksDir)
+	makeHook(t, hooksDir, "task.project_updated", `cat > /dev/null; echo $(( $(cat `+filepath.Join(dir, `count`)+` 2>/dev/null || echo 0) + 1 )) > `+filepath.Join(dir, `count`))
+
+	n, err := s.BatchUpdateProject(t.Context(), []string{"TASK-1", "TASK-2"}, "new-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 updated, got %d", n)
+	}
+
+	var count int
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		data, _ := os.ReadFile(filepath.Join(dir, "count"))
+		if len(data) > 0 {
+			fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &count)
+			if count == 2 {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if count != 2 {
+		t.Fatalf("expected hook to fire 2 times, got %d", count)
+	}
+}
+
+func TestBatchHookPayloadEnriched(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "my task", "worker", "default", 10)
+
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	payloadFile := filepath.Join(dir, "payload")
+	// Write the full stdin (event+payload wrapper) to file
+	makeHook(t, hooksDir, "task.priority_updated", `cat > `+payloadFile)
+	s.SetHooksDir(hooksDir)
+
+	_, err := s.BatchUpdatePriority(t.Context(), []string{"TASK-1"}, 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForSentinel(t, payloadFile)
+
+	data, _ := os.ReadFile(payloadFile)
+	var envelope struct {
+		Event   string            `json:"event"`
+		Payload map[string]string `json:"payload"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	p := envelope.Payload
+	if envelope.Event != "task.priority_updated" {
+		t.Fatalf("expected event task.priority_updated, got %s", envelope.Event)
+	}
+	if p["task_id"] != "TASK-1" {
+		t.Fatalf("expected task_id TASK-1, got %s", p["task_id"])
+	}
+	if p["title"] != "my task" {
+		t.Fatalf("expected title 'my task', got %s", p["title"])
+	}
+	if p["project"] != "default" {
+		t.Fatalf("expected project 'default', got %s", p["project"])
+	}
+	if p["priority"] != "99" {
+		t.Fatalf("expected priority 99, got %s", p["priority"])
+	}
+}
+
+func TestBatchHookDoesNotFireOnEmptyUpdate(t *testing.T) {
+	s := newTestService(t)
+
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, "hooks")
+	fired := filepath.Join(dir, "fired")
+	makeHook(t, hooksDir, "task.priority_updated", "touch "+fired)
+	s.SetHooksDir(hooksDir)
+
+	n, err := s.BatchUpdatePriority(t.Context(), []string{"NONEXIST"}, 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 updated, got %d", n)
+	}
+
+	if _, err := os.Stat(fired); err == nil {
+		t.Fatal("hook fired when no tasks were updated")
+	}
 }
