@@ -6,7 +6,7 @@ applicable to tasks that were submitted for review via `complete --review`.
 ## Usage
 
 ```bash
-kanban --db "$KANBAN_DB" task approve TASK-101 \
+kanban task approve TASK-101 \
   --agent reviewer-agent
 ```
 

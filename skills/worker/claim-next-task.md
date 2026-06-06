@@ -10,7 +10,7 @@ calls claim-next.
 ## Usage
 
 ```bash
-kanban --db "$KANBAN_DB" task claim-next \
+kanban task claim-next \
   --agent my-agent-name \
   --role worker
 ```

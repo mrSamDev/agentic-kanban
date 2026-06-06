@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	_ "modernc.org/sqlite"
 )
@@ -19,7 +21,17 @@ type DB struct {
 
 // Open opens (or creates) the SQLite database at path, sets required pragmas,
 // and runs the embedded schema migration.
+// Open opens (or creates) the SQLite database at path, sets required pragmas,
+// and runs the embedded schema migration. Parent directories are auto-created.
 func Open(path string) (*DB, error) {
+	// Ensure parent directory exists — SQLite won't create intermediate dirs.
+	dir := filepath.Dir(path)
+	if dir != "." && dir != "/" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create db dir %s: %w", dir, err)
+		}
+	}
+
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)

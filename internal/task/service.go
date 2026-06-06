@@ -271,7 +271,7 @@ func (s *Service) Block(id, agent, reason string) (Task, error) {
 	return s.View(id)
 }
 
-// ReviewApprove transitions an IN_REVIEW or IN_PROGRESS (claimed by reviewer) task to DONE.
+// ReviewApprove transitions a claimed (IN_PROGRESS) task to DONE. Agent must hold the lease.
 func (s *Service) ReviewApprove(id, agent string) (Task, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -283,7 +283,7 @@ func (s *Service) ReviewApprove(id, agent string) (Task, error) {
 		`UPDATE tasks
 		    SET status = 'DONE', assigned_agent = NULL, lease_until = NULL,
 		        updated_at = CURRENT_TIMESTAMP
-		  WHERE id = ? AND (status = 'IN_REVIEW' OR (status = 'IN_PROGRESS' AND assigned_agent = ?))`,
+		  WHERE id = ? AND status = 'IN_PROGRESS' AND assigned_agent = ?`,
 		id, agent,
 	)
 	if err != nil {
@@ -314,7 +314,7 @@ func (s *Service) ReviewApprove(id, agent string) (Task, error) {
 	return s.View(id)
 }
 
-// ReviewReject sends an IN_REVIEW task back to TODO, clearing the lease.
+// ReviewReject sends a claimed (IN_PROGRESS) task back to TODO, clearing the lease. Agent must hold the lease.
 func (s *Service) ReviewReject(id, agent, reason string) (Task, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -326,7 +326,7 @@ func (s *Service) ReviewReject(id, agent, reason string) (Task, error) {
 		`UPDATE tasks
 		    SET status = 'TODO', assigned_agent = NULL, lease_until = NULL,
 		        updated_at = CURRENT_TIMESTAMP
-		  WHERE id = ? AND (status = 'IN_REVIEW' OR (status = 'IN_PROGRESS' AND assigned_agent = ?))`,
+		  WHERE id = ? AND status = 'IN_PROGRESS' AND assigned_agent = ?`,
 		id, agent,
 	)
 	if err != nil {

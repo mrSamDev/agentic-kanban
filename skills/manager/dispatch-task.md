@@ -6,7 +6,7 @@ claimed by the next available worker matching its role boundary.
 ## Usage
 
 ```bash
-kanban --db "$KANBAN_DB" task dispatch \
+kanban task dispatch \
   --title "Brief task description" \
   --role worker \
   --priority 50

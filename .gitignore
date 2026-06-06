@@ -1,2 +1,2 @@
 kanban
-*.db
+*.db/tmp/kanban-fresh/kanban

@@ -34,7 +34,7 @@ func main() {
 		Short: "Agent coordination engine — shared task state for cooperating agents",
 	}
 
-	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "kanban.db", "path to SQLite database (or $KANBAN_DB)")
+	rootCmd.PersistentFlags().StringVar(&dbPath, "db", ".kanban/kanban.db", "path to SQLite database (or $KANBAN_DB to override)")
 
 	rootCmd.SilenceUsage = true
 	rootCmd.SilenceErrors = true
@@ -69,7 +69,7 @@ func taskCmd() *cobra.Command {
 		Short: "Manage tasks",
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 			// Resolve db path from env if flag is default.
-			if dbPath == "kanban.db" {
+			if dbPath == ".kanban/kanban.db" {
 				if env := os.Getenv("KANBAN_DB"); env != "" {
 					dbPath = env
 				}

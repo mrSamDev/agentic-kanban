@@ -7,7 +7,7 @@ lease info, notes from prior agents, and the complete event log.
 ## Usage
 
 ```bash
-kanban --db "$KANBAN_DB" task view TASK-101
+kanban task view TASK-101
 ```
 
 ## JSON output

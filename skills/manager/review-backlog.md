@@ -7,16 +7,16 @@ tasks: stalled, unassigned, or in a certain state.
 
 ```bash
 # All tasks
-kanban --db "$KANBAN_DB" task search
+kanban task search
 
 # Filter by status
-kanban --db "$KANBAN_DB" task search --status BLOCKED
+kanban task search --status BLOCKED
 
 # Filter by role
-kanban --db "$KANBAN_DB" task search --role worker --status TODO
+kanban task search --role worker --status TODO
 
 # Filter by agent
-kanban --db "$KANBAN_DB" task search --agent alice
+kanban task search --agent alice
 ```
 
 ## Flags

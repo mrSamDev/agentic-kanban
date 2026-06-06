@@ -10,7 +10,7 @@ This is correct behavior — reviewers can claim either type.
 ## Usage
 
 ```bash
-kanban --db "$KANBAN_DB" task claim-next \
+kanban task claim-next \
   --agent reviewer-agent \
   --role reviewer
 ```

@@ -7,11 +7,11 @@ submit for human (or reviewer agent) approval instead.
 
 ```bash
 # Direct completion (status → DONE)
-kanban --db "$KANBAN_DB" task complete TASK-101 \
+kanban task complete TASK-101 \
   --agent my-agent-name
 
 # Submit for review (status → IN_REVIEW)
-kanban --db "$KANBAN_DB" task complete TASK-101 \
+kanban task complete TASK-101 \
   --agent my-agent-name \
   --review
 ```

@@ -16,14 +16,13 @@ AI agents (subagents in pi, Claude, etc.) need shared state without servers. Kan
 # Install
 curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
 
-# Init a board
-export KANBAN_DB="$(pwd)/.kanban/kanban.db"
-kanban --db "$KANBAN_DB" task dispatch --title "Set up auth" --role worker --priority 10
+# Just use it — default DB path is .kanban/kanban.db relative to current dir
+kanban task dispatch --title "Set up auth" --role worker --priority 10
 
 # Agent claims and completes
-kanban --db "$KANBAN_DB" task claim-next --agent my-agent --role worker
-kanban --db "$KANBAN_DB" task log-progress TASK-1 --agent my-agent --note "Working" --type PROGRESS
-kanban --db "$KANBAN_DB" task complete TASK-1 --agent my-agent
+kanban task claim-next --agent my-agent --role worker
+kanban task log-progress TASK-1 --agent my-agent --note "Working" --type PROGRESS
+kanban task complete TASK-1 --agent my-agent
 ```
 
 ## Commands
@@ -98,15 +97,13 @@ cd my-project
 # Install kanban into project
 curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
 
-# Init the board
-export KANBAN_DB="$(pwd)/.kanban/kanban.db"
-kanban --db "$KANBAN_DB" task dispatch --title "Refactor auth" --role worker --priority 1
-kanban --db "$KANBAN_DB" task dispatch --title "Add tests" --role worker --priority 5
+# Just use it — .kanban/kanban.db is the default
+kanban task dispatch --title "Refactor auth" --role worker --priority 1
+kanban task dispatch --title "Add tests" --role worker --priority 5
 
-# Let agents coordinate
+# Let agents coordinate (no --db needed)
 subagent --agent worker --task "
   Read skills/worker/claim-next-task.md.
-  Export KANBAN_DB=$KANBAN_DB
   Claim and execute the next worker task.
 "
 ```

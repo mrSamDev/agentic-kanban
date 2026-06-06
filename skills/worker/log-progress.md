@@ -9,7 +9,7 @@ other agents from reclaiming your task.
 ## Usage
 
 ```bash
-kanban --db "$KANBAN_DB" task log-progress TASK-101 \
+kanban task log-progress TASK-101 \
   --agent my-agent-name \
   --note "Found the root cause in auth.go:42" \
   --type PROGRESS
