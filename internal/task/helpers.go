@@ -1,8 +1,11 @@
 package task
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -20,11 +23,59 @@ var ErrInvalidState = &ExitError{Code: 2, Message: "invalid state transition"}
 var ErrNotAssigned = &ExitError{Code: 2, Message: "task not assigned to this agent"}
 
 type Service struct {
-	db *sql.DB
+	db           *sql.DB
+	timeout      time.Duration
+	maxRetries   int
+	retryBaseMs  int
 }
 
-func NewService(db *sql.DB) *Service {
-	return &Service{db: db}
+func NewService(db *sql.DB, timeout time.Duration) *Service {
+	return &Service{
+		db:          db,
+		timeout:     timeout,
+		maxRetries:  3,
+		retryBaseMs: 100,
+	}
+}
+
+// defaultTimeout is used when callers pass 0.
+const defaultTimeout = 30 * time.Second
+
+// withTimeout wraps ctx with the service's timeout.
+// If the service has no timeout set, returns ctx unchanged.
+func (s *Service) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	t := s.timeout
+	if t <= 0 {
+		t = defaultTimeout
+	}
+	return context.WithTimeout(ctx, t)
+}
+
+// retryOnBusy retries fn on SQLITE_BUSY with exponential backoff + jitter.
+// Returns the result of fn on success, or the last error after exhausting retries.
+func (s *Service) retryOnBusy(fn func() error) error {
+	var lastErr error
+	for attempt := 0; attempt < s.maxRetries; attempt++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "database is locked") {
+			return err
+		}
+		lastErr = err
+		if attempt < s.maxRetries-1 {
+			// Exponential backoff with ±30% jitter
+			base := s.retryBaseMs * (1 << attempt)
+			jitter := int(float64(base) * 0.3 * (rand.Float64()*2 - 1))
+			sleep := base + jitter
+			if sleep < 1 {
+				sleep = 1
+			}
+			time.Sleep(time.Duration(sleep) * time.Millisecond)
+		}
+	}
+	return lastErr
 }
 
 // 15 min lease: enough for a typical autonomous step, short enough to auto-reclaim hung tasks.
@@ -35,6 +86,7 @@ const (
 	maxTitleLength  = 500
 	maxNoteLength   = 10000
 	maxReasonLength = 1000
+	defaultViewLimit = 20
 )
 
 
@@ -42,14 +94,14 @@ const (
 // Prefix "TASK-" for human-readable IDs in logs and CLI output.
 // Caller must already hold a write transaction.
 func nextID(tx *sql.Tx) (string, error) {
-	var max int
+	var id int
 	err := tx.QueryRow(
-		"SELECT COALESCE(MAX(CAST(SUBSTR(id,6) AS INTEGER)), 0) FROM tasks",
-	).Scan(&max)
+		"UPDATE task_seq SET next_id = next_id + 1 RETURNING next_id",
+	).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("next id: %w", err)
 	}
-	return fmt.Sprintf("TASK-%d", max+1), nil
+	return fmt.Sprintf("TASK-%d", id), nil
 }
 
 // Time parsing handles both RFC3339 (JSON) and SQLite's default datetime format.

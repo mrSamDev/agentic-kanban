@@ -1,3 +1,9 @@
+CREATE TABLE IF NOT EXISTS task_seq (
+    next_id INTEGER NOT NULL DEFAULT 1
+);
+
+INSERT OR IGNORE INTO task_seq (next_id) VALUES (0);
+
 CREATE TABLE IF NOT EXISTS tasks (
     id            TEXT PRIMARY KEY,                  -- e.g. 'TASK-101'
     title         TEXT NOT NULL,

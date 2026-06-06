@@ -103,7 +103,7 @@ func openService() (*task.Service, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	s := task.NewService(db.DB)
+	s := task.NewService(db.DB, 0)
 	return s, func() { db.Close() }, nil
 }
 

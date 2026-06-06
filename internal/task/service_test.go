@@ -27,7 +27,7 @@ func newTestDB(t *testing.T) *storage.DB {
 
 func newTestService(t *testing.T) *Service {
 	db := newTestDB(t)
-	return NewService(db.DB)
+	return NewService(db.DB, 0)
 }
 
 func TestDispatch(t *testing.T) {

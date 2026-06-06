@@ -24,11 +24,18 @@ func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	return t, nil
 }
 
-// noteLimit and historyLimit control pagination; 0 means no limit.
+// noteLimit and historyLimit control pagination; 0 means default limit (20).
 func (s *Service) ViewDetail(ctx context.Context, id string, noteLimit, historyLimit int) (TaskDetail, error) {
 	t, err := s.View(ctx, id)
 	if err != nil {
 		return TaskDetail{}, err
+	}
+
+	if noteLimit <= 0 {
+		noteLimit = defaultViewLimit
+	}
+	if historyLimit <= 0 {
+		historyLimit = defaultViewLimit
 	}
 
 	notes, err := s.listNotes(ctx, id, noteLimit)
