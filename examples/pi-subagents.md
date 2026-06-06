@@ -44,10 +44,10 @@ Save as `plan.md`:
 - Add linter step
 - Configure test runner
 
-## Review all auth changes 🔥
+## Review all auth changes [p1]
 ```
 
-Priority hints: `[p1]`-`[p999]` or `🔥` (priority 1).
+Priority hints: `[p1]`-`[p999]`.
 
 ## Running agents
 

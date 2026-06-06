@@ -41,3 +41,14 @@ CREATE TABLE IF NOT EXISTS history (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    event_type TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    ttl_seconds INTEGER DEFAULT 259200  -- 3 days; NULL = never expires
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_ttl
+    ON events(ttl_seconds, created_at);

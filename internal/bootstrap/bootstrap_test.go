@@ -16,7 +16,7 @@ func TestParsePlanMarkdownHeadings(t *testing.T) {
 
 ## Add CI pipeline
 
-## Review everything 🔥
+## Review everything [p1]
 `
 
 	tmp := t.TempDir()
@@ -51,12 +51,12 @@ func TestParsePlanMarkdownHeadings(t *testing.T) {
 		t.Fatalf("expected default priority 100, got %d", tasks[1].Priority)
 	}
 
-	// Task 3: 🔥 hint
+	// Task 3: [p1] hint
 	if tasks[2].Title != "Review everything" {
 		t.Fatalf("expected 'Review everything', got %q", tasks[2].Title)
 	}
 	if tasks[2].Priority != 1 {
-		t.Fatalf("expected priority 1 from 🔥, got %d", tasks[2].Priority)
+		t.Fatalf("expected priority 1 from [p1], got %d", tasks[2].Priority)
 	}
 
 	// Notes from list items
