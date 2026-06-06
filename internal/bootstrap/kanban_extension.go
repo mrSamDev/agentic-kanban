@@ -326,7 +326,7 @@ export default function (pi: ExtensionAPI) {
           lines.push("");
           lines.push("Press escape, enter, or q to close");
 
-          ctx.ui.custom((_tui, _theme, _kb, done) => {
+          await ctx.ui.custom((_tui, _theme, _kb, done) => {
             const text = new Text(lines.join("\n"), 2, 1);
             return {
               render(width: number): string[] {
