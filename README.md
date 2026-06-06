@@ -10,6 +10,8 @@ Single Go binary + SQLite.
 curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
 ```
 
+> **Security note**: The `curl | sh` install is convenient for trusted environments. For production, download the binary directly from releases and verify the checksum.
+
 ## Why
 
 AI agents (subagents in pi, Claude, etc.) need shared state without servers. Kanban gives them a SQLite-backed task board they all read/write. Agents claim tasks, report progress, and complete work — the `.db` file is the coordination point.
@@ -22,6 +24,7 @@ AI agents (subagents in pi, Claude, etc.) need shared state without servers. Kan
 - Agents run on the same machine or shared filesystem
 - You want durable coordination without Redis / Postgres / message queues
 - You need crash recovery and task ownership
+- Scale: 3-10 concurrent agents on one machine (tested up to 50)
 
 **Not a fit when:**
 
@@ -34,7 +37,7 @@ For those cases, look at Temporal, Celery, or Kafka.
 ## Quick start
 
 ```bash
-# Install
+# Install (or download binary from releases for production)
 curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
 
 # Init a project (creates DB, scaffolds skills)
@@ -42,6 +45,9 @@ kanban init --harness pi
 
 # Or init + seed from a plan file
 kanban init --harness pi --plan plan.md
+
+# Enable debug logging for observability
+kanban --debug task dispatch --title "Set up auth" --role worker --priority 10
 
 # Just use it — default DB path is .kanban/kanban.db
 # Tasks may be created by humans, manager agents, or orchestration agents.
@@ -71,12 +77,50 @@ kanban task complete TASK-1 --agent my-agent
 | `task approve <id> --agent` | reviewer | Approve IN_REVIEW → DONE (no claim needed) |
 | `task reject <id> --agent --reason` | reviewer | Reject IN_REVIEW → TODO (no claim needed) |
 | `init [--harness] [--plan] [--dir]` | setup | Scaffold DB + skills for pi, claude, or generic |
+| `--debug` (global flag) | ops | Enable debug logging for database operations |
+
+## Observability
+
+Enable debug logging with `--debug`:
+
+```bash
+kanban --debug task claim-next --agent alice --role worker
+```
+
+Output:
+```
+[db] opened: .kanban/kanban.db
+[db] WAL mode enabled
+[db] wal_autocheckpoint = 1000
+[db] schema applied
+{ ...task JSON... }
+[db] checkpointing WAL before close
+```
+
+Useful for:
+- Debugging database lock issues
+- Verifying WAL checkpoint behavior
+- Understanding operation timing in multi-agent setups
+
+## Production notes
+
+**Tested scale**: 3-10 concurrent agents on one machine (via `TestClaimNextAtomic`).
+
+**At 50+ agents**: Expect contention on `claim-next`. The retry loop (100ms, 200ms, 400ms backoff) handles this, but measure latency.
+
+**At 1000+ agents**: SQLite becomes a bottleneck. Consider PostgreSQL or a distributed queue.
+
+**Backup**: The `.db` file is your state. Back it up like any database. WAL mode means you can safely copy the main database file while the system is running.
+
+**Migration**: Schema changes require manual intervention in v0.1.0. The schema uses `CREATE IF NOT EXISTS` so it's safe to re-apply, but there's no versioned migration system yet.
 
 ## How it works
 
 - **One `.db` file per project.** Agents share it. No server.
 - **Atomic task claims.** Two agents calling `claim-next` simultaneously get different tasks (SQLite write-serialized).
 - **Lease-based crash recovery.** A claimed task has a 15-minute lease. `log-progress` renews it. If an agent crashes, the lease expires and the next `claim-next` reclaims the task.
+- **WAL auto-checkpoint.** WAL file is automatically checkpointed every 1000 pages to prevent unbounded disk growth.
+- **Context timeouts.** All operations support cancellation via context (for future timeout configuration).
 
 ```
 Worker-A claims TASK-1.
@@ -175,7 +219,7 @@ Manager                    Workers                    Reviewers
 │       ├── model.go          # Structs
 │       ├── queries.go        # View, Search
 │       ├── service.go        # Business logic
-│       └── service_test.go   # 20+ tests (incl. concurrent claim race)
+│       └── service_test.go   # 24 tests (incl. concurrent claim race)
 ├── skills/
 │   ├── manager/              # dispatch-task, review-backlog, view-task
 │   ├── worker/               # claim-next-task, log-progress, complete-task, block-task
