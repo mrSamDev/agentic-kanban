@@ -1,3 +1,5 @@
 .kanban
 kanban
 *.db
+graphify-out
+evaluations
