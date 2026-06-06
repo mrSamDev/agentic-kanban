@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="agentic-kanban — SQLite-backed task coordination for AI agents. No server. No daemon. No queues.">
+  <title>agentic-kanban · task coordination for AI agents</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <nav>
+    <span class="logo">agentic-kanban</span>
+    <a href="https://github.com/mrSamDev/agentic-kanban" class="btn-outline">GitHub</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <h1>Task coordination<br>for <span class="accent">AI agents</span></h1>
+    <p class="subtitle">SQLite-backed. No server. No daemon. No queues.<br>Just a shared database file agents use to claim, track, review, and complete work.</p>
+    <div class="hero-actions">
+      <a href="#install" class="btn-primary">Install</a>
+      <a href="#commands" class="btn-outline">Commands</a>
+    </div>
+  </section>
+
+  <!-- ── Install ── -->
+  <section id="install" class="section">
+    <h2>Install</h2>
+    <pre><code>curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh</code></pre>
+    <p class="note">Single Go binary + SQLite. Download from <a href="https://github.com/mrSamDev/agentic-kanban/releases">releases</a> for production.</p>
+  </section>
+
+  <!-- ── Features ── -->
+  <section class="section features">
+    <h2>Why agentic-kanban</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>No server</h3>
+        <p>One <code>.db</code> file per project. Agents share it directly. No Redis, Postgres, or message queues.</p>
+      </div>
+      <div class="card">
+        <h3>Atomic claims</h3>
+        <p>Two agents calling <code>claim-next</code> simultaneously get different tasks. SQLite write-serialized.</p>
+      </div>
+      <div class="card">
+        <h3>Crash recovery</h3>
+        <p>15-minute lease per task. <code>log-progress</code> renews it. If an agent crashes, the lease expires and the next claim reclaims the task.</p>
+      </div>
+      <div class="card">
+        <h3>WAL checkpointing</h3>
+        <p>Write-Ahead Log auto-checkpoints every 1000 pages. No unbounded disk growth.</p>
+      </div>
+      <div class="card">
+        <h3>JSON output</h3>
+        <p>Every command prints stable JSON on stdout. Errors go to stderr as <code>{"error":"..."}</code> with exit code 2.</p>
+      </div>
+      <div class="card">
+        <h3>Markdown skills</h3>
+        <p>Role directories contain docs agents read to learn the protocol. No tool-calling protocol needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Quick start ── -->
+  <section class="section">
+    <h2>Quick start</h2>
+    <pre><code><span class="c"># Init a project (creates DB, scaffolds skills)</span>
+kanban init --harness pi
+
+<span class="c"># Dispatch work</span>
+kanban task dispatch --title "Set up auth" --role worker --priority 10
+
+<span class="c"># Agent claims and completes</span>
+kanban task claim-next --agent my-agent --role worker
+kanban task log-progress TASK-1 --agent my-agent --note "Working" --type PROGRESS
+kanban task complete TASK-1 --agent my-agent</code></pre>
+  </section>
+
+  <!-- ── Workflow ── -->
+  <section class="section">
+    <h2>Workflow</h2>
+    <pre class="diagram"><code>TODO
+  │ dispatch
+  ▼
+TODO ── claim-next ──> IN_PROGRESS ── complete --review ──> IN_REVIEW ── approve ──> DONE
+                          │                                       │
+                          │ block                                 │ reject
+                          ▼                                       ▼
+                       BLOCKED                                  TODO</code></pre>
+  </section>
+
+  <!-- ── Commands ── -->
+  <section id="commands" class="section">
+    <h2>Commands</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Role</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>task dispatch --title --role [--project] [--priority]</code></td>
+            <td>any</td>
+            <td>Create a task (status=TODO)</td>
+          </tr>
+          <tr>
+            <td><code>task claim-next --agent --role [--project]</code></td>
+            <td>worker, reviewer</td>
+            <td>Atomically claim highest-priority task. <code>{}</code> if none.</td>
+          </tr>
+          <tr>
+            <td><code>task log-progress &lt;id&gt; --agent --note [--type]</code></td>
+            <td>worker</td>
+            <td>Log progress + renew 15-min lease</td>
+          </tr>
+          <tr>
+            <td><code>task block &lt;id&gt; --agent --reason</code></td>
+            <td>worker</td>
+            <td>Mark blocked, clear lease</td>
+          </tr>
+          <tr>
+            <td><code>task complete &lt;id&gt; --agent [--review]</code></td>
+            <td>worker</td>
+            <td>Mark done (or submit for review)</td>
+          </tr>
+          <tr>
+            <td><code>task view &lt;id&gt; [--notes] [--history]</code></td>
+            <td>all</td>
+            <td>Full detail: task + notes + history</td>
+          </tr>
+          <tr>
+            <td><code>task search [--status] [--role] [--agent] [--project] [--limit]</code></td>
+            <td>manager</td>
+            <td>Filter task list</td>
+          </tr>
+          <tr>
+            <td><code>task approve &lt;id&gt; --agent</code></td>
+            <td>reviewer</td>
+            <td>Approve IN_REVIEW → DONE</td>
+          </tr>
+          <tr>
+            <td><code>task reject &lt;id&gt; --agent --reason</code></td>
+            <td>reviewer</td>
+            <td>Reject IN_REVIEW → TODO</td>
+          </tr>
+          <tr>
+            <td><code>task batch set-priority --ids --priority</code></td>
+            <td>manager</td>
+            <td>Set priority for multiple tasks</td>
+          </tr>
+          <tr>
+            <td><code>task batch set-project --ids --project</code></td>
+            <td>manager</td>
+            <td>Set project label for multiple tasks</td>
+          </tr>
+          <tr>
+            <td><code>init [--harness] [--plan] [--dir]</code></td>
+            <td>setup</td>
+            <td>Scaffold DB + skills for pi, claude, or generic</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Architecture ── -->
+  <section class="section">
+    <h2>Architecture</h2>
+    <pre class="diagram"><code>Manager                    Workers                    Reviewers
+  │                           │                           │
+  ├── dispatch tasks ────────>│                           │
+  │                           ├── claim-next (TODO)       │
+  │                           ├── log-progress (heartbeat)│
+  │                           ├── complete --review ─────>│
+  │                           │              ├── approve (no claim)
+  │                           │              ├── reject (no claim)
+  │<── search --status BLOCKED│                           │
+  └── unblock / reassign ────>│                           │</code></pre>
+  </section>
+
+  <!-- ── When to use ── -->
+  <section class="section">
+    <h2>When to use this</h2>
+    <div class="grid two-col">
+      <div class="card card-good">
+        <h3>Good fit</h3>
+        <ul>
+          <li>Multiple AI agents need shared state</li>
+          <li>Agents run on the same machine or shared filesystem</li>
+          <li>Durable coordination without Redis / Postgres / queues</li>
+          <li>Crash recovery and task ownership</li>
+          <li>3–10 concurrent agents (tested up to 50)</li>
+        </ul>
+      </div>
+      <div class="card card-bad">
+        <h3>Not a fit</h3>
+        <ul>
+          <li>Agents across untrusted networks</li>
+          <li>Real-time push notifications needed</li>
+          <li>Thousands of concurrent workers</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>MIT License · <a href="https://github.com/mrSamDev/agentic-kanban">mrSamDev/agentic-kanban</a></p>
+</footer>
+
+</body>
+</html>
