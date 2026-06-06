@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
-	"time"
 )
 
 func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project string, priority int) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
 	if len(title) > maxTitleLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("title too long (max %d)", maxTitleLength)}
 	}
@@ -52,21 +52,18 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 }
 
 func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
 	// Serializable isolation → write lock up front.
 	// Required: two concurrent claimers must never get the same task.
 	// Retry on SQLITE_BUSY to handle contention gracefully.
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	var task Task
+	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 		if err != nil {
-			if strings.Contains(err.Error(), "database is locked") && attempt < 2 {
-				// Exponential backoff: 100ms, 200ms, 400ms
-				time.Sleep(time.Duration(100*(1<<attempt)) * time.Millisecond)
-				lastErr = err
-				continue
-			}
-			return Task{}, fmt.Errorf("claim begin: %w", err)
+			return err
 		}
+		defer tx.Rollback()
 
 		var row *sql.Row
 		if project != "" {
@@ -112,11 +109,9 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 		if err != nil {
 			if err == sql.ErrNoRows {
 				// No work available — empty result.
-				tx.Rollback()
-				return Task{}, nil
+				return nil
 			}
-			tx.Rollback()
-			return Task{}, fmt.Errorf("claim update: %w", err)
+			return fmt.Errorf("claim update: %w", err)
 		}
 
 		_, err = tx.Exec(
@@ -124,208 +119,234 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 			t.ID, agent,
 		)
 		if err != nil {
-			tx.Rollback()
-			return Task{}, fmt.Errorf("insert claim history for task %s agent %s: %w", t.ID, agent, err)
+			return fmt.Errorf("insert claim history for task %s agent %s: %w", t.ID, agent, err)
 		}
 
 		if err := tx.Commit(); err != nil {
-			tx.Rollback()
-			return Task{}, fmt.Errorf("commit claim: %w", err)
+			return err
 		}
 
-		return t, nil
+		task = t
+		return nil
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("claim after retries: %w", err)
 	}
-	return Task{}, fmt.Errorf("claim after retries: %w", lastErr)
+	return task, nil
 }
 
 // Uses a single UPDATE with WHERE guards so the check+update is atomic —
 // the write lock is acquired at first write, and SQLite serializes at commit time.
 func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool) (Task, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Task{}, fmt.Errorf("complete begin tx: %w", err)
-	}
-	defer tx.Rollback()
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
 
-	newStatus := StatusDone
-	action := "COMPLETE"
-	if toReview {
-		newStatus = StatusInReview
-		action = "REVIEW"
-	}
-
-	res, err := tx.Exec(
-		`UPDATE tasks
-		    SET status = ?, assigned_agent = NULL, lease_until = NULL,
-		        updated_at = CURRENT_TIMESTAMP
-		  WHERE id = ?
-		    AND assigned_agent = ?
-		    AND status IN ('IN_PROGRESS', 'IN_REVIEW')`,
-		string(newStatus), id, agent,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("complete update: %w", err)
-	}
-
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Task{}, fmt.Errorf("complete rows affected: %w", err)
-	}
-	if n == 0 {
-		// Determine why: does the task exist?
-		var exists bool
-		tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-		if !exists {
-			return Task{}, ErrNotFound
+	var task Task
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
 		}
-		// Existing task — must be wrong agent or wrong state.
-		// Fetch actual assigned_agent for helpful error.
-		var actualAgent sql.NullString
-		tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
-		if actualAgent.Valid {
-			return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("task not assigned to this agent (assigned to: %s)", actualAgent.String)}
+		defer tx.Rollback()
+
+		newStatus := StatusDone
+		action := "COMPLETE"
+		if toReview {
+			newStatus = StatusInReview
+			action = "REVIEW"
 		}
-		return Task{}, ErrNotAssigned
-	}
 
-	_, err = tx.Exec(
-		`INSERT INTO history (task_id, agent, action) VALUES (?, ?, ?)`,
-		id, agent, action,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert complete history for task %s agent %s: %w", id, agent, err)
-	}
+		res, err := tx.Exec(
+			`UPDATE tasks
+			    SET status = ?, assigned_agent = NULL, lease_until = NULL,
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ?
+			    AND assigned_agent = ?
+			    AND status IN ('IN_PROGRESS', 'IN_REVIEW')`,
+			string(newStatus), id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("complete update: %w", err)
+		}
 
-	if err := tx.Commit(); err != nil {
-		return Task{}, fmt.Errorf("commit complete: %w", err)
-	}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("complete rows affected: %w", err)
+		}
+		if n == 0 {
+			// Determine why: does the task exist?
+			var exists bool
+			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if !exists {
+				return ErrNotFound
+			}
+			// Existing task — must be wrong agent or wrong state.
+			// Fetch actual assigned_agent for helpful error.
+			var actualAgent sql.NullString
+			tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+			if actualAgent.Valid {
+				return &ExitError{Code: 2, Message: fmt.Sprintf("task not assigned to this agent (assigned to: %s)", actualAgent.String)}
+			}
+			return ErrNotAssigned
+		}
 
-	return s.View(ctx, id)
+		_, err = tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, ?)`,
+			id, agent, action,
+		)
+		if err != nil {
+			return fmt.Errorf("insert complete history for task %s agent %s: %w", id, agent, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		task, err = s.View(ctx, id)
+		return err
+	})
+	return task, err
 }
 
 func (s *Service) LogProgress(ctx context.Context, id, agent, content string, noteType string) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
 	if len(content) > maxNoteLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("note too long (max %d)", maxNoteLength)}
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Task{}, fmt.Errorf("log begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Verify ownership via UPDATE condition — atomic with the lease renewal.
-	res, err := tx.Exec(
-		`UPDATE tasks
-		    SET lease_until = datetime('now', '+' || ? || ' minutes'),
-		        updated_at = CURRENT_TIMESTAMP
-		  WHERE id = ? AND assigned_agent = ?`,
-		defaultLeaseMinutes, id, agent,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("renew lease: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Task{}, fmt.Errorf("log rows affected: %w", err)
-	}
-	if n == 0 {
-		var exists bool
-		tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-		if !exists {
-			return Task{}, ErrNotFound
+	var task Task
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
 		}
-		return Task{}, ErrNotAssigned
-	}
+		defer tx.Rollback()
 
-	var nt *string
-	if noteType != "" {
-		nt = &noteType
-	}
-	_, err = tx.Exec(
-		`INSERT INTO notes (task_id, author, note_type, content) VALUES (?, ?, ?, ?)`,
-		id, agent, nt, content,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert note: %w", err)
-	}
+		// Verify ownership via UPDATE condition — atomic with the lease renewal.
+		res, err := tx.Exec(
+			`UPDATE tasks
+			    SET lease_until = datetime('now', '+' || ? || ' minutes'),
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND assigned_agent = ?`,
+			defaultLeaseMinutes, id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("renew lease: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("log rows affected: %w", err)
+		}
+		if n == 0 {
+			var exists bool
+			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if !exists {
+				return ErrNotFound
+			}
+			return ErrNotAssigned
+		}
 
-	_, err = tx.Exec(
-		`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'PROGRESS')`,
-		id, agent,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert progress history for task %s agent %s: %w", id, agent, err)
-	}
+		var nt *string
+		if noteType != "" {
+			nt = &noteType
+		}
+		_, err = tx.Exec(
+			`INSERT INTO notes (task_id, author, note_type, content) VALUES (?, ?, ?, ?)`,
+			id, agent, nt, content,
+		)
+		if err != nil {
+			return fmt.Errorf("insert note: %w", err)
+		}
 
-	if err := tx.Commit(); err != nil {
-		return Task{}, fmt.Errorf("commit log: %w", err)
-	}
+		_, err = tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'PROGRESS')`,
+			id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("insert progress history for task %s agent %s: %w", id, agent, err)
+		}
 
-	return s.View(ctx, id)
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		task, err = s.View(ctx, id)
+		return err
+	})
+	return task, err
 }
 
 func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
 	if len(reason) > maxReasonLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("reason too long (max %d)", maxReasonLength)}
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Task{}, fmt.Errorf("block begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	res, err := tx.Exec(
-		`UPDATE tasks
-		    SET status = 'BLOCKED', assigned_agent = NULL, lease_until = NULL,
-		        updated_at = CURRENT_TIMESTAMP
-		  WHERE id = ?
-		    AND assigned_agent = ?
-		    AND status IN ('IN_PROGRESS', 'IN_REVIEW')`,
-		id, agent,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("block update: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Task{}, fmt.Errorf("block rows affected: %w", err)
-	}
-	if n == 0 {
-		var exists bool
-		tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-		if !exists {
-			return Task{}, ErrNotFound
+	var task Task
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
 		}
-		return Task{}, ErrNotAssigned
-	}
+		defer tx.Rollback()
 
-	_, err = tx.Exec(
-		`INSERT INTO notes (task_id, author, note_type, content) VALUES (?, ?, 'BLOCKED', ?)`,
-		id, agent, reason,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert block note: %w", err)
-	}
+		res, err := tx.Exec(
+			`UPDATE tasks
+			    SET status = 'BLOCKED', assigned_agent = NULL, lease_until = NULL,
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ?
+			    AND assigned_agent = ?
+			    AND status IN ('IN_PROGRESS', 'IN_REVIEW')`,
+			id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("block update: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("block rows affected: %w", err)
+		}
+		if n == 0 {
+			var exists bool
+			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if !exists {
+				return ErrNotFound
+			}
+			return ErrNotAssigned
+		}
 
-	_, err = tx.Exec(
-		`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'BLOCK')`,
-		id, agent,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert block history for task %s agent %s: %w", id, agent, err)
-	}
+		_, err = tx.Exec(
+			`INSERT INTO notes (task_id, author, note_type, content) VALUES (?, ?, 'BLOCKED', ?)`,
+			id, agent, reason,
+		)
+		if err != nil {
+			return fmt.Errorf("insert block note: %w", err)
+		}
 
-	if err := tx.Commit(); err != nil {
-		return Task{}, fmt.Errorf("commit block: %w", err)
-	}
+		_, err = tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'BLOCK')`,
+			id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("insert block history for task %s agent %s: %w", id, agent, err)
+		}
 
-	return s.View(ctx, id)
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		task, err = s.View(ctx, id)
+		return err
+	})
+	return task, err
 }
 
 // Any reviewer can approve — no lease ownership check needed.
 func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Task{}, fmt.Errorf("review begin tx: %w", err)
@@ -372,6 +393,8 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 
 // Any reviewer can reject — no lease ownership check needed.
 func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
 	if len(reason) > maxReasonLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("reason too long (max %d)", maxReasonLength)}
 	}

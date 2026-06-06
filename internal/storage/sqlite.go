@@ -70,7 +70,7 @@ func Open(path string, debug bool) (*DB, error) {
 		return nil, fmt.Errorf("enable foreign_keys: %w", err)
 	}
 
-	// Run schema migration (idempotent — all CREATE IF NOT EXISTS).
+	// Run base schema (idempotent — all CREATE IF NOT EXISTS).
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
 		db.Close()
