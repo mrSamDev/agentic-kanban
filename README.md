@@ -142,16 +142,16 @@ Hooks let you run scripts when tasks change state. Drop an executable in `.kanba
 
 | Event | When | Payload |
 |---|---|---|
-| `task.created` | A task is dispatched | `task_id` |
-| `task.claimed` | An agent claims a task | `task_id`, `agent` |
-| `task.progress` | An agent logs progress | `task_id`, `agent`, `note_type` |
-| `task.completed` | A task is completed | `task_id`, `agent` |
-| `task.submitted_for_review` | A task is submitted for review | `task_id`, `agent` |
-| `task.blocked` | A task is blocked | `task_id`, `agent` |
-| `review.approved` | A reviewer approves | `task_id`, `agent` |
-| `review.rejected` | A reviewer rejects | `task_id`, `agent` |
-| `task.priority_updated` | Batch priority update | `task_id`, `priority` |
-| `task.project_updated` | Batch project update | `task_id`, `project` |
+| `task.created` | A task is dispatched | `task_id`, `title`, `project`, `priority`, `role_boundary` |
+| `task.claimed` | An agent claims a task | `task_id`, `agent`, `title`, `project`, `priority`, `role_boundary` |
+| `task.progress` | An agent logs progress | `task_id`, `agent`, `note_type`, `title`, `project`, `priority` |
+| `task.completed` | A task is completed | `task_id`, `agent`, `title`, `project`, `priority` |
+| `task.submitted_for_review` | A task is submitted for review | `task_id`, `agent`, `title`, `project`, `priority` |
+| `task.blocked` | A task is blocked | `task_id`, `agent`, `reason`, `title`, `project`, `priority` |
+| `review.approved` | A reviewer approves | `task_id`, `agent`, `title`, `project`, `priority` |
+| `review.rejected` | A reviewer rejects | `task_id`, `agent`, `reason`, `title`, `project`, `priority` |
+| `task.priority_updated` | Batch priority update | `task_id`, `priority`, `title`, `project` |
+| `task.project_updated` | Batch project update | `task_id`, `project`, `title`, `priority` |
 
 You can chain multiple hooks for the same event by adding a `.d/` directory. The single-file hook runs synchronously. The `.d/` hooks run concurrently, so a slow Slack notifier won't block the caller. Each hook gets a 30-second timeout. If it fails, the error goes to stderr but the operation keeps going. Missing hooks are silently ignored.
 

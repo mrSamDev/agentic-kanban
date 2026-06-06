@@ -10,6 +10,7 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
 	var task Task
+	var payload map[string]string
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -48,7 +49,8 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 			return fmt.Errorf("insert review history for task %s agent %s: %w", id, agent, err)
 		}
 
-		if err := insertEvent(tx, "review.approved", map[string]string{"task_id": id, "agent": agent}); err != nil {
+		payload = eventPayload(tx, id, map[string]string{"agent": agent})
+		if err := insertEvent(tx, "review.approved", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
 
@@ -60,7 +62,7 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "review.approved", map[string]string{"task_id": id, "agent": agent})
+		runHook(s.hooksDir, "review.approved", payload)
 	}
 	return task, err
 }
@@ -74,6 +76,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 	}
 
 	var task Task
+	var payload map[string]string
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -120,7 +123,9 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 			return fmt.Errorf("insert reject history for task %s agent %s: %w", id, agent, err)
 		}
 
-		if err := insertEvent(tx, "review.rejected", map[string]string{"task_id": id, "agent": agent}); err != nil {
+		extra := map[string]string{"agent": agent, "reason": reason}
+		payload = eventPayload(tx, id, extra)
+		if err := insertEvent(tx, "review.rejected", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
 
@@ -132,7 +137,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "review.rejected", map[string]string{"task_id": id, "agent": agent})
+		runHook(s.hooksDir, "review.rejected", payload)
 	}
 	return task, err
 }

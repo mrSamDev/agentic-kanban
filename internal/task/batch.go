@@ -10,7 +10,7 @@ func (s *Service) BatchUpdatePriority(ctx context.Context, ids []string, priorit
 		return 0, &ExitError{Code: 2, Message: "priority must be between 0 and 999"}
 	}
 	var updated int
-	var updatedIDs []string
+	var payloads []map[string]string
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -19,7 +19,7 @@ func (s *Service) BatchUpdatePriority(ctx context.Context, ids []string, priorit
 		defer tx.Rollback()
 
 		updated = 0
-		updatedIDs = nil
+		payloads = nil
 		for _, id := range ids {
 			res, err := tx.Exec(
 				`UPDATE tasks SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
@@ -31,10 +31,9 @@ func (s *Service) BatchUpdatePriority(ctx context.Context, ids []string, priorit
 			n, _ := res.RowsAffected()
 			if n > 0 {
 				updated++
-				updatedIDs = append(updatedIDs, id)
-				if err := insertEvent(tx, "task.priority_updated", map[string]string{
-					"task_id": id, "priority": fmt.Sprintf("%d", priority),
-				}); err != nil {
+				p := eventPayload(tx, id, map[string]string{"priority": fmt.Sprintf("%d", priority)})
+				payloads = append(payloads, p)
+				if err := insertEvent(tx, "task.priority_updated", p); err != nil {
 					return fmt.Errorf("insert priority event for %s: %w", id, err)
 				}
 			}
@@ -42,10 +41,8 @@ func (s *Service) BatchUpdatePriority(ctx context.Context, ids []string, priorit
 		return tx.Commit()
 	})
 	if err == nil {
-		for _, id := range updatedIDs {
-			runHook(s.hooksDir, "task.priority_updated", map[string]string{
-				"task_id": id, "priority": fmt.Sprintf("%d", priority),
-			})
+		for _, p := range payloads {
+			runHook(s.hooksDir, "task.priority_updated", p)
 		}
 	}
 	return updated, err
@@ -56,7 +53,7 @@ func (s *Service) BatchUpdateProject(ctx context.Context, ids []string, project 
 		return 0, &ExitError{Code: 2, Message: "project cannot be empty"}
 	}
 	var updated int
-	var updatedIDs []string
+	var payloads []map[string]string
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -65,7 +62,7 @@ func (s *Service) BatchUpdateProject(ctx context.Context, ids []string, project 
 		defer tx.Rollback()
 
 		updated = 0
-		updatedIDs = nil
+		payloads = nil
 		for _, id := range ids {
 			res, err := tx.Exec(
 				`UPDATE tasks SET project = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
@@ -77,10 +74,9 @@ func (s *Service) BatchUpdateProject(ctx context.Context, ids []string, project 
 			n, _ := res.RowsAffected()
 			if n > 0 {
 				updated++
-				updatedIDs = append(updatedIDs, id)
-				if err := insertEvent(tx, "task.project_updated", map[string]string{
-					"task_id": id, "project": project,
-				}); err != nil {
+				p := eventPayload(tx, id, map[string]string{"project": project})
+				payloads = append(payloads, p)
+				if err := insertEvent(tx, "task.project_updated", p); err != nil {
 					return fmt.Errorf("insert project event for %s: %w", id, err)
 				}
 			}
@@ -88,10 +84,8 @@ func (s *Service) BatchUpdateProject(ctx context.Context, ids []string, project 
 		return tx.Commit()
 	})
 	if err == nil {
-		for _, id := range updatedIDs {
-			runHook(s.hooksDir, "task.project_updated", map[string]string{
-				"task_id": id, "project": project,
-			})
+		for _, p := range payloads {
+			runHook(s.hooksDir, "task.project_updated", p)
 		}
 	}
 	return updated, err

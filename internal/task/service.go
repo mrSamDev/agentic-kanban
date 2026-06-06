@@ -50,7 +50,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert history: %w", err)
 	}
 
-	if err := insertEvent(tx, "task.created", map[string]string{"task_id": id}); err != nil {
+	if err := insertEvent(tx, "task.created", eventPayload(tx, id, nil)); err != nil {
 		return Task{}, fmt.Errorf("insert event: %w", err)
 	}
 
@@ -58,7 +58,13 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("commit dispatch: %w", err)
 	}
 
-	runHook(s.hooksDir, "task.created", map[string]string{"task_id": id})
+	runHook(s.hooksDir, "task.created", map[string]string{
+		"task_id": id,
+		"title":   title,
+		"project": project,
+		"priority": fmt.Sprintf("%d", priority),
+		"role_boundary": roleBoundary,
+	})
 	return s.View(ctx, id)
 }
 
@@ -67,6 +73,7 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 	defer cancel()
 
 	var task Task
+	var payload map[string]string
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -120,12 +127,13 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 			return fmt.Errorf("insert complete history for task %s agent %s: %w", id, agent, err)
 		}
 
+		payload = eventPayload(tx, id, map[string]string{"agent": agent})
 		if !toReview {
-			if err := insertEvent(tx, "task.completed", map[string]string{"task_id": id, "agent": agent}); err != nil {
+			if err := insertEvent(tx, "task.completed", payload); err != nil {
 				return fmt.Errorf("insert event: %w", err)
 			}
 		} else {
-			if err := insertEvent(tx, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent}); err != nil {
+			if err := insertEvent(tx, "task.submitted_for_review", payload); err != nil {
 				return fmt.Errorf("insert event: %w", err)
 			}
 		}
@@ -138,10 +146,10 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 		return err
 	})
 	if err == nil && !toReview {
-		runHook(s.hooksDir, "task.completed", map[string]string{"task_id": id, "agent": agent})
+		runHook(s.hooksDir, "task.completed", payload)
 	}
 	if err == nil && toReview {
-		runHook(s.hooksDir, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent})
+		runHook(s.hooksDir, "task.submitted_for_review", payload)
 	}
 	return task, err
 }
@@ -154,6 +162,7 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 	}
 
 	var task Task
+	var payload map[string]string
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -204,7 +213,9 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 			return fmt.Errorf("insert progress history for task %s agent %s: %w", id, agent, err)
 		}
 
-		if err := insertEvent(tx, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType}); err != nil {
+		extra := map[string]string{"agent": agent, "note_type": noteType}
+		payload = eventPayload(tx, id, extra)
+		if err := insertEvent(tx, "task.progress", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
 
@@ -216,7 +227,7 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType})
+		runHook(s.hooksDir, "task.progress", payload)
 	}
 	return task, err
 }
@@ -229,6 +240,7 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 	}
 
 	var task Task
+	var payload map[string]string
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -277,7 +289,9 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 			return fmt.Errorf("insert block history for task %s agent %s: %w", id, agent, err)
 		}
 
-		if err := insertEvent(tx, "task.blocked", map[string]string{"task_id": id, "agent": agent}); err != nil {
+		extra := map[string]string{"agent": agent, "reason": reason}
+		payload = eventPayload(tx, id, extra)
+		if err := insertEvent(tx, "task.blocked", payload); err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
 
@@ -289,7 +303,7 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "task.blocked", map[string]string{"task_id": id, "agent": agent})
+		runHook(s.hooksDir, "task.blocked", payload)
 	}
 	return task, err
 }
