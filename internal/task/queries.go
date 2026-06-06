@@ -112,6 +112,35 @@ func (s *Service) listHistory(ctx context.Context, taskID string, limit int) ([]
 	return history, rows.Err()
 }
 
+func (s *Service) MaxEventID(ctx context.Context) (int64, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM events`).Scan(&id)
+	return id, err
+}
+
+func (s *Service) PollEvents(ctx context.Context, afterID int64) ([]Event, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, created_at, event_type, payload FROM events WHERE id > ? ORDER BY id ASC`,
+		afterID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("poll events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var e Event
+		var payloadStr string
+		if err := rows.Scan(&e.ID, &e.CreatedAt, &e.EventType, &payloadStr); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		e.Payload = json.RawMessage(payloadStr)
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
 func (s *Service) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 	q := `SELECT id, created_at, event_type, payload FROM events ORDER BY id ASC`
 	var args []any

@@ -557,3 +557,89 @@ func TestReviewerCannotClaimInReview(t *testing.T) {
 		t.Fatalf("worker should not claim already-done task, got %s", empty2.ID)
 	}
 }
+
+func TestMaxEventID(t *testing.T) {
+	s := newTestService(t)
+
+	// Empty table → 0
+	id, err := s.MaxEventID(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 0 {
+		t.Fatalf("expected 0 for empty events, got %d", id)
+	}
+
+	// After dispatch → max ID should be 1
+	s.Dispatch(t.Context(), "test", "worker", "default", 1)
+	id, err = s.MaxEventID(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 1 {
+		t.Fatalf("expected 1 after dispatch, got %d", id)
+	}
+
+	// After claim → max ID should be 2
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	id, err = s.MaxEventID(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 2 {
+		t.Fatalf("expected 2 after claim, got %d", id)
+	}
+}
+
+func TestPollEvents(t *testing.T) {
+	s := newTestService(t)
+
+	// No events → empty result
+	events, err := s.PollEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events, got %d", len(events))
+	}
+
+	// Dispatch + claim
+	s.Dispatch(t.Context(), "test", "worker", "default", 1)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+
+	// Poll from 0 → both events
+	events, err = s.PollEvents(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	if events[0].EventType != "task.created" {
+		t.Fatalf("expected task.created first, got %s", events[0].EventType)
+	}
+	if events[1].EventType != "task.claimed" {
+		t.Fatalf("expected task.claimed second, got %s", events[1].EventType)
+	}
+
+	// Poll from 1 → only the second event
+	events, err = s.PollEvents(t.Context(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event after ID 1, got %d", len(events))
+	}
+	if events[0].EventType != "task.claimed" {
+		t.Fatalf("expected task.claimed, got %s", events[0].EventType)
+	}
+
+	// Poll from 2 → no new events
+	events, err = s.PollEvents(t.Context(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events after ID 2, got %d", len(events))
+	}
+}
