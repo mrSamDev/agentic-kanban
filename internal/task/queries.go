@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -8,8 +9,8 @@ import (
 )
 
 // View returns the task without notes or history.
-func (s *Service) View(id string) (Task, error) {
-	row := s.db.QueryRow(
+func (s *Service) View(ctx context.Context, id string) (Task, error) {
+	row := s.db.QueryRowContext(ctx,
 		`SELECT id, title, status, role_boundary, priority,
 		        assigned_agent, lease_until, created_at, updated_at
 		   FROM tasks WHERE id = ?`, id,
@@ -25,18 +26,19 @@ func (s *Service) View(id string) (Task, error) {
 }
 
 // ViewDetail returns the full task detail including notes and history.
-func (s *Service) ViewDetail(id string) (TaskDetail, error) {
-	t, err := s.View(id)
+// noteLimit and historyLimit control pagination; 0 means no limit.
+func (s *Service) ViewDetail(ctx context.Context, id string, noteLimit, historyLimit int) (TaskDetail, error) {
+	t, err := s.View(ctx, id)
 	if err != nil {
 		return TaskDetail{}, err
 	}
 
-	notes, err := s.listNotes(id)
+	notes, err := s.listNotes(ctx, id, noteLimit)
 	if err != nil {
 		return TaskDetail{}, err
 	}
 
-	history, err := s.listHistory(id)
+	history, err := s.listHistory(ctx, id, historyLimit)
 	if err != nil {
 		return TaskDetail{}, err
 	}
@@ -44,11 +46,14 @@ func (s *Service) ViewDetail(id string) (TaskDetail, error) {
 	return TaskDetail{Task: t, Notes: notes, History: history}, nil
 }
 
-func (s *Service) listNotes(taskID string) ([]Note, error) {
-	rows, err := s.db.Query(
-		`SELECT id, task_id, author, note_type, content, created_at
-		   FROM notes WHERE task_id = ? ORDER BY id`, taskID,
-	)
+func (s *Service) listNotes(ctx context.Context, taskID string, limit int) ([]Note, error) {
+	query := `SELECT id, task_id, author, note_type, content, created_at
+		   FROM notes WHERE task_id = ? ORDER BY id`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -72,11 +77,14 @@ func (s *Service) listNotes(taskID string) ([]Note, error) {
 	return notes, rows.Err()
 }
 
-func (s *Service) listHistory(taskID string) ([]HistoryEntry, error) {
-	rows, err := s.db.Query(
-		`SELECT id, task_id, agent, action, created_at
-		   FROM history WHERE task_id = ? ORDER BY id`, taskID,
-	)
+func (s *Service) listHistory(ctx context.Context, taskID string, limit int) ([]HistoryEntry, error) {
+	query := `SELECT id, task_id, agent, action, created_at
+		   FROM history WHERE task_id = ? ORDER BY id`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +116,7 @@ type SearchParams struct {
 }
 
 // Search returns tasks matching the given filters.
-func (s *Service) Search(params SearchParams) ([]Task, error) {
+func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, error) {
 	var conditions []string
 	var args []any
 
@@ -138,7 +146,7 @@ func (s *Service) Search(params SearchParams) ([]Task, error) {
 		query += fmt.Sprintf(" OFFSET %d", params.Offset)
 	}
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -156,4 +164,72 @@ func (s *Service) Search(params SearchParams) ([]Task, error) {
 		tasks = []Task{}
 	}
 	return tasks, rows.Err()
+}
+
+// TaskStats represents aggregate task statistics.
+type TaskStats struct {
+	ByStatus     map[string]int `json:"by_status"`
+	ByRole       map[string]int `json:"by_role"`
+	ExpiredLeases int           `json:"expired_leases"`
+	TotalTasks   int            `json:"total_tasks"`
+}
+
+// Stats returns aggregate statistics about tasks in the system.
+func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
+	stats := TaskStats{
+		ByStatus:   make(map[string]int),
+		ByRole:     make(map[string]int),
+		TotalTasks: 0,
+	}
+
+	// Count by status
+	rows, err := s.db.QueryContext(ctx, "SELECT status, COUNT(*) FROM tasks GROUP BY status")
+	if err != nil {
+		return stats, fmt.Errorf("stats by status: %w", err)
+	}
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			rows.Close()
+			return stats, fmt.Errorf("scan status count: %w", err)
+		}
+		stats.ByStatus[status] = count
+		stats.TotalTasks += count
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return stats, fmt.Errorf("status count: %w", err)
+	}
+	rows.Close()
+
+	// Count by role
+	rows, err = s.db.QueryContext(ctx, "SELECT role_boundary, COUNT(*) FROM tasks GROUP BY role_boundary")
+	if err != nil {
+		return stats, fmt.Errorf("stats by role: %w", err)
+	}
+	for rows.Next() {
+		var role string
+		var count int
+		if err := rows.Scan(&role, &count); err != nil {
+			rows.Close()
+			return stats, fmt.Errorf("scan role count: %w", err)
+		}
+		stats.ByRole[role] = count
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return stats, fmt.Errorf("role count: %w", err)
+	}
+	rows.Close()
+
+	// Count expired leases
+	row := s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM tasks WHERE status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP",
+	)
+	if err := row.Scan(&stats.ExpiredLeases); err != nil {
+		return stats, fmt.Errorf("stats expired leases: %w", err)
+	}
+
+	return stats, nil
 }

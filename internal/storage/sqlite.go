@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -17,13 +18,12 @@ var schemaFS embed.FS
 // pragmas (foreign_keys, busy_timeout) persist for the whole session.
 type DB struct {
 	*sql.DB
+	debug bool
 }
 
 // Open opens (or creates) the SQLite database at path, sets required pragmas,
-// and runs the embedded schema migration.
-// Open opens (or creates) the SQLite database at path, sets required pragmas,
 // and runs the embedded schema migration. Parent directories are auto-created.
-func Open(path string) (*DB, error) {
+func Open(path string, debug bool) (*DB, error) {
 	// Ensure parent directory exists — SQLite won't create intermediate dirs.
 	dir := filepath.Dir(path)
 	if dir != "." && dir != "/" {
@@ -41,10 +41,26 @@ func Open(path string) (*DB, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
+	if debug {
+		log.Println("[db] opened:", path)
+	}
+
 	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("enable WAL: %w", err)
 	}
+	if debug {
+		log.Println("[db] WAL mode enabled")
+	}
+
+	if _, err := db.Exec("PRAGMA wal_autocheckpoint = 1000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set wal_autocheckpoint: %w", err)
+	}
+	if debug {
+		log.Println("[db] wal_autocheckpoint = 1000")
+	}
+
 	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("set busy_timeout: %w", err)
@@ -64,11 +80,19 @@ func Open(path string) (*DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	if debug {
+		log.Println("[db] schema applied")
+	}
 
-	return &DB{db}, nil
+	return &DB{db, debug}, nil
 }
 
 // Close shuts down the underlying database connection.
 func (db *DB) Close() error {
+	// Checkpoint WAL before closing to prevent unbounded growth
+	if db.debug {
+		log.Println("[db] checkpointing WAL before close")
+	}
+	db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	return db.DB.Close()
 }

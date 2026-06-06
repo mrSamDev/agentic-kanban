@@ -35,6 +35,16 @@ func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
 }
 
+// defaultLeaseMinutes is the default lease duration for claimed tasks.
+const defaultLeaseMinutes = 15
+
+// Input validation limits.
+const (
+	maxTitleLength  = 500
+	maxNoteLength   = 10000
+	maxReasonLength = 1000
+)
+
 // --- Helpers ---
 
 // nextID generates TASK-<next> inside a write transaction.
