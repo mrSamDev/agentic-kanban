@@ -2,6 +2,7 @@ package task
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -60,6 +61,14 @@ type TaskDetail struct {
 	Task    Task           `json:"task"`
 	Notes   []Note         `json:"notes"`
 	History []HistoryEntry `json:"history"`
+}
+
+// Event maps to the events table.
+type Event struct {
+	ID        int64           `json:"id"`
+	CreatedAt time.Time       `json:"created_at"`
+	EventType string          `json:"event"`
+	Payload   json.RawMessage `json:"payload"`
 }
 
 // NullableTimeFromDB converts a *sql.NullTime (from database/sql) to *time.Time.

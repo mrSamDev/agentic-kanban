@@ -3,9 +3,9 @@ package task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand"
-	"strings"
 	"time"
 )
 
@@ -23,11 +23,14 @@ var ErrInvalidState = &ExitError{Code: 2, Message: "invalid state transition"}
 var ErrNotAssigned = &ExitError{Code: 2, Message: "task not assigned to this agent"}
 
 type Service struct {
-	db           *sql.DB
-	timeout      time.Duration
-	maxRetries   int
-	retryBaseMs  int
+	db          *sql.DB
+	timeout     time.Duration
+	maxRetries  int
+	retryBaseMs int
+	hooksDir    string
 }
+
+func (s *Service) SetHooksDir(dir string) { s.hooksDir = dir }
 
 func NewService(db *sql.DB, timeout time.Duration) *Service {
 	return &Service{
@@ -38,11 +41,8 @@ func NewService(db *sql.DB, timeout time.Duration) *Service {
 	}
 }
 
-// defaultTimeout is used when callers pass 0.
 const defaultTimeout = 30 * time.Second
 
-// withTimeout wraps ctx with the service's timeout.
-// If the service has no timeout set, returns ctx unchanged.
 func (s *Service) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	t := s.timeout
 	if t <= 0 {
@@ -51,8 +51,20 @@ func (s *Service) withTimeout(ctx context.Context) (context.Context, context.Can
 	return context.WithTimeout(ctx, t)
 }
 
-// retryOnBusy retries fn on SQLITE_BUSY with exponential backoff + jitter.
-// Returns the result of fn on success, or the last error after exhausting retries.
+// sqliteError matches modernc.org/sqlite.Error without importing the driver.
+type sqliteError interface {
+	Code() int
+	error
+}
+
+func isSQLiteBusy(err error) bool {
+	var se sqliteError
+	if errors.As(err, &se) {
+		return se.Code() == 5 || se.Code() == 6
+	}
+	return false
+}
+
 func (s *Service) retryOnBusy(fn func() error) error {
 	var lastErr error
 	for attempt := 0; attempt < s.maxRetries; attempt++ {
@@ -60,12 +72,11 @@ func (s *Service) retryOnBusy(fn func() error) error {
 		if err == nil {
 			return nil
 		}
-		if !strings.Contains(err.Error(), "database is locked") {
+		if !isSQLiteBusy(err) {
 			return err
 		}
 		lastErr = err
 		if attempt < s.maxRetries-1 {
-			// Exponential backoff with ±30% jitter
 			base := s.retryBaseMs * (1 << attempt)
 			jitter := int(float64(base) * 0.3 * (rand.Float64()*2 - 1))
 			sleep := base + jitter
@@ -89,8 +100,6 @@ const (
 	defaultViewLimit = 20
 )
 
-
-
 // Prefix "TASK-" for human-readable IDs in logs and CLI output.
 // Caller must already hold a write transaction.
 func nextID(tx *sql.Tx) (string, error) {
@@ -104,7 +113,18 @@ func nextID(tx *sql.Tx) (string, error) {
 	return fmt.Sprintf("TASK-%d", id), nil
 }
 
-// Time parsing handles both RFC3339 (JSON) and SQLite's default datetime format.
+// parseLeaseTime handles both RFC3339 (JSON) and SQLite's default datetime format.
+func parseLeaseTime(s string) *time.Time {
+	parsed, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		parsed, err = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if err == nil {
+		return &parsed
+	}
+	return nil
+}
+
 func scanTask(scanner interface {
 	Scan(dest ...any) error
 }) (Task, error) {
@@ -123,13 +143,7 @@ func scanTask(scanner interface {
 	t.Project = project.String
 	t.AssignedAgent = NullableStringFromDB(sql.NullString{String: assigned.String, Valid: assigned.Valid})
 	if lease.Valid {
-		parsed, err := time.Parse(time.RFC3339, lease.String)
-		if err != nil {
-			parsed, err = time.Parse("2006-01-02 15:04:05", lease.String)
-		}
-		if err == nil {
-			t.LeaseUntil = &parsed
-		}
+		t.LeaseUntil = parseLeaseTime(lease.String)
 	}
 	t.CreatedAt = createdAt
 	t.UpdatedAt = updatedAt

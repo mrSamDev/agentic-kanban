@@ -470,3 +470,26 @@ If removing code makes the design clearer, remove it.
 The best code is not the most clever code.
 
 The best code is the code the next engineer understands immediately.
+
+---
+
+# Hooks Convention
+
+Place executables in `.kanban/hooks/` named after the event type (`.` replaced by `-`):
+
+```
+.kanban/hooks/
+├── task-created          ← single hook
+├── task-completed        ← single hook
+└── task-completed.d/     ← multiple hooks, all receive same payload
+    ├── slack
+    ├── metrics
+    └── dashboard
+```
+
+- Hook receives event JSON on stdin: `{"event": "task.completed", "payload": {...}}`
+- Must be executable (`chmod +x`)
+- Non-zero exit is logged to stderr but does not fail the operation
+- Missing hook or missing `.d/` directory is silently ignored
+- `.d/` entries run in lexicographic order after the single-file hook
+- Each hook has a 30s timeout
