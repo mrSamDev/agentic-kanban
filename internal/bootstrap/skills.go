@@ -177,7 +177,7 @@ Exit: 0 = success, 2 = not assigned or error.
 
 const SkillClaimReview = `---
 name: claim-review
-description: Claim the next unclaimed reviewer task (TODO tasks tagged with role_boundary: reviewer).
+description: "Claim the next unclaimed reviewer task (TODO tasks tagged with role_boundary: reviewer)."
 ---
 
 # Claim Review

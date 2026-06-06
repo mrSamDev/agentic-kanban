@@ -18,5 +18,3 @@ Flags:
 JSON output: task object with status "DONE".
 
 Exit: 0 = success, 2 = wrong state or not found.
-
-

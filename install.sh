@@ -1,5 +1,5 @@
 #!/bin/sh
-# install.sh — install kanban into your project
+# install.sh — install kanban globally
 # Usage:
 #   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
 #   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh -s -- -b /usr/local/bin
@@ -7,7 +7,8 @@
 set -e
 
 # --- defaults ---
-BINDIR="${BINDIR:-".kanban"}"
+DEFAULT_BINDIR="${HOME}/.local/bin"
+BINDIR="${BINDIR:-$DEFAULT_BINDIR}"
 REPO="mrSamDev/agentic-kanban"
 VERSION="${VERSION:-latest}"
 
@@ -80,19 +81,46 @@ build_from_source() {
   say "Built ${BINDIR}/kanban"
 }
 
-# --- 3. .gitignore helper ---
-add_to_gitignore() {
-  GITIGNORE="$(pwd)/.gitignore"
-  ENTRY="$(echo "$BINDIR" | sed 's:^\./::')/kanban"
+# --- 3. ensure BINDIR is on PATH in shell rc ---
+ensure_on_path() {
+  # resolve absolute path
+  if [ -d "$BINDIR" ]; then
+    ABS_BINDIR="$(cd "$BINDIR" 2>/dev/null && pwd)"
+  else
+    case "$BINDIR" in
+      /*) ABS_BINDIR="$BINDIR" ;;
+      *)  ABS_BINDIR="$(pwd)/$BINDIR" ;;
+    esac
+  fi
 
-  if [ -f "$GITIGNORE" ]; then
-    if ! grep -qF "$ENTRY" "$GITIGNORE" 2>/dev/null; then
-      echo "$ENTRY" >> "$GITIGNORE"
-      say "Added '$ENTRY' to .gitignore"
+  # already on PATH — done
+  case ":$PATH:" in
+    *":${ABS_BINDIR}:"*) return 0 ;;
+  esac
+
+  LINE="export PATH=\"\$PATH:${ABS_BINDIR}\""
+
+  case "$SHELL" in
+    */zsh) RCFILE="$HOME/.zshrc" ;;
+    */bash) RCFILE="$HOME/.bashrc" ;;
+    *)     RCFILE="" ;;
+  esac
+
+  if [ -n "$RCFILE" ]; then
+    if grep -qF "$ABS_BINDIR" "$RCFILE" 2>/dev/null; then
+      say "kanban already on PATH in $RCFILE"
+    else
+      echo "" >> "$RCFILE"
+      echo "# kanban" >> "$RCFILE"
+      echo "$LINE" >> "$RCFILE"
+      say "Added kanban to PATH in $RCFILE"
+      say "Run: source $RCFILE"
     fi
   else
-    echo "$ENTRY" > "$GITIGNORE"
-    say "Created .gitignore with '$ENTRY'"
+    echo ""
+    echo "  Add kanban to your PATH by running:"
+    echo "    $LINE"
+    echo ""
   fi
 }
 
@@ -103,18 +131,16 @@ else
   build_from_source
 fi
 
-add_to_gitignore
+ensure_on_path
 
 say "Done!"
 echo ""
-echo "Quick start:"
+echo "Usage:"
 echo ""
-echo "  cd my-project"
-echo "  kanban task dispatch --title \"My first task\" --role worker"
-echo "  kanban task claim-next --agent my-agent --role worker"
+echo "  kanban init              # set up kanban in current project"
+echo "  kanban task dispatch ...  # create a task"
+echo "  kanban task claim-next ... # claim a task"
 echo ""
-echo "The default DB path is .kanban/kanban.db (relative to current dir)."
-echo "Override: export KANBAN_DB=/path/to/custom.db or --db /path/to/custom.db"
+echo "Docs: https://github.com/${REPO}"
 echo ""
-echo "Skills:"
-echo "  https://github.com/${REPO}/tree/main/skills"
+echo "Skills: https://github.com/${REPO}/tree/main/skills"
