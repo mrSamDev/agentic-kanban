@@ -1,2 +1,5 @@
 kanban
 *.db/tmp/kanban-fresh/kanban
+evaluations/*
+graphify-out/*
+.kanban/*

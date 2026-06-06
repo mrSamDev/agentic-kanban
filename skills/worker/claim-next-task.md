@@ -10,9 +10,16 @@ calls claim-next.
 ## Usage
 
 ```bash
+# Claim any task for your role
 kanban task claim-next \
   --agent my-agent-name \
   --role worker
+
+# Claim only tasks from a specific project
+kanban task claim-next \
+  --agent my-agent-name \
+  --role worker \
+  --project dtt-eval
 ```
 
 ## Flags
@@ -21,6 +28,7 @@ kanban task claim-next \
 |---|---|---|
 | `--agent` | yes | Your agent identifier |
 | `--role` | yes | Your role (`worker`, `reviewer`, etc.) |
+| `--project` | no | Filter to tasks from a specific project/scope |
 
 ## JSON output (task claimed)
 
@@ -30,6 +38,7 @@ kanban task claim-next \
   "title": "Fix auth bug",
   "status": "IN_PROGRESS",
   "role_boundary": "worker",
+  "project": "dtt-eval",
   "priority": 10,
   "assigned_agent": "my-agent-name",
   "lease_until": "2026-06-06T08:05:38Z"
@@ -50,6 +59,7 @@ kanban task claim-next \
 ## Behavior
 
 - Only tasks matching your `role_boundary` are eligible.
+- If `--project` is provided, only tasks from that project are eligible.
 - Among eligible tasks, selects the lowest `priority` value (most urgent),
   then oldest `created_at` (first-in-first-out).
 - Stale leases (expired `lease_until`) are reclaimed as if TODO.

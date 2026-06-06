@@ -10,7 +10,7 @@ import (
 // View returns the task without notes or history.
 func (s *Service) View(id string) (Task, error) {
 	row := s.db.QueryRow(
-		`SELECT id, title, status, role_boundary, priority,
+		`SELECT id, title, status, role_boundary, project, priority,
 		        assigned_agent, lease_until, created_at, updated_at
 		   FROM tasks WHERE id = ?`, id,
 	)
@@ -100,11 +100,12 @@ func (s *Service) listHistory(taskID string) ([]HistoryEntry, error) {
 
 // SearchParams defines optional filters for Search.
 type SearchParams struct {
-	Status TaskStatus
-	Role   string
-	Agent  string
-	Limit  int
-	Offset int
+	Status  TaskStatus
+	Role    string
+	Agent   string
+	Project string
+	Limit   int
+	Offset  int
 }
 
 // Search returns tasks matching the given filters.
@@ -124,8 +125,12 @@ func (s *Service) Search(params SearchParams) ([]Task, error) {
 		conditions = append(conditions, "assigned_agent = ?")
 		args = append(args, params.Agent)
 	}
+	if params.Project != "" {
+		conditions = append(conditions, "project = ?")
+		args = append(args, params.Project)
+	}
 
-	query := "SELECT id, title, status, role_boundary, priority, assigned_agent, lease_until, created_at, updated_at FROM tasks"
+	query := "SELECT id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at FROM tasks"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}

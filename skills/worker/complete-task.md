@@ -33,3 +33,8 @@ Full task object with:
 
 - `0` — success, JSON on stdout
 - `2` — task not found, not assigned to you, wrong state, or other error
+
+## Notes
+
+- `--agent` must exactly match the `assigned_agent` field.
+- If you get "not assigned to this agent" error, use `kanban task view TASK-101` to see the actual assigned agent name.

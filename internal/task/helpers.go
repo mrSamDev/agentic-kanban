@@ -55,17 +55,18 @@ func scanTask(scanner interface {
 	Scan(dest ...any) error
 }) (Task, error) {
 	var t Task
-	var assigned, lease sql.NullString
+	var assigned, lease, project sql.NullString
 	var createdAt, updatedAt time.Time
 	err := scanner.Scan(
 		&t.ID, &t.Title, (*string)(&t.Status),
-		&t.RoleBoundary, &t.Priority,
+		&t.RoleBoundary, &project, &t.Priority,
 		&assigned, &lease,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
 		return t, err
 	}
+	t.Project = project.String
 	t.AssignedAgent = NullableStringFromDB(sql.NullString{String: assigned.String, Valid: assigned.Valid})
 	if lease.Valid {
 		parsed, err := time.Parse(time.RFC3339, lease.String)

@@ -87,6 +87,7 @@ func taskCmd() *cobra.Command {
 		searchCmd(),
 		approveCmd(),
 		rejectCmd(),
+		batchCmd(),
 	)
 	return cmd
 }
@@ -116,7 +117,7 @@ func writeStderr(msg string) {
 // --- subcommands ---
 
 func dispatchCmd() *cobra.Command {
-	var title, role string
+	var title, role, project string
 	var priority int
 
 	cmd := &cobra.Command{
@@ -129,7 +130,11 @@ func dispatchCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.Dispatch(title, role, priority)
+			if project == "" {
+				project = "default"
+			}
+
+			t, err := s.Dispatch(title, role, project, priority)
 			if err != nil {
 				return err
 			}
@@ -139,6 +144,7 @@ func dispatchCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&title, "title", "", "task title (required)")
 	cmd.Flags().StringVar(&role, "role", "", "role boundary (required)")
+	cmd.Flags().StringVar(&project, "project", "", "project/scope label (default: default)")
 	cmd.Flags().IntVar(&priority, "priority", 100, "priority (lower = more urgent)")
 	cmd.MarkFlagRequired("title")
 	cmd.MarkFlagRequired("role")
@@ -155,7 +161,7 @@ func dispatchCmd() *cobra.Command {
 }
 
 func claimNextCmd() *cobra.Command {
-	var agent, role string
+	var agent, role, project string
 
 	cmd := &cobra.Command{
 		Use:   "claim-next",
@@ -167,7 +173,7 @@ func claimNextCmd() *cobra.Command {
 			}
 			defer close()
 
-			t, err := s.ClaimNext(agent, role)
+			t, err := s.ClaimNext(agent, role, project)
 			if err != nil {
 				return err
 			}
@@ -182,6 +188,7 @@ func claimNextCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().StringVar(&role, "role", "", "role (required)")
+	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
 	cmd.MarkFlagRequired("agent")
 	cmd.MarkFlagRequired("role")
 	return cmd
@@ -305,7 +312,7 @@ func blockCmd() *cobra.Command {
 }
 
 func searchCmd() *cobra.Command {
-	var status, role, agent string
+	var status, role, agent, project string
 	var limit int
 
 	cmd := &cobra.Command{
@@ -319,10 +326,11 @@ func searchCmd() *cobra.Command {
 			defer close()
 
 			params := task.SearchParams{
-				Status: task.TaskStatus(status),
-				Role:   role,
-				Agent:  agent,
-				Limit:  limit,
+				Status:  task.TaskStatus(status),
+				Role:    role,
+				Agent:   agent,
+				Project: project,
+				Limit:   limit,
 			}
 
 			tasks, err := s.Search(params)
@@ -336,6 +344,7 @@ func searchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&status, "status", "", "filter by status")
 	cmd.Flags().StringVar(&role, "role", "", "filter by role boundary")
 	cmd.Flags().StringVar(&agent, "agent", "", "filter by assigned agent")
+	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
 	cmd.Flags().IntVar(&limit, "limit", 0, "max results")
 	return cmd
 }
@@ -393,5 +402,85 @@ func rejectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&reason, "reason", "", "rejection reason (required)")
 	cmd.MarkFlagRequired("agent")
 	cmd.MarkFlagRequired("reason")
+	return cmd
+}
+
+func batchCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "batch",
+		Short: "Batch operations on multiple tasks",
+	}
+	cmd.AddCommand(
+		batchPriorityCmd(),
+		batchProjectCmd(),
+	)
+	return cmd
+}
+
+func batchPriorityCmd() *cobra.Command {
+	var ids string
+	var priority int
+
+	cmd := &cobra.Command{
+		Use:   "set-priority",
+		Short: "Set priority for multiple tasks",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			idList := strings.Split(ids, ",")
+			for i := range idList {
+				idList[i] = strings.TrimSpace(idList[i])
+			}
+
+			updated, err := s.BatchUpdatePriority(idList, priority)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Updated %d tasks to priority %d\n", updated, priority)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&ids, "ids", "", "comma-separated task IDs (required)")
+	cmd.Flags().IntVar(&priority, "priority", 100, "new priority (lower = more urgent)")
+	cmd.MarkFlagRequired("ids")
+	cmd.MarkFlagRequired("priority")
+	return cmd
+}
+
+func batchProjectCmd() *cobra.Command {
+	var ids string
+	var project string
+
+	cmd := &cobra.Command{
+		Use:   "set-project",
+		Short: "Set project label for multiple tasks",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			idList := strings.Split(ids, ",")
+			for i := range idList {
+				idList[i] = strings.TrimSpace(idList[i])
+			}
+
+			updated, err := s.BatchUpdateProject(idList, project)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Updated %d tasks to project '%s'\n", updated, project)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&ids, "ids", "", "comma-separated task IDs (required)")
+	cmd.Flags().StringVar(&project, "project", "", "project/scope label (required)")
+	cmd.MarkFlagRequired("ids")
+	cmd.MarkFlagRequired("project")
 	return cmd
 }

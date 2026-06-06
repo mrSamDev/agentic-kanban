@@ -9,7 +9,7 @@ import (
 // --- Command implementations ---
 
 // Dispatch inserts a new TODO task and returns it.
-func (s *Service) Dispatch(title, roleBoundary string, priority int) (Task, error) {
+func (s *Service) Dispatch(title, roleBoundary, project string, priority int) (Task, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Task{}, fmt.Errorf("dispatch begin tx: %w", err)
@@ -22,9 +22,9 @@ func (s *Service) Dispatch(title, roleBoundary string, priority int) (Task, erro
 	}
 
 	_, err = tx.Exec(
-		`INSERT INTO tasks (id, title, status, role_boundary, priority)
-		 VALUES (?, ?, 'TODO', ?, ?)`,
-		id, title, roleBoundary, priority,
+		`INSERT INTO tasks (id, title, status, role_boundary, project, priority)
+		 VALUES (?, ?, 'TODO', ?, ?, ?)`,
+		id, title, roleBoundary, project, priority,
 	)
 	if err != nil {
 		return Task{}, fmt.Errorf("insert task: %w", err)
@@ -47,7 +47,8 @@ func (s *Service) Dispatch(title, roleBoundary string, priority int) (Task, erro
 
 // ClaimNext atomically claims the highest-priority available task for a role.
 // Returns empty Task with nil error when no work is available (exit 0, JSON {}).
-func (s *Service) ClaimNext(agent, role string) (Task, error) {
+// If project is non-empty, only claims tasks from that project.
+func (s *Service) ClaimNext(agent, role, project string) (Task, error) {
 	// Serializable isolation → BEGIN IMMEDIATE → write lock up front.
 	// Required: two concurrent claimers must never get the same task.
 	tx, err := s.db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
@@ -56,28 +57,56 @@ func (s *Service) ClaimNext(agent, role string) (Task, error) {
 	}
 	defer tx.Rollback()
 
-	row := tx.QueryRow(
-		`UPDATE tasks
-		   SET status         = 'IN_PROGRESS',
-		       assigned_agent = ?,
-		       lease_until    = datetime('now', '+15 minutes'),
-		       updated_at     = CURRENT_TIMESTAMP
-		 WHERE id = (
-		   SELECT id FROM tasks
-		    WHERE (role_boundary = ? AND (status = 'TODO'
-		           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP)))
-		       OR (status = 'IN_REVIEW' AND ? = 'reviewer')
-		    ORDER BY
-		      CASE
-		        WHEN status = 'IN_REVIEW' THEN 0  -- reviewer tasks first
-		        ELSE 1
-		      END,
-		      priority ASC, created_at ASC
-		    LIMIT 1
-		 )
-		 RETURNING *`,
-		agent, role, role,
-	)
+	// Build query with optional project filter
+	var row *sql.Row
+	if project != "" {
+		row = tx.QueryRow(
+			`UPDATE tasks
+			   SET status         = 'IN_PROGRESS',
+			       assigned_agent = ?,
+			       lease_until    = datetime('now', '+15 minutes'),
+			       updated_at     = CURRENT_TIMESTAMP
+			 WHERE id = (
+			   SELECT id FROM tasks
+			    WHERE (role_boundary = ? AND (status = 'TODO'
+			           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP)))
+			       OR (status = 'IN_REVIEW' AND ? = 'reviewer')
+			       AND project = ?
+			    ORDER BY
+			      CASE
+			        WHEN status = 'IN_REVIEW' THEN 0  -- reviewer tasks first
+			        ELSE 1
+			      END,
+			      priority ASC, created_at ASC
+			    LIMIT 1
+			 )
+			 RETURNING *`,
+			agent, role, role, project,
+		)
+	} else {
+		row = tx.QueryRow(
+			`UPDATE tasks
+			   SET status         = 'IN_PROGRESS',
+			       assigned_agent = ?,
+			       lease_until    = datetime('now', '+15 minutes'),
+			       updated_at     = CURRENT_TIMESTAMP
+			 WHERE id = (
+			   SELECT id FROM tasks
+			    WHERE (role_boundary = ? AND (status = 'TODO'
+			           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP)))
+			       OR (status = 'IN_REVIEW' AND ? = 'reviewer')
+			    ORDER BY
+			      CASE
+			        WHEN status = 'IN_REVIEW' THEN 0  -- reviewer tasks first
+			        ELSE 1
+			      END,
+			      priority ASC, created_at ASC
+			    LIMIT 1
+			 )
+			 RETURNING *`,
+			agent, role, role,
+		)
+	}
 
 	t, err := scanTask(row)
 	if err != nil {
@@ -144,6 +173,12 @@ func (s *Service) Complete(id, agent string, toReview bool) (Task, error) {
 			return Task{}, ErrNotFound
 		}
 		// Existing task — must be wrong agent or wrong state.
+		// Fetch actual assigned_agent for helpful error.
+		var actualAgent sql.NullString
+		tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+		if actualAgent.Valid {
+			return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("task not assigned to this agent (assigned to: %s)", actualAgent.String)}
+		}
 		return Task{}, ErrNotAssigned
 	}
 
@@ -360,6 +395,123 @@ func (s *Service) ReviewReject(id, agent, reason string) (Task, error) {
 
 	if err := tx.Commit(); err != nil {
 		return Task{}, fmt.Errorf("commit reject: %w", err)
+	}
+
+	return s.View(id)
+}
+
+// BatchUpdatePriority updates priority for multiple tasks by ID.
+// Returns the number of tasks actually updated.
+func (s *Service) BatchUpdatePriority(ids []string, priority int) (int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("batch priority begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	updated := 0
+	for _, id := range ids {
+		res, err := tx.Exec(
+			`UPDATE tasks SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			priority, id,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("update task %s: %w", id, err)
+		}
+		n, _ := res.RowsAffected()
+		updated += int(n)
+	}
+
+	return updated, tx.Commit()
+}
+
+// BatchUpdateProject updates project label for multiple tasks by ID.
+// Returns the number of tasks actually updated.
+func (s *Service) BatchUpdateProject(ids []string, project string) (int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("batch project begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	updated := 0
+	for _, id := range ids {
+		res, err := tx.Exec(
+			`UPDATE tasks SET project = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			project, id,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("update task %s: %w", id, err)
+		}
+		n, _ := res.RowsAffected()
+		updated += int(n)
+	}
+
+	return updated, tx.Commit()
+}
+
+// CompleteWithFuzzyMatch completes a task with fuzzy agent matching (substring match).
+// If strict=false, matches any agent containing the given string.
+func (s *Service) CompleteWithFuzzyMatch(id, agent string, toReview bool, strict bool) (Task, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Task{}, fmt.Errorf("complete begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	newStatus := StatusDone
+	action := "COMPLETE"
+	if toReview {
+		newStatus = StatusInReview
+		action = "REVIEW"
+	}
+
+	var res sql.Result
+	if strict {
+		res, err = tx.Exec(
+			`UPDATE tasks
+			    SET status = ?, assigned_agent = NULL, lease_until = NULL,
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ?
+			    AND assigned_agent = ?
+			    AND status IN ('IN_PROGRESS', 'IN_REVIEW')`,
+			string(newStatus), id, agent,
+		)
+	} else {
+		res, err = tx.Exec(
+			`UPDATE tasks
+			    SET status = ?, assigned_agent = NULL, lease_until = NULL,
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ?
+			    AND assigned_agent LIKE ?
+			    AND status IN ('IN_PROGRESS', 'IN_REVIEW')`,
+			string(newStatus), id, "%"+agent+"%",
+		)
+	}
+	if err != nil {
+		return Task{}, fmt.Errorf("complete update: %w", err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		var exists bool
+		tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+		if !exists {
+			return Task{}, ErrNotFound
+		}
+		return Task{}, ErrNotAssigned
+	}
+
+	_, err = tx.Exec(
+		`INSERT INTO history (task_id, agent, action) VALUES (?, ?, ?)`,
+		id, agent, action,
+	)
+	if err != nil {
+		return Task{}, fmt.Errorf("insert complete history: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Task{}, fmt.Errorf("commit complete: %w", err)
 	}
 
 	return s.View(id)

@@ -65,6 +65,10 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
 
+	// Migrate existing databases: add project column if missing.
+	// Ignore error if column already exists (expected for new/already-migrated DBs).
+	_, _ = db.Exec("ALTER TABLE tasks ADD COLUMN project TEXT NOT NULL DEFAULT 'default'")
+
 	return &DB{db}, nil
 }
 
