@@ -28,6 +28,7 @@ type Task struct {
 	Title         string     `json:"title"`
 	Status        TaskStatus `json:"status"`
 	RoleBoundary  string     `json:"role_boundary"`
+	Project       string     `json:"project"`
 	Priority      int        `json:"priority"`
 	AssignedAgent *string    `json:"assigned_agent"` // nullable
 	LeaseUntil    *time.Time `json:"lease_until"`    // nullable
