@@ -175,6 +175,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; s
 .command-row { min-height: 72px; padding: 16px 18px; border-top: 1px solid var(--line); transition: background 160ms var(--ease); }
 .command-row:hover { background: var(--surface); }
 .command-row code { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+
 .command-row > span { color: var(--accent); font-family: var(--mono); font-size: 11px; }
 .command-row p { color: var(--muted); font-size: 13px; }
 
@@ -282,6 +283,20 @@ footer p:last-child { justify-self: end; }
 /* Closing analogy */
 .closing-analogy { max-width: 52ch; margin: 0 auto clamp(32px, 5vw, 56px); color: var(--muted); font-size: clamp(16px, 1.8vw, 20px); line-height: 1.55; }
 .closing-analogy em { color: var(--ink); font-style: normal; font-weight: 600; }
+
+/* Skills section */
+.skills-role-list { margin-bottom: clamp(56px, 8vw, 100px); }
+.skills-role-list .command-row code { min-width: 100px; font-weight: 600; }
+.skills-role-list .command-row span { white-space: pre-wrap; word-break: break-word; }
+.skills-prose { display: grid; gap: 16px; }
+.skills-label { color: var(--accent); font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.skills-prose p:last-child { max-width: 65ch; color: var(--muted); font-size: 16px; line-height: 1.6; }
+
+/* Hooks section */
+.hooks-detail { margin-top: clamp(56px, 8vw, 100px); }
+.hooks-detail > p { margin-bottom: 32px; color: var(--muted); font-size: 16px; line-height: 1.6; }
+.hooks-detail .terminal { width: 100%; }
+.hooks-detail .terminal pre { padding: clamp(24px, 4vw, 40px); font-size: clamp(11px, 1.15vw, 14px); line-height: 1.85; }
 
 @media (max-width: 760px) {
   .problem-split, .no-framework { grid-template-columns: 1fr; }

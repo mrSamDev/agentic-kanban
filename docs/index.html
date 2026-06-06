@@ -22,6 +22,8 @@
         <a href="#why">Why</a>
         <a href="#workflow">Workflow</a>
         <a href="#commands">Commands</a>
+        <a href="#skills">Skills</a>
+        <a href="#hooks">Hooks</a>
       </div>
       <div class="nav-actions">
         <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch theme">
@@ -235,9 +237,60 @@
       </div>
     </section>
 
+    <section id="skills" class="section" aria-labelledby="skills-title">
+      <div class="section-heading">
+        <p class="section-index">06 / Skills</p>
+        <h2 id="skills-title">The agent runtime.</h2>
+        <p>Skills teach agents the coordination protocol. One set per role.</p>
+      </div>
+      <div class="command-list skills-role-list">
+        <div class="command-head"><span>Role</span><span>Skills</span><span>What the agent learns</span></div>
+        <div class="command-row"><code>manager/</code><span>dispatch-task, dispatch-plan, approve-plan, review-backlog, view-task</span><p>Plan work, dispatch tasks, review progress</p></div>
+        <div class="command-row"><code>worker/</code><span>claim-next-task, log-progress, complete-task, block-task</span><p>Claim tasks, report progress, finish work</p></div>
+        <div class="command-row"><code>reviewer/</code><span>claim-review, approve-task, reject-task</span><p>Review submissions, approve or reject</p></div>
+      </div>
+      <div class="skills-prose">
+        <p class="skills-label">Protocol skills vs task skills</p>
+        <p>Protocol skills teach coordination&mdash;they ship with the binary. Task skills teach domain logic&mdash;you bring your own. Both live side by side in the agent's skill directory. The agents change. The protocol stays.</p>
+      </div>
+    </section>
+
+    <section id="hooks" class="section" aria-labelledby="hooks-title">
+      <div class="section-heading">
+        <p class="section-index">07 / Hooks</p>
+        <h2 id="hooks-title">React to every event.</h2>
+        <p>Drop an executable in <code>.kanban/hooks/</code> and extend the workflow without touching the core.</p>
+      </div>
+      <div class="command-list">
+        <div class="command-head"><span>Event</span><span>Executable</span><span>When it fires</span></div>
+        <div class="command-row"><code>task.created</code><span><code>task-created</code></span><p>Task dispatched</p></div>
+        <div class="command-row"><code>task.claimed</code><span><code>task-claimed</code></span><p>Agent claims a task</p></div>
+        <div class="command-row"><code>task.progress</code><span><code>task-progress</code></span><p>Progress logged</p></div>
+        <div class="command-row"><code>task.completed</code><span><code>task-completed</code></span><p>Task finished</p></div>
+        <div class="command-row"><code>task.submitted_for_review</code><span><code>task-submitted-for-review</code></span><p>Submitted for review</p></div>
+        <div class="command-row"><code>task.blocked</code><span><code>task-blocked</code></span><p>Blocked</p></div>
+        <div class="command-row"><code>review.approved</code><span><code>review-approved</code></span><p>Approved</p></div>
+        <div class="command-row"><code>review.rejected</code><span><code>review-rejected</code></span><p>Rejected</p></div>
+        <div class="command-row"><code>task.priority_updated</code><span><code>task-priority-updated</code></span><p>Batch priority update</p></div>
+        <div class="command-row"><code>task.project_updated</code><span><code>task-project-updated</code></span><p>Batch project label update</p></div>
+      </div>
+      <div class="hooks-detail">
+        <p>Hooks receive event JSON on stdin with a 30-second timeout. Errors log to stderr but don't fail the operation. Missing hooks are silently ignored. Chain multiple hooks using a <code>.d/</code> directory &mdash; hooks run concurrently so a slow notifier won't block the caller.</p>
+        <div class="terminal">
+          <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/</b></div>
+          <pre><code>task-created
+task-completed
+task-completed.d/
+  slack
+  metrics
+  dashboard</code></pre>
+        </div>
+      </div>
+    </section>
+
     <section class="section fit-section" aria-labelledby="fit-title">
       <div class="section-heading">
-        <p class="section-index">06 / Fit</p>
+        <p class="section-index">08 / Fit</p>
         <h2 id="fit-title">Built for local agent teams.</h2>
       </div>
       <div class="no-framework">
