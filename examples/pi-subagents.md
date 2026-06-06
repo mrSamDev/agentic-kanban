@@ -20,14 +20,40 @@ This creates:
 .kanban/
 └── kanban.db
 .pi/
-└── agents/
-    ├── manager/
-    │   └── skills/   (dispatch-task, review-backlog, view-task)
-    ├── worker/
-    │   └── skills/   (claim-next-task, log-progress, complete-task, block-task)
-    └── reviewer/
-        └── skills/   (claim-review, approve-task, reject-task)
+├── extensions/
+│   └── kanban.ts              # Pi extension: auto-registers kanban tools
+├── agents/
+│   ├── manager.md             # Agent definition with tool references
+│   ├── worker.md
+│   └── reviewer.md
+└── skills/
+    ├── dispatch-task.md       # Skill docs for bash fallback
+    ├── review-backlog.md
+    ├── view-task.md
+    ├── claim-next-task.md
+    ├── log-progress.md
+    ├── complete-task.md
+    ├── block-task.md
+    ├── claim-review.md
+    ├── approve-task.md
+    └── reject-task.md
 ```
+
+Pi auto-discovers `.pi/extensions/kanban.ts` at startup and registers 9 custom tools:
+`claim_next_task`, `dispatch_task`, `log_progress`, `block_task`, `complete_task`,
+`approve_task`, `reject_task`, `review_backlog`, `view_task`.
+
+The footer shows live task counts by status. Type `/kanban` for a board overview.
+
+## How it works
+
+When you open `pi` in a project initialized with `kanban init --harness pi`:
+
+1. Pi loads the extension → kanban tools appear in the tool list
+2. The LLM uses the typed tools instead of bash commands
+3. Tools auto-detect the `.kanban/kanban.db` path (walk up from cwd)
+4. Agent definitions in `.pi/agents/` provide per-role prompts
+5. Skill files in `.pi/skills/` serve as reference docs for bash fallback
 
 ## Plan file example
 
@@ -51,80 +77,108 @@ Priority hints: `[p1]`-`[p999]`.
 
 ## Running agents
 
-Each agent reads its skills and runs the kanban CLI.
+Each agent is a flat `.md` file in `.pi/agents/` with YAML frontmatter.
+Run with `pi run <name>`.
 
 ### Manager (dispatches work)
 
-In `.pi/agents/manager/prompt.md`:
+`.pi/agents/manager.md`:
 
 ```markdown
-You are a manager agent. Use the kanban tool to dispatch work.
+---
+name: manager
+description: Kanban manager agent that dispatches work and reviews the backlog
+tools: read, bash, write, edit
+model: claude-sonnet-4-5
+---
 
-Available skills:
-- dispatch-task: create new tasks
-- review-backlog: check task status
-- view-task: inspect task details
+You are a kanban manager agent. Manage the task board using the registered kanban tools.
 
-Read each skill file before calling the command.
+Available tools (prefer these over raw bash):
+- dispatch_task: create new tasks for workers or reviewers
+- review_backlog: search tasks by status, role, agent, or project
+- view_task: inspect full task details including notes and history
+
+Workflow:
+1. Review the backlog to see what's pending
+2. Dispatch tasks to workers or reviewers with appropriate priority
+3. Monitor progress by checking task status
 ```
 
 Run: `pi run manager`
 
 ### Worker (claims and executes)
 
-In `.pi/agents/worker/prompt.md`:
+`.pi/agents/worker.md`:
 
 ```markdown
-You are a worker agent. Claim and complete tasks from the kanban board.
+---
+name: worker
+description: Kanban worker agent that claims and completes tasks
+tools: read, bash, write, edit
+model: claude-sonnet-4-5
+---
 
-Available skills:
-- claim-next-task: claim highest-priority work
-- log-progress: report progress (renews lease)
-- complete-task: mark done (or submit for review)
-- block-task: mark blocked with reason
+You are a kanban worker agent. Claim and complete tasks from the kanban board.
 
-Loop: claim → work → log progress → complete.
+Available tools (prefer these over raw bash):
+- claim_next_task: claim the highest-priority unclaimed task
+- log_progress: report progress and renew lease (heartbeat)
+- block_task: mark a task as blocked with explanation
+- complete_task: mark done or submit for review
+
+Workflow:
+1. Claim the next available task
+2. Work on the task, logging progress periodically
+3. Submit for review or mark complete
+4. If blocked, mark with reason
 ```
 
 Run: `pi run worker`
 
 ### Reviewer (approves or rejects)
 
-In `.pi/agents/reviewer/prompt.md`:
+`.pi/agents/reviewer.md`:
 
 ```markdown
-You are a reviewer agent. Review and approve/reject completed tasks.
+---
+name: reviewer
+description: Kanban reviewer agent that approves or rejects completed tasks
+tools: read, bash, write, edit
+model: claude-sonnet-4-5
+---
 
-Available skills:
-- approve-task: approve IN_REVIEW → DONE
-- reject-task: reject IN_REVIEW → TODO
-- claim-review: claim reviewer-only TODO tasks
-- view-task: inspect task details
+You are a kanban reviewer agent. Review and approve/reject completed tasks.
+
+Available tools (prefer these over raw bash):
+- approve_task: approve IN_REVIEW tasks → DONE
+- reject_task: reject IN_REVIEW tasks → TODO for rework
+- view_task: inspect full task details before review
+- review_backlog: search for IN_REVIEW tasks
+
+Workflow:
+1. Check for tasks in IN_REVIEW state using review_backlog
+2. View task details
+3. Approve or reject with clear reason
 ```
 
 Run: `pi run reviewer`
 
-## Full workflow
+## Manual workflow (without agents)
+
+If you just want to use the kanban CLI directly:
 
 ```bash
-# 1. Manager dispatches tasks
-pi run manager
-# Manager reads skills/dispatch-task.md, runs:
-#   kanban task dispatch --title "Refactor auth" --role worker --priority 1
+# Create tasks
+kanban task dispatch --title "Refactor auth" --role worker --priority 1
 
-# 2. Worker picks up and executes
-pi run worker
-# Reads skills/claim-next-task.md, runs:
-#   kanban task claim-next --agent worker-1 --role worker
-# Works, logs progress:
-#   kanban task log-progress TASK-1 --agent worker-1 --note "Extracted middleware" --type PROGRESS
-# Submits for review:
-#   kanban task complete TASK-1 --agent worker-1 --review
+# Claim and work
+kanban task claim-next --agent my-agent --role worker
+kanban task log-progress TASK-1 --agent my-agent --note "Working" --type PROGRESS
+kanban task complete TASK-1 --agent my-agent --review
 
-# 3. Reviewer reviews
-pi run reviewer
-# Reads skills/approve-task.md, runs:
-#   kanban task approve TASK-1 --agent reviewer-1
+# Review
+kanban task approve TASK-1 --agent reviewer-1
 ```
 
 ## Crash recovery
@@ -132,7 +186,7 @@ pi run reviewer
 If a worker crashes mid-task:
 
 1. Lease expires after 15 minutes (no `log-progress` heartbeat).
-2. Next worker calling `claim-next` automatically reclaims the stale task.
+2. Next worker calling `claim_next_task` (or `kanban task claim-next`) automatically reclaims the stale task.
 3. Work resumes from the last logged progress note.
 
 No daemon, no monitoring, no infrastructure. Just a `.db` file.

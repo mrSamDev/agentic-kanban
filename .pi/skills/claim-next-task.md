@@ -1,3 +1,8 @@
+---
+name: claim-next-task
+description: Claim the highest-priority unclaimed task for a role, with lease reclamation on stale tasks.
+---
+
 # Claim Next Task
 
 Claim the highest-priority unclaimed task for your role. Returns empty {}

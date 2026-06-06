@@ -1,3 +1,8 @@
+---
+name: claim-review
+description: Claim the next unclaimed reviewer task (TODO tasks tagged with role_boundary: reviewer).
+---
+
 # Claim Review
 
 Claim the next unclaimed reviewer task (TODO tasks tagged with

@@ -119,15 +119,21 @@ func TestInitCreatesDBAndSkills(t *testing.T) {
 		t.Fatal("DB not created")
 	}
 
-	// Skills scaffolded.
-	for _, role := range []string{"manager", "worker", "reviewer"} {
-		roleDir := filepath.Join(tmp, "agents", role, "skills")
-		entries, err := os.ReadDir(roleDir)
-		if err != nil {
-			t.Fatalf("read %s skills: %v", role, err)
-		}
-		if len(entries) == 0 {
-			t.Fatalf("no skill files in %s", roleDir)
+	// Skills scaffolded flat under .agents/skills/.
+	skillsDir := filepath.Join(tmp, ".agents", "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		t.Fatalf("read skills dir: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no skill files")
+	}
+
+	// Agent files scaffolded.
+	agentsDir := filepath.Join(tmp, ".agents")
+	for _, agent := range []string{"manager.md", "worker.md", "reviewer.md"} {
+		if _, err := os.Stat(filepath.Join(agentsDir, agent)); os.IsNotExist(err) {
+			t.Fatalf("agent not created: %s", agent)
 		}
 	}
 }

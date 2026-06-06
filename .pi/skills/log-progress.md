@@ -1,3 +1,8 @@
+---
+name: log-progress
+description: Log a progress note and renew your lease (heartbeat) to prevent lease expiry.
+---
+
 # Log Progress
 
 Log a progress note and renew your lease (heartbeat). Call this periodically

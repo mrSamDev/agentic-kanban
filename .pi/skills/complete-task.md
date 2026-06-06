@@ -1,3 +1,8 @@
+---
+name: complete-task
+description: Mark a task as done, optionally submitting for review instead.
+---
+
 # Complete Task
 
 Mark a task as done. If the task needs review, use --review to submit

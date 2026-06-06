@@ -1,6 +1,11 @@
 package bootstrap
 
-const SkillDispatchTask = `# Dispatch Task
+const SkillDispatchTask = `---
+name: dispatch-task
+description: Create a new task in the kanban board. Tasks start as TODO and are picked up by workers via claim-next.
+---
+
+# Dispatch Task
 
 Create a new task in the kanban board. Tasks start as TODO and are picked
 up by workers via claim-next.
@@ -19,7 +24,12 @@ JSON output: task object with status "TODO".
 Exit: 0 = success, 2 = error.
 `
 
-const SkillViewTask = `# View Task
+const SkillViewTask = `---
+name: view-task
+description: View full task details including notes and history. Useful when an agent receives a task ID and needs context.
+---
+
+# View Task
 
 View full task details including notes and history. Useful when an agent
 receives a task ID and needs context.
@@ -33,7 +43,12 @@ JSON output: { task, notes[], history[] }
 Exit: 0 = success, 2 = not found or error.
 `
 
-const SkillReviewBacklog = `# Review Backlog
+const SkillReviewBacklog = `---
+name: review-backlog
+description: Search tasks by filters to see what's available, blocked, or done.
+---
+
+# Review Backlog
 
 Search tasks by filters to see what's available, blocked, or done.
 
@@ -54,7 +69,12 @@ JSON output: array of task objects sorted by priority.
 Exit: 0 = success, 2 = error.
 `
 
-const SkillClaimNextTask = `# Claim Next Task
+const SkillClaimNextTask = `---
+name: claim-next-task
+description: Claim the highest-priority unclaimed task for a role, with lease reclamation on stale tasks.
+---
+
+# Claim Next Task
 
 Claim the highest-priority unclaimed task for your role. Returns empty {}
 if no work is available.
@@ -76,7 +96,12 @@ JSON output (no work): {}
 Exit: 0 = success or no work, 2 = error.
 `
 
-const SkillLogProgress = `# Log Progress
+const SkillLogProgress = `---
+name: log-progress
+description: Log a progress note and renew your lease (heartbeat) to prevent lease expiry.
+---
+
+# Log Progress
 
 Log a progress note and renew your lease (heartbeat). Call this periodically
 while working to prevent lease expiry.
@@ -98,7 +123,12 @@ Lease renewal: this command extends lease to +15 min from now.
 Exit: 0 = success, 2 = not assigned or not found.
 `
 
-const SkillBlockTask = `# Block Task
+const SkillBlockTask = `---
+name: block-task
+description: Mark a task as blocked with an explanation and clear the lease so other agents know the task is stuck.
+---
+
+# Block Task
 
 Mark a task as blocked with an explanation. Clears your lease so other
 agents know the task is stuck.
@@ -118,7 +148,12 @@ JSON output: task object with status "BLOCKED".
 Exit: 0 = success, 2 = not assigned or not found.
 `
 
-const SkillCompleteTask = `# Complete Task
+const SkillCompleteTask = `---
+name: complete-task
+description: Mark a task as done, optionally submitting for review instead.
+---
+
+# Complete Task
 
 Mark a task as done. If the task needs review, use --review to submit
 for review instead.
@@ -140,7 +175,12 @@ JSON output: task object with status "DONE" or "IN_REVIEW".
 Exit: 0 = success, 2 = not assigned or error.
 `
 
-const SkillClaimReview = `# Claim Review
+const SkillClaimReview = `---
+name: claim-review
+description: Claim the next unclaimed reviewer task (TODO tasks tagged with role_boundary: reviewer).
+---
+
+# Claim Review
 
 Claim the next unclaimed reviewer task (TODO tasks tagged with
 role_boundary: reviewer).
@@ -157,7 +197,12 @@ JSON output: same as Claim Next Task. Empty {} if no work.
 Exit: 0 = success or no work, 2 = error.
 `
 
-const SkillApproveTask = `# Approve Task
+const SkillApproveTask = `---
+name: approve-task
+description: Approve a task in IN_REVIEW state, marking it DONE. Any reviewer can approve.
+---
+
+# Approve Task
 
 Approve a task in IN_REVIEW state, marking it DONE. Any reviewer can
 approve — no prior claim needed.
@@ -174,7 +219,12 @@ JSON output: task object with status "DONE".
 Exit: 0 = success, 2 = wrong state or not found.
 `
 
-const SkillRejectTask = `# Reject Task
+const SkillRejectTask = `---
+name: reject-task
+description: Reject a task in IN_REVIEW state, sending it back to TODO for rework.
+---
+
+# Reject Task
 
 Reject a task in IN_REVIEW state, sending it back to TODO for rework.
 Any reviewer can reject — no prior claim needed.

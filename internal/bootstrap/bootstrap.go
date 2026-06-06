@@ -113,31 +113,106 @@ func dispatchPlan(sqlDB *sql.DB, planPath string) error {
 }
 
 func scaffoldHarness(harness Harness, dir string) error {
-	for role, skills := range roleSkills {
-		base := harnessBase(harness, dir)
-		roleDir := filepath.Join(base, role, "skills")
-		if err := os.MkdirAll(roleDir, 0755); err != nil {
-			return fmt.Errorf("create %s dir: %w", roleDir, err)
+	switch harness {
+	case HarnessPi:
+		return scaffoldPi(dir)
+	case HarnessClaude:
+		return scaffoldClaude(dir)
+	default:
+		return scaffoldGeneric(dir)
+	}
+}
+
+func scaffoldClaude(dir string) error {
+	agentsDir := filepath.Join(dir, ".claude", "agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		return fmt.Errorf("create .claude/agents dir: %w", err)
+	}
+
+	claudeAgents := map[string]string{
+		"manager.md":  AgentClaudeManager,
+		"worker.md":   AgentClaudeWorker,
+		"reviewer.md": AgentClaudeReviewer,
+	}
+	for filename, content := range claudeAgents {
+		path := filepath.Join(agentsDir, filename)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return fmt.Errorf("write .claude/agents/%s: %w", filename, err)
 		}
-		for filename, content := range skills {
-			path := filepath.Join(roleDir, filename)
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-				return fmt.Errorf("write %s: %w", path, err)
-			}
+	}
+
+	return writeFlatSkills(filepath.Join(dir, ".claude", "skills"))
+}
+
+func scaffoldPi(dir string) error {
+	extDir := filepath.Join(dir, ".pi", "extensions")
+	if err := os.MkdirAll(extDir, 0755); err != nil {
+		return fmt.Errorf("create .pi/extensions dir: %w", err)
+	}
+	extPath := filepath.Join(extDir, KanbanExtensionName)
+	if err := os.WriteFile(extPath, []byte(KanbanExtension), 0644); err != nil {
+		return fmt.Errorf("write .pi/extensions/%s: %w", KanbanExtensionName, err)
+	}
+
+	agentsDir := filepath.Join(dir, ".pi", "agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		return fmt.Errorf("create .pi/agents dir: %w", err)
+	}
+
+	agentDefs := map[string]string{
+		"manager.md":  AgentManager,
+		"worker.md":   AgentWorker,
+		"reviewer.md": AgentReviewer,
+	}
+	for filename, content := range agentDefs {
+		path := filepath.Join(agentsDir, filename)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return fmt.Errorf("write .pi/agents/%s: %w", filename, err)
+		}
+	}
+
+	return writeFlatSkills(filepath.Join(dir, ".pi", "skills"))
+}
+
+func scaffoldGeneric(dir string) error {
+	agentsDir := filepath.Join(dir, ".agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		return fmt.Errorf("create .agents dir: %w", err)
+	}
+
+	genericAgents := map[string]string{
+		"manager.md":  AgentGenericManager,
+		"worker.md":   AgentGenericWorker,
+		"reviewer.md": AgentGenericReviewer,
+	}
+	for filename, content := range genericAgents {
+		path := filepath.Join(agentsDir, filename)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return fmt.Errorf("write .agents/%s: %w", filename, err)
+		}
+	}
+
+	return writeFlatSkills(filepath.Join(dir, ".agents", "skills"))
+}
+
+func writeFlatSkills(skillsDir string) error {
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		return fmt.Errorf("create skills dir: %w", err)
+	}
+
+	allSkills := map[string]string{}
+	for _, skills := range roleSkills {
+		for name, content := range skills {
+			allSkills[name] = content
+		}
+	}
+	for filename, content := range allSkills {
+		path := filepath.Join(skillsDir, filename)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return fmt.Errorf("write skill %s: %w", filename, err)
 		}
 	}
 	return nil
-}
-
-func harnessBase(h Harness, projectDir string) string {
-	switch h {
-	case HarnessPi:
-		return filepath.Join(projectDir, ".pi", "agents")
-	case HarnessClaude:
-		return filepath.Join(projectDir, ".claude", "agents")
-	default:
-		return filepath.Join(projectDir, "agents")
-	}
 }
 
 var roleSkills = map[string]map[string]string{

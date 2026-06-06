@@ -1,3 +1,8 @@
+---
+name: reject-task
+description: Reject a task in IN_REVIEW state, sending it back to TODO for rework.
+---
+
 # Reject Task
 
 Reject a task in IN_REVIEW state, sending it back to TODO for rework.

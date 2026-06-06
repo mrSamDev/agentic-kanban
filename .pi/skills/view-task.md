@@ -1,3 +1,8 @@
+---
+name: view-task
+description: View full task details including notes and history. Useful when an agent receives a task ID and needs context.
+---
+
 # View Task
 
 View full task details including notes and history. Useful when an agent

@@ -1,3 +1,8 @@
+---
+name: dispatch-task
+description: Create a new task in the kanban board. Tasks start as TODO and are picked up by workers via claim-next.
+---
+
 # Dispatch Task
 
 Create a new task in the kanban board. Tasks start as TODO and are picked

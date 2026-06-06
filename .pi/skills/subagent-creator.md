@@ -1,3 +1,4 @@
+
 ---
 name: subagent-creator
 description: Creates specialized subagents on-demand and executes them. Use when a task requires multiple distinct skill sets, when you need to delegate focused work to isolated contexts, when parallel execution would speed up completion, or when you want to chain specialized agents in sequence. Enables dynamic agent creation without pre-defined skills.

@@ -1,3 +1,8 @@
+---
+name: block-task
+description: Mark a task as blocked with an explanation and clear the lease so other agents know the task is stuck.
+---
+
 # Block Task
 
 Mark a task as blocked with an explanation. Clears your lease so other

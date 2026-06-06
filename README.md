@@ -244,7 +244,9 @@ Manager                    Workers                    Reviewers
 │   ├── bootstrap/
 │   │   ├── bootstrap.go      # Init logic + plan parsing
 │   │   ├── bootstrap_test.go # Tests for init + plan parsing
-│   │   └── skills.go         # Skill templates
+│   │   ├── agents.go         # Agent definition templates
+│   │   ├── kanban_extension.go # Pi extension template (TS)
+│   │   └── skills.go         # Skill document templates
 │   ├── storage/
 │   │   ├── schema.sql        # SQLite schema (embedded)
 │   │   └── sqlite.go         # Connection + pragmas + migration
@@ -259,7 +261,7 @@ Manager                    Workers                    Reviewers
 │   ├── worker/               # claim-next-task, log-progress, complete-task, block-task
 │   └── reviewer/             # claim-review, approve-task, reject-task
 ├── examples/
-│   ├── pi-subagents.md       # Integration guide for pi
+│   ├── pi-subagents.md       # Integration guide for pi (with extension)
 │   └── claude-code-subagents.md  # Integration guide for Claude Code
 └── install.sh                # curl-install script
 ```
