@@ -1,9 +1,16 @@
+CREATE TABLE IF NOT EXISTS task_seq (
+    next_id INTEGER NOT NULL DEFAULT 1
+);
+
+INSERT OR IGNORE INTO task_seq (next_id) VALUES (0);
+
 CREATE TABLE IF NOT EXISTS tasks (
     id            TEXT PRIMARY KEY,                  -- e.g. 'TASK-101'
     title         TEXT NOT NULL,
     status        TEXT NOT NULL CHECK(status IN
                   ('TODO','IN_PROGRESS','BLOCKED','IN_REVIEW','DONE')),
     role_boundary TEXT NOT NULL,                     -- 'worker' | 'reviewer' | ...
+    project       TEXT NOT NULL DEFAULT 'default',   -- project/scope label
     priority      INTEGER NOT NULL DEFAULT 100,      -- lower = more urgent
     assigned_agent TEXT,                             -- current lease holder, nullable
     lease_until   DATETIME,                          -- nullable when unclaimed
@@ -13,6 +20,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_claim
     ON tasks(role_boundary, status, priority, created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_project
+    ON tasks(project, status, priority);
 
 CREATE TABLE IF NOT EXISTS notes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
