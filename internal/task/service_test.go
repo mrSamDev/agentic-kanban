@@ -3,6 +3,7 @@ package task
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -641,5 +642,84 @@ func TestPollEvents(t *testing.T) {
 	}
 	if len(events) != 0 {
 		t.Fatalf("expected 0 events after ID 2, got %d", len(events))
+	}
+}
+
+func makeHook(t *testing.T, hooksDir, eventType, script string) {
+	t.Helper()
+	name := strings.ReplaceAll(eventType, ".", "-")
+	path := filepath.Join(hooksDir, name)
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHookFiresAfterDispatch(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	sentinel := filepath.Join(dir, "fired")
+	makeHook(t, filepath.Join(dir, "hooks"), "task.created", "touch "+sentinel)
+	s.SetHooksDir(filepath.Join(dir, "hooks"))
+
+	if _, err := s.Dispatch(t.Context(), "hook test", "worker", "default", 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatal("hook did not fire: sentinel file missing")
+	}
+}
+
+func TestHookDoesNotFireOnRollback(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	sentinel := filepath.Join(dir, "fired")
+	makeHook(t, filepath.Join(dir, "hooks"), "task.completed", "touch "+sentinel)
+	s.SetHooksDir(filepath.Join(dir, "hooks"))
+
+	// Complete with wrong agent — guaranteed rollback, no hook
+	s.Dispatch(t.Context(), "task", "worker", "default", 50)
+	s.ClaimNext(t.Context(), "agent-a", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "wrong-agent", false)
+
+	if _, err := os.Stat(sentinel); err == nil {
+		t.Fatal("hook fired on rollback")
+	}
+}
+
+func TestHookClaimNextEmptyResultNoFire(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	sentinel := filepath.Join(dir, "fired")
+	makeHook(t, filepath.Join(dir, "hooks"), "task.claimed", "touch "+sentinel)
+	s.SetHooksDir(filepath.Join(dir, "hooks"))
+
+	// No tasks in DB — ClaimNext returns zero-value task, hook must not fire
+	s.ClaimNext(t.Context(), "agent", "worker", "")
+
+	if _, err := os.Stat(sentinel); err == nil {
+		t.Fatal("hook fired on empty ClaimNext result")
+	}
+}
+
+func TestHookMissingIsSilent(t *testing.T) {
+	s := newTestService(t)
+	s.SetHooksDir(t.TempDir()) // empty dir, no hook scripts
+
+	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
+		t.Fatalf("Dispatch failed with missing hook: %v", err)
+	}
+}
+
+func TestHookNonZeroExitIsSilent(t *testing.T) {
+	s := newTestService(t)
+	dir := t.TempDir()
+	makeHook(t, filepath.Join(dir, "hooks"), "task.created", "exit 1")
+	s.SetHooksDir(filepath.Join(dir, "hooks"))
+
+	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
+		t.Fatalf("Dispatch failed with non-zero hook exit: %v", err)
 	}
 }

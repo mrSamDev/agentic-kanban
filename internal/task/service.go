@@ -52,6 +52,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("commit dispatch: %w", err)
 	}
 
+	runHook(s.hooksDir, "task.created", map[string]string{"task_id": id})
 	return s.View(ctx, id)
 }
 
@@ -140,6 +141,9 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 	if err != nil {
 		return Task{}, fmt.Errorf("claim after retries: %w", err)
 	}
+	if task.ID != "" {
+		runHook(s.hooksDir, "task.claimed", map[string]string{"task_id": task.ID, "agent": agent})
+	}
 	return task, nil
 }
 
@@ -219,6 +223,9 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 		task, err = s.View(ctx, id)
 		return err
 	})
+	if err == nil && !toReview {
+		runHook(s.hooksDir, "task.completed", map[string]string{"task_id": id, "agent": agent})
+	}
 	return task, err
 }
 
@@ -358,6 +365,9 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 		task, err = s.View(ctx, id)
 		return err
 	})
+	if err == nil {
+		runHook(s.hooksDir, "task.blocked", map[string]string{"task_id": id, "agent": agent})
+	}
 	return task, err
 }
 
@@ -410,6 +420,7 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 		return Task{}, fmt.Errorf("commit review: %w", err)
 	}
 
+	runHook(s.hooksDir, "review.approved", map[string]string{"task_id": id, "agent": agent})
 	return s.View(ctx, id)
 }
 
@@ -474,6 +485,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		return Task{}, fmt.Errorf("commit reject: %w", err)
 	}
 
+	runHook(s.hooksDir, "review.rejected", map[string]string{"task_id": id, "agent": agent})
 	return s.View(ctx, id)
 }
 

@@ -23,11 +23,14 @@ var ErrInvalidState = &ExitError{Code: 2, Message: "invalid state transition"}
 var ErrNotAssigned = &ExitError{Code: 2, Message: "task not assigned to this agent"}
 
 type Service struct {
-	db           *sql.DB
-	timeout      time.Duration
-	maxRetries   int
-	retryBaseMs  int
+	db          *sql.DB
+	timeout     time.Duration
+	maxRetries  int
+	retryBaseMs int
+	hooksDir    string
 }
+
+func (s *Service) SetHooksDir(dir string) { s.hooksDir = dir }
 
 func NewService(db *sql.DB, timeout time.Duration) *Service {
 	return &Service{

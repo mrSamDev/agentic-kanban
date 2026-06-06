@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -203,6 +204,7 @@ func openService() (*task.Service, func(), error) {
 		return nil, nil, err
 	}
 	s := task.NewService(db.DB, 0)
+	s.SetHooksDir(filepath.Join(filepath.Dir(dbPath), "hooks"))
 	return s, func() { db.Close() }, nil
 }
 
