@@ -1,0 +1,367 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"agent-kanban/internal/storage"
+	"agent-kanban/internal/task"
+
+	"github.com/spf13/cobra"
+)
+
+var dbPath string
+
+func main() {
+	var rootCmd = &cobra.Command{
+		Use:   "kanban",
+		Short: "Agent coordination engine — shared task state for cooperating agents",
+	}
+
+	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "kanban.db", "path to SQLite database (or $KANBAN_DB)")
+
+	rootCmd.SilenceUsage = true
+	rootCmd.SilenceErrors = true
+
+	rootCmd.AddCommand(taskCmd())
+	rootCmd.AddCommand(versionCmd())
+
+	if err := rootCmd.Execute(); err != nil {
+		// ExitError carries exit code 2; generic errors exit 1.
+		if exitErr, ok := err.(*task.ExitError); ok {
+			writeStderr(exitErr.Message)
+			os.Exit(exitErr.Code)
+		}
+		writeStderr(err.Error())
+		os.Exit(1)
+	}
+}
+
+func versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version",
+		Run: func(_ *cobra.Command, _ []string) {
+			fmt.Println("kanban v0.1.0")
+		},
+	}
+}
+
+func taskCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "task",
+		Short: "Manage tasks",
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			// Resolve db path from env if flag is default.
+			if dbPath == "kanban.db" {
+				if env := os.Getenv("KANBAN_DB"); env != "" {
+					dbPath = env
+				}
+			}
+			return nil
+		},
+	}
+	cmd.AddCommand(
+		dispatchCmd(),
+		claimNextCmd(),
+		viewCmd(),
+		completeCmd(),
+		logProgressCmd(),
+		blockCmd(),
+		searchCmd(),
+		approveCmd(),
+		rejectCmd(),
+	)
+	return cmd
+}
+
+func openService() (*task.Service, func(), error) {
+	db, err := storage.Open(dbPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	s := task.NewService(db.DB)
+	return s, func() { db.Close() }, nil
+}
+
+func writeJSON(v any) {
+	out, _ := json.MarshalIndent(v, "", "  ")
+	fmt.Println(string(out))
+}
+
+func writeStderr(msg string) {
+	err := json.NewEncoder(os.Stderr).Encode(map[string]string{"error": msg})
+	if err != nil {
+		// best-effort fallback
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+	}
+}
+
+// --- subcommands ---
+
+func dispatchCmd() *cobra.Command {
+	var title, role string
+	var priority int
+
+	cmd := &cobra.Command{
+		Use:   "dispatch",
+		Short: "Create a new task",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.Dispatch(title, role, priority)
+			if err != nil {
+				return err
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&title, "title", "", "task title (required)")
+	cmd.Flags().StringVar(&role, "role", "", "role boundary (required)")
+	cmd.Flags().IntVar(&priority, "priority", 100, "priority (lower = more urgent)")
+	cmd.MarkFlagRequired("title")
+	cmd.MarkFlagRequired("role")
+	return cmd
+}
+
+func claimNextCmd() *cobra.Command {
+	var agent, role string
+
+	cmd := &cobra.Command{
+		Use:   "claim-next",
+		Short: "Claim the next available task by role",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.ClaimNext(agent, role)
+			if err != nil {
+				return err
+			}
+			// Empty task (no work) → output {}.
+			if t.ID == "" {
+				writeJSON(struct{}{})
+				return nil
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
+	cmd.Flags().StringVar(&role, "role", "", "role (required)")
+	cmd.MarkFlagRequired("agent")
+	cmd.MarkFlagRequired("role")
+	return cmd
+}
+
+func viewCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "view <id>",
+		Short: "View task details with notes and history",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			detail, err := s.ViewDetail(args[0])
+			if err != nil {
+				return err
+			}
+			writeJSON(detail)
+			return nil
+		},
+	}
+	return cmd
+}
+
+func completeCmd() *cobra.Command {
+	var agent string
+	var toReview bool
+
+	cmd := &cobra.Command{
+		Use:   "complete <id>",
+		Short: "Mark a task as done (or submit for review)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.Complete(args[0], agent, toReview)
+			if err != nil {
+				return err
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
+	cmd.Flags().BoolVar(&toReview, "review", false, "submit for review instead of completing")
+	cmd.MarkFlagRequired("agent")
+	return cmd
+}
+
+func logProgressCmd() *cobra.Command {
+	var agent, note, noteType string
+
+	cmd := &cobra.Command{
+		Use:   "log-progress <id>",
+		Short: "Log progress and renew lease",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.LogProgress(args[0], agent, note, noteType)
+			if err != nil {
+				return err
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
+	cmd.Flags().StringVar(&note, "note", "", "progress note (required)")
+	cmd.Flags().StringVar(&noteType, "type", "", "note type (PROGRESS|ERROR|DECISION)")
+	cmd.MarkFlagRequired("agent")
+	cmd.MarkFlagRequired("note")
+	return cmd
+}
+
+func blockCmd() *cobra.Command {
+	var agent, reason string
+
+	cmd := &cobra.Command{
+		Use:   "block <id>",
+		Short: "Block a task with a reason",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.Block(args[0], agent, reason)
+			if err != nil {
+				return err
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
+	cmd.Flags().StringVar(&reason, "reason", "", "block reason (required)")
+	cmd.MarkFlagRequired("agent")
+	cmd.MarkFlagRequired("reason")
+	return cmd
+}
+
+func searchCmd() *cobra.Command {
+	var status, role, agent string
+	var limit int
+
+	cmd := &cobra.Command{
+		Use:   "search",
+		Short: "Search tasks by filters",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			params := task.SearchParams{
+				Status: task.TaskStatus(status),
+				Role:   role,
+				Agent:  agent,
+				Limit:  limit,
+			}
+
+			tasks, err := s.Search(params)
+			if err != nil {
+				return err
+			}
+			writeJSON(tasks)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&status, "status", "", "filter by status")
+	cmd.Flags().StringVar(&role, "role", "", "filter by role boundary")
+	cmd.Flags().StringVar(&agent, "agent", "", "filter by assigned agent")
+	cmd.Flags().IntVar(&limit, "limit", 0, "max results")
+	return cmd
+}
+
+func approveCmd() *cobra.Command {
+	var agent string
+
+	cmd := &cobra.Command{
+		Use:   "approve <id>",
+		Short: "Approve a task in review, mark as done",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.ReviewApprove(args[0], agent)
+			if err != nil {
+				return err
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
+	cmd.MarkFlagRequired("agent")
+	return cmd
+}
+
+func rejectCmd() *cobra.Command {
+	var agent, reason string
+
+	cmd := &cobra.Command{
+		Use:   "reject <id>",
+		Short: "Reject a task in review, send back to TODO",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			s, close, err := openService()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.ReviewReject(args[0], agent, reason)
+			if err != nil {
+				return err
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
+	cmd.Flags().StringVar(&reason, "reason", "", "rejection reason (required)")
+	cmd.MarkFlagRequired("agent")
+	cmd.MarkFlagRequired("reason")
+	return cmd
+}
