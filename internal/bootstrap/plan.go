@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const maxPlanSize = 1 << 20 // 1MB — plan files should be concise task lists
+
 // PlanTask is one extracted task from a plan file.
 type PlanTask struct {
 	Title    string
@@ -20,7 +22,16 @@ type PlanTask struct {
 //
 // Priority hints: [p1]-[p999] or 🔥 in heading text → priority 1.
 // Empty headings (## with no text) are silently skipped.
+// Files larger than maxPlanSize (1MB) are rejected to prevent OOM.
 func ParsePlan(path string) ([]PlanTask, []string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("stat plan: %w", err)
+	}
+	if info.Size() > maxPlanSize {
+		return nil, nil, fmt.Errorf("plan file too large: %d bytes (max %d)", info.Size(), maxPlanSize)
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read plan: %w", err)

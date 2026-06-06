@@ -3,9 +3,9 @@ package task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand"
-	"strings"
 	"time"
 )
 
@@ -54,7 +54,23 @@ func (s *Service) withTimeout(ctx context.Context) (context.Context, context.Can
 	return context.WithTimeout(ctx, t)
 }
 
-// retryOnBusy retries fn on SQLITE_BUSY with exponential backoff + jitter.
+// sqliteError matches modernc.org/sqlite.Error without importing the driver.
+// Code returns the SQLite error code (5 = BUSY, 6 = LOCKED).
+type sqliteError interface {
+	Code() int
+	error
+}
+
+// isSQLiteBusy returns true if err wraps an SQLITE_BUSY or SQLITE_LOCKED error.
+func isSQLiteBusy(err error) bool {
+	var se sqliteError
+	if errors.As(err, &se) {
+		return se.Code() == 5 || se.Code() == 6
+	}
+	return false
+}
+
+// retryOnBusy retries fn on SQLITE_BUSY/SQLITE_LOCKED with exponential backoff + jitter.
 // Returns the result of fn on success, or the last error after exhausting retries.
 func (s *Service) retryOnBusy(fn func() error) error {
 	var lastErr error
@@ -63,7 +79,7 @@ func (s *Service) retryOnBusy(fn func() error) error {
 		if err == nil {
 			return nil
 		}
-		if !strings.Contains(err.Error(), "database is locked") {
+		if !isSQLiteBusy(err) {
 			return err
 		}
 		lastErr = err

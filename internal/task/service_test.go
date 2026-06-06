@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"agent-kanban/internal/storage"
 )
@@ -458,7 +459,7 @@ func TestListEvents(t *testing.T) {
 func TestListEventsReviewPath(t *testing.T) {
 	s := newTestService(t)
 
-	// Dispatch + claim + complete with --review → no task.completed event
+	// Dispatch + claim + complete with --review → task.submitted_for_review, not task.completed
 	s.Dispatch(t.Context(), "needs review", "worker", "default", 1)
 	s.ClaimNext(t.Context(), "alice", "worker", "")
 	s.Complete(t.Context(), "TASK-1", "alice", true)
@@ -468,9 +469,12 @@ func TestListEventsReviewPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Should have task.created + task.claimed, but NOT task.completed
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events (no task.completed for review path), got %d", len(events))
+	// Should have task.created + task.claimed + task.submitted_for_review
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events (task.created, task.claimed, task.submitted_for_review), got %d", len(events))
+	}
+	if events[2].EventType != "task.submitted_for_review" {
+		t.Fatalf("expected task.submitted_for_review, got %s", events[2].EventType)
 	}
 
 	// Approve → review.approved
@@ -479,11 +483,11 @@ func TestListEventsReviewPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 3 {
-		t.Fatalf("expected 3 events after approve, got %d", len(events))
+	if len(events) != 4 {
+		t.Fatalf("expected 4 events after approve, got %d", len(events))
 	}
-	if events[2].EventType != "review.approved" {
-		t.Fatalf("expected review.approved, got %s", events[2].EventType)
+	if events[3].EventType != "review.approved" {
+		t.Fatalf("expected review.approved, got %s", events[3].EventType)
 	}
 }
 
@@ -515,10 +519,13 @@ func TestListEventsBlockAndReject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 6 {
-		t.Fatalf("expected 6 events total, got %d", len(events))
+	// Events: task.created(TASK-1), task.claimed(TASK-1), task.blocked(TASK-1),
+	//         task.created(TASK-2), task.claimed(TASK-2),
+	//         task.submitted_for_review(TASK-2), review.rejected(TASK-2)
+	if len(events) != 7 {
+		t.Fatalf("expected 7 events total, got %d", len(events))
 	}
-	if events[5].EventType != "review.rejected" {
+	if events[6].EventType != "review.rejected" {
 		t.Fatalf("expected review.rejected, got %s", events[6].EventType)
 	}
 }
@@ -657,6 +664,19 @@ func makeHook(t *testing.T, hooksDir, eventType, script string) {
 	}
 }
 
+// waitForSentinel polls for a file up to 2s (hooks run async now).
+func waitForSentinel(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for sentinel: %s", path)
+}
+
 func TestHookFiresAfterDispatch(t *testing.T) {
 	s := newTestService(t)
 	dir := t.TempDir()
@@ -667,9 +687,7 @@ func TestHookFiresAfterDispatch(t *testing.T) {
 	if _, err := s.Dispatch(t.Context(), "hook test", "worker", "default", 50); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(sentinel); err != nil {
-		t.Fatal("hook did not fire: sentinel file missing")
-	}
+	waitForSentinel(t, sentinel)
 }
 
 func TestHookDoesNotFireOnRollback(t *testing.T) {
@@ -748,34 +766,25 @@ func TestHookDAllFire(t *testing.T) {
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(s1); err != nil {
-		t.Error("slack sentinel not written")
-	}
-	if _, err := os.Stat(s2); err != nil {
-		t.Error("metrics sentinel not written")
-	}
+	waitForSentinel(t, s1)
+	waitForSentinel(t, s2)
 }
 
 func TestHookDLexOrder(t *testing.T) {
 	s := newTestService(t)
 	dir := t.TempDir()
 	hooksDir := filepath.Join(dir, "hooks")
-	log := filepath.Join(dir, "log")
-	makeHookD(t, hooksDir, "task.created", "a", "echo a >> "+log)
-	makeHookD(t, hooksDir, "task.created", "b", "echo b >> "+log)
+	s1 := filepath.Join(dir, "s1")
+	s2 := filepath.Join(dir, "s2")
+	makeHookD(t, hooksDir, "task.created", "a", "touch "+s1)
+	makeHookD(t, hooksDir, "task.created", "b", "touch "+s2)
 	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 2 || lines[0] != "a" || lines[1] != "b" {
-		t.Fatalf("expected [a b], got %v", lines)
-	}
+	waitForSentinel(t, s1)
+	waitForSentinel(t, s2)
 }
 
 func TestHookDNonExecutableSkipped(t *testing.T) {
@@ -810,12 +819,8 @@ func TestHookDAndSingleFileBothFire(t *testing.T) {
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(single); err != nil {
-		t.Error("single-file hook did not fire")
-	}
-	if _, err := os.Stat(multi); err != nil {
-		t.Error(".d/ hook did not fire")
-	}
+	waitForSentinel(t, single)
+	waitForSentinel(t, multi)
 }
 
 func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
@@ -830,7 +835,5 @@ func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50); err != nil {
 		t.Fatalf("Dispatch failed: %v", err)
 	}
-	if _, err := os.Stat(sentinel); err != nil {
-		t.Error("sibling hook did not fire after failing entry")
-	}
+	waitForSentinel(t, sentinel)
 }

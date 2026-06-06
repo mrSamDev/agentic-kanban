@@ -44,9 +44,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert history: %w", err)
 	}
 
-	if err := insertEvent(tx, "task.created", map[string]string{"task_id": id}); err != nil {
-		return Task{}, fmt.Errorf("insert event: %w", err)
-	}
+	insertEvent(tx, "task.created", map[string]string{"task_id": id})
 
 	if err := tx.Commit(); err != nil {
 		return Task{}, fmt.Errorf("commit dispatch: %w", err)
@@ -127,9 +125,7 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 			return fmt.Errorf("insert claim history for task %s agent %s: %w", t.ID, agent, err)
 		}
 
-		if err := insertEvent(tx, "task.claimed", map[string]string{"task_id": t.ID, "agent": agent}); err != nil {
-			return fmt.Errorf("insert event: %w", err)
-		}
+		insertEvent(tx, "task.claimed", map[string]string{"task_id": t.ID, "agent": agent})
 
 		if err := tx.Commit(); err != nil {
 			return err
@@ -211,13 +207,9 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 		}
 
 		if !toReview {
-			if err := insertEvent(tx, "task.completed", map[string]string{"task_id": id, "agent": agent}); err != nil {
-				return fmt.Errorf("insert event: %w", err)
-			}
+			insertEvent(tx, "task.completed", map[string]string{"task_id": id, "agent": agent})
 		} else {
-			if err := insertEvent(tx, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent}); err != nil {
-				return fmt.Errorf("insert event: %w", err)
-			}
+			insertEvent(tx, "task.submitted_for_review", map[string]string{"task_id": id, "agent": agent})
 		}
 
 		if err := tx.Commit(); err != nil {
@@ -295,9 +287,7 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 			return fmt.Errorf("insert progress history for task %s agent %s: %w", id, agent, err)
 		}
 
-		if err := insertEvent(tx, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType}); err != nil {
-			return fmt.Errorf("insert event: %w", err)
-		}
+		insertEvent(tx, "task.progress", map[string]string{"task_id": id, "agent": agent, "note_type": noteType})
 
 		if err := tx.Commit(); err != nil {
 			return err
@@ -368,9 +358,7 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 			return fmt.Errorf("insert block history for task %s agent %s: %w", id, agent, err)
 		}
 
-		if err := insertEvent(tx, "task.blocked", map[string]string{"task_id": id, "agent": agent}); err != nil {
-			return fmt.Errorf("insert event: %w", err)
-		}
+		insertEvent(tx, "task.blocked", map[string]string{"task_id": id, "agent": agent})
 
 		if err := tx.Commit(); err != nil {
 			return err
@@ -389,53 +377,58 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Task{}, fmt.Errorf("review begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	res, err := tx.Exec(
-		`UPDATE tasks
-		    SET status = 'DONE', assigned_agent = NULL, lease_until = NULL,
-		        updated_at = CURRENT_TIMESTAMP
-		  WHERE id = ? AND status = 'IN_REVIEW'`,
-		id,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("review update: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Task{}, fmt.Errorf("review rows affected: %w", err)
-	}
-	if n == 0 {
-		var exists bool
-		tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-		if !exists {
-			return Task{}, ErrNotFound
+	var task Task
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("review begin tx: %w", err)
 		}
-		return Task{}, ErrInvalidState
-	}
+		defer tx.Rollback()
 
-	_, err = tx.Exec(
-		`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'REVIEW')`,
-		id, agent,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert review history for task %s agent %s: %w", id, agent, err)
-	}
+		res, err := tx.Exec(
+			`UPDATE tasks
+			    SET status = 'DONE', assigned_agent = NULL, lease_until = NULL,
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND status = 'IN_REVIEW'`,
+			id,
+		)
+		if err != nil {
+			return fmt.Errorf("review update: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("review rows affected: %w", err)
+		}
+		if n == 0 {
+			var exists bool
+			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if !exists {
+				return ErrNotFound
+			}
+			return ErrInvalidState
+		}
 
-	if err := insertEvent(tx, "review.approved", map[string]string{"task_id": id, "agent": agent}); err != nil {
-		return Task{}, fmt.Errorf("insert event: %w", err)
-	}
+		_, err = tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'REVIEW')`,
+			id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("insert review history for task %s agent %s: %w", id, agent, err)
+		}
 
-	if err := tx.Commit(); err != nil {
-		return Task{}, fmt.Errorf("commit review: %w", err)
-	}
+		insertEvent(tx, "review.approved", map[string]string{"task_id": id, "agent": agent})
 
-	runHook(s.hooksDir, "review.approved", map[string]string{"task_id": id, "agent": agent})
-	return s.View(ctx, id)
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		task, err = s.View(ctx, id)
+		return err
+	})
+	if err == nil {
+		runHook(s.hooksDir, "review.approved", map[string]string{"task_id": id, "agent": agent})
+	}
+	return task, err
 }
 
 // Any reviewer can reject — no lease ownership check needed.
@@ -446,107 +439,118 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("reason too long (max %d)", maxReasonLength)}
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Task{}, fmt.Errorf("reject begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	res, err := tx.Exec(
-		`UPDATE tasks
-		    SET status = 'TODO', assigned_agent = NULL, lease_until = NULL,
-		        updated_at = CURRENT_TIMESTAMP
-		  WHERE id = ? AND status = 'IN_REVIEW'`,
-		id,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("reject update: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Task{}, fmt.Errorf("reject rows affected: %w", err)
-	}
-	if n == 0 {
-		var exists bool
-		tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-		if !exists {
-			return Task{}, ErrNotFound
+	var task Task
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("reject begin tx: %w", err)
 		}
-		return Task{}, ErrInvalidState
-	}
+		defer tx.Rollback()
 
-	_, err = tx.Exec(
-		`INSERT INTO notes (task_id, author, note_type, content) VALUES (?, ?, 'REJECTED', ?)`,
-		id, agent, reason,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert reject note: %w", err)
-	}
-
-	_, err = tx.Exec(
-		`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'REVIEW')`,
-		id, agent,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert reject history for task %s agent %s: %w", id, agent, err)
-	}
-
-	if err := insertEvent(tx, "review.rejected", map[string]string{"task_id": id, "agent": agent}); err != nil {
-		return Task{}, fmt.Errorf("insert event: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return Task{}, fmt.Errorf("commit reject: %w", err)
-	}
-
-	runHook(s.hooksDir, "review.rejected", map[string]string{"task_id": id, "agent": agent})
-	return s.View(ctx, id)
-}
-
-func (s *Service) BatchUpdatePriority(ids []string, priority int) (int, error) {
-	ctx := context.Background()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("batch priority begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	updated := 0
-	for _, id := range ids {
 		res, err := tx.Exec(
-			`UPDATE tasks SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-			priority, id,
+			`UPDATE tasks
+			    SET status = 'TODO', assigned_agent = NULL, lease_until = NULL,
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND status = 'IN_REVIEW'`,
+			id,
 		)
 		if err != nil {
-			return 0, fmt.Errorf("update task %s: %w", id, err)
+			return fmt.Errorf("reject update: %w", err)
 		}
-		n, _ := res.RowsAffected()
-		updated += int(n)
-	}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("reject rows affected: %w", err)
+		}
+		if n == 0 {
+			var exists bool
+			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if !exists {
+				return ErrNotFound
+			}
+			return ErrInvalidState
+		}
 
-	return updated, tx.Commit()
-}
-
-func (s *Service) BatchUpdateProject(ids []string, project string) (int, error) {
-	ctx := context.Background()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("batch project begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	updated := 0
-	for _, id := range ids {
-		res, err := tx.Exec(
-			`UPDATE tasks SET project = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-			project, id,
+		_, err = tx.Exec(
+			`INSERT INTO notes (task_id, author, note_type, content) VALUES (?, ?, 'REJECTED', ?)`,
+			id, agent, reason,
 		)
 		if err != nil {
-			return 0, fmt.Errorf("update task %s: %w", id, err)
+			return fmt.Errorf("insert reject note: %w", err)
 		}
-		n, _ := res.RowsAffected()
-		updated += int(n)
-	}
 
-	return updated, tx.Commit()
+		_, err = tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'REVIEW')`,
+			id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("insert reject history for task %s agent %s: %w", id, agent, err)
+		}
+
+		insertEvent(tx, "review.rejected", map[string]string{"task_id": id, "agent": agent})
+
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		task, err = s.View(ctx, id)
+		return err
+	})
+	if err == nil {
+		runHook(s.hooksDir, "review.rejected", map[string]string{"task_id": id, "agent": agent})
+	}
+	return task, err
+}
+
+func (s *Service) BatchUpdatePriority(ctx context.Context, ids []string, priority int) (int, error) {
+	var updated int
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("batch priority begin tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		updated = 0
+		for _, id := range ids {
+			res, err := tx.Exec(
+				`UPDATE tasks SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+				priority, id,
+			)
+			if err != nil {
+				return fmt.Errorf("update task %s: %w", id, err)
+			}
+			n, _ := res.RowsAffected()
+			updated += int(n)
+		}
+
+		return tx.Commit()
+	})
+	return updated, err
+}
+
+func (s *Service) BatchUpdateProject(ctx context.Context, ids []string, project string) (int, error) {
+	var updated int
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("batch project begin tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		updated = 0
+		for _, id := range ids {
+			res, err := tx.Exec(
+				`UPDATE tasks SET project = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+				project, id,
+			)
+			if err != nil {
+				return fmt.Errorf("update task %s: %w", id, err)
+			}
+			n, _ := res.RowsAffected()
+			updated += int(n)
+		}
+
+		return tx.Commit()
+	})
+	return updated, err
 }

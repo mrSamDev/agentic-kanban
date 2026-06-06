@@ -22,9 +22,11 @@ func runHook(hooksDir, eventType string, payload any) {
 		return
 	}
 
+	// Single-file hook runs synchronously (primary action).
 	execHook(filepath.Join(hooksDir, name), b, name)
 
-	// .d/ directory: run each executable in lex order
+	// .d/ hooks run concurrently so slow secondary hooks don't block the caller.
+	// Each has its own 30s timeout via execHook.
 	dirPath := filepath.Join(hooksDir, name+".d")
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -38,7 +40,7 @@ func runHook(hooksDir, eventType string, payload any) {
 		if err != nil || info.Mode()&0111 == 0 {
 			continue
 		}
-		execHook(filepath.Join(dirPath, e.Name()), b, name+".d/"+e.Name())
+		go execHook(filepath.Join(dirPath, e.Name()), b, name+".d/"+e.Name())
 	}
 }
 

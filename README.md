@@ -131,6 +131,33 @@ Worker-B calls claim-next and automatically receives TASK-1.
 - **JSON output.** Every command prints stable JSON on stdout. `claim-next` with no work returns `{}`. Errors go to stderr as `{"error":"..."}` with exit code 2.
 - **Markdown skills.** `skills/worker/` etc. contain docs agents read to learn the protocol. No tool-calling protocol needed.
 
+## Hooks
+
+Hooks let you run scripts when tasks change state. Drop an executable in `.kanban/hooks/` named after the event. The hook gets a JSON payload on stdin with the event type and task details.
+
+| Event | When | Payload |
+|---|---|---|
+| `task.created` | A task is dispatched | `task_id` |
+| `task.claimed` | An agent claims a task | `task_id`, `agent` |
+| `task.progress` | An agent logs progress | `task_id`, `agent`, `note_type` |
+| `task.completed` | A task is completed | `task_id`, `agent` |
+| `task.submitted_for_review` | A task is submitted for review | `task_id`, `agent` |
+| `task.blocked` | A task is blocked | `task_id`, `agent` |
+| `review.approved` | A reviewer approves | `task_id`, `agent` |
+| `review.rejected` | A reviewer rejects | `task_id`, `agent` |
+
+You can chain multiple hooks for the same event by adding a `.d/` directory. The single-file hook runs synchronously. The `.d/` hooks run concurrently, so a slow Slack notifier won't block the caller. Each hook gets a 30-second timeout. If it fails, the error goes to stderr but the operation keeps going. Missing hooks are silently ignored.
+
+```
+.kanban/hooks/
+├── task-created          # single hook, runs synchronously
+├── task-completed        # single hook, runs synchronously
+└── task-completed.d/     # multiple hooks, all run concurrently
+    ├── slack
+    ├── metrics
+    └── dashboard
+```
+
 ## Init command
 
 `kanban init` bootstraps a project with a kanban database and agent skill files:
