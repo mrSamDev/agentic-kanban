@@ -2,7 +2,7 @@ package bootstrap
 
 const KanbanExtension = `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { Text } from "@earendil-works/pi-tui";
+import { Text, matchesKey, Key } from "@earendil-works/pi-tui";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
@@ -291,8 +291,11 @@ export default function (pi: ExtensionAPI) {
 
   // --- /kanban command ---
   pi.registerCommand("kanban", {
-    description: "Show kanban board status (task counts by status)",
-    handler: async (_args, ctx) => {
+    description: "Show kanban board status (task counts by status). Pass no args for board view.",
+    handler: async (args, ctx) => {
+      if (args.trim().length > 0) {
+        ctx.ui.notify("kanban: /kanban takes no arguments. Use kanban init --plan <file> to dispatch a plan.", "warning");
+      }
       if (!kanbanReady()) {
         ctx.ui.notify("kanban: binary not found", "error");
         return;
@@ -320,17 +323,24 @@ export default function (pi: ExtensionAPI) {
             }
             if (items.length > 10) lines.push("  ... +" + (items.length - 10) + " more");
           }
+          lines.push("");
+          lines.push("Press escape, enter, or q to close");
 
-          ctx.ui.custom((_tui, _theme, _keybindings, done) => {
+          ctx.ui.custom((_tui, _theme, _kb, done) => {
             const text = new Text(lines.join("\n"), 2, 1);
-            text.onKey = (key: string) => {
-              if (key === "escape" || key === "return" || key === "q") {
-                done(undefined);
-                return true;
-              }
-              return false;
+            return {
+              render(width: number): string[] {
+                return text.render(width);
+              },
+              invalidate(): void {
+                text.invalidate();
+              },
+              handleInput(data: string): void {
+                if (matchesKey(data, Key.escape) || matchesKey(data, Key.enter) || data === "q") {
+                  done(undefined);
+                }
+              },
             };
-            return text;
           });
         } else {
           ctx.ui.notify("kanban: no tasks or error", "warning");
