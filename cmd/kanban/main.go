@@ -17,6 +17,8 @@ import (
 var dbPath string
 var debug bool
 
+var version = "0.1.4"
+
 var validNoteTypes = map[string]bool{
 	"PROGRESS": true,
 	"ERROR":    true,
@@ -63,7 +65,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Println("kanban v0.1.2")
+			fmt.Println("kanban " + version)
 		},
 	}
 }
