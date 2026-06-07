@@ -9,7 +9,6 @@ import (
 
 // Uses Serializable isolation so two concurrent claimers never get the same task.
 // Also reclaims tasks where the previous agent's lease expired.
-// After Step 4 refactor: delegates to ClaimBatch(..., 1) for single-task claim.
 func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
 	tasks, err := s.ClaimBatch(ctx, agent, role, project, 1)
 	if err != nil || len(tasks) == 0 {
@@ -42,10 +41,10 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 		}
 		defer tx.Rollback()
 
-		// Step 1: select eligible candidates (cap at 100 to avoid OOM)
+		// Step 1: select eligible candidates (cap at maxCandidateFetch to avoid OOM)
 		maxFetch := count * 5
-		if maxFetch > 100 {
-			maxFetch = 100
+		if maxFetch > maxCandidateFetch {
+			maxFetch = maxCandidateFetch
 		}
 
 		var rows *sql.Rows

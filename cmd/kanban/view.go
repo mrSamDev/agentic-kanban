@@ -72,7 +72,7 @@ func searchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&role, "role", "", "filter by role boundary")
 	cmd.Flags().StringVar(&agent, "agent", "", "filter by assigned agent")
 	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
-	cmd.Flags().IntVar(&limit, "limit", 0, "max results")
+	cmd.Flags().IntVar(&limit, "limit", 0, "max results (0 = unlimited)")
 	return cmd
 }
 

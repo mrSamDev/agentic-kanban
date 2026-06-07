@@ -106,13 +106,14 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 			return fmt.Errorf("complete rows affected: %w", err)
 		}
 		if n == 0 {
-			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			var actualAgent sql.NullString
+			err := tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
 			}
-			var actualAgent sql.NullString
-			tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
+			}
 			if actualAgent.Valid {
 				return &ExitError{Code: 2, Message: fmt.Sprintf("task not assigned to this agent (assigned to: %s)", actualAgent.String)}
 			}
@@ -185,10 +186,13 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 			return fmt.Errorf("log rows affected: %w", err)
 		}
 		if n == 0 {
-			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			var actualAgent sql.NullString
+			err := tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
 			}
 			return ErrNotAssigned
 		}
@@ -262,10 +266,13 @@ func (s *Service) ExtendLease(ctx context.Context, id, agent string, minutes int
 			return fmt.Errorf("extend lease rows affected: %w", err)
 		}
 		if n == 0 {
-			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			var actualAgent sql.NullString
+			err := tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
 			}
 			return ErrNotAssigned
 		}
@@ -313,10 +320,13 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 			return fmt.Errorf("block rows affected: %w", err)
 		}
 		if n == 0 {
-			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			var actualAgent sql.NullString
+			err := tx.QueryRow(`SELECT assigned_agent FROM tasks WHERE id = ?`, id).Scan(&actualAgent)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
 			}
 			return ErrNotAssigned
 		}

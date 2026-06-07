@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_claim
     ON tasks(role_boundary, status, priority, created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_lease
+    ON tasks(status, lease_until);
 CREATE INDEX IF NOT EXISTS idx_tasks_project
     ON tasks(project, status, priority);
 
@@ -42,6 +44,11 @@ CREATE TABLE IF NOT EXISTS history (
     FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_notes_task
+    ON notes(task_id, id);
+CREATE INDEX IF NOT EXISTS idx_history_task
+    ON history(task_id, id);
+
 CREATE TABLE IF NOT EXISTS events (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -51,4 +58,4 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_ttl
-    ON events(ttl_seconds, created_at);
+    ON events(created_at, ttl_seconds);

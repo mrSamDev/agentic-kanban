@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // EventPayload carries typed event fields so hooks get self-sufficient data
@@ -38,16 +39,8 @@ func eventPayload(tx *sql.Tx, taskID string, extra EventPayload) EventPayload {
 	return p
 }
 
-// taskMeta holds the stable fields of a task needed for event payloads.
-type taskMeta struct {
-	Title    string
-	Project  string
-	Priority int
-}
-
-// loadTaskMetas fetches metadata for all given task IDs in a single query.
-// Missing IDs are silently omitted from the returned map.
-func loadTaskMetas(tx *sql.Tx, ids []string) (map[string]taskMeta, error) {
+// preloadTaskMetas fetches title/project/priority for a set of task IDs in one query.
+func preloadTaskMetas(tx *sql.Tx, ids []string) (map[string]struct{ title, project string; priority int }, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -59,48 +52,26 @@ func loadTaskMetas(tx *sql.Tx, ids []string) (map[string]taskMeta, error) {
 		args[i] = id
 	}
 
-	query := fmt.Sprintf("SELECT id, title, project, priority FROM tasks WHERE id IN (%s)", joinStrings(placeholders, ","))
+	query := fmt.Sprintf("SELECT id, title, project, priority FROM tasks WHERE id IN (%s)", strings.Join(placeholders, ","))
 	rows, err := tx.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("load task metas: %w", err)
+		return nil, fmt.Errorf("preload task metas: %w", err)
 	}
 	defer rows.Close()
 
-	metas := make(map[string]taskMeta, len(ids))
+	metas := make(map[string]struct{ title, project string; priority int }, len(ids))
 	for rows.Next() {
 		var id, title, project string
 		var priority int
 		if err := rows.Scan(&id, &title, &project, &priority); err != nil {
 			return nil, fmt.Errorf("scan task meta: %w", err)
 		}
-		metas[id] = taskMeta{Title: title, Project: project, Priority: priority}
+		metas[id] = struct{ title, project string; priority int }{title, project, priority}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate task metas: %w", err)
 	}
 	return metas, nil
-}
-
-// buildPayload constructs a payload from pre-loaded metadata. Extra fields
-// may override meta values (e.g. batch update changes project/priority).
-func buildPayload(metas map[string]taskMeta, id string, extra EventPayload) EventPayload {
-	p := EventPayload{TaskID: id}
-	if m, ok := metas[id]; ok {
-		p.Title = m.Title
-		p.Project = m.Project
-		p.Priority = fmt.Sprintf("%d", m.Priority)
-	}
-	if extra.Project != "" {
-		p.Project = extra.Project
-	}
-	if extra.Priority != "" {
-		p.Priority = extra.Priority
-	}
-	p.Agent = extra.Agent
-	p.NoteType = extra.NoteType
-	p.Reason = extra.Reason
-	p.RoleBoundary = extra.RoleBoundary
-	return p
 }
 
 func insertEvent(tx *sql.Tx, eventType string, payload any) error {
@@ -115,15 +86,5 @@ func insertEvent(tx *sql.Tx, eventType string, payload any) error {
 	if err != nil {
 		return fmt.Errorf("insert event %s: %w", eventType, err)
 	}
-
-	_, err = tx.Exec(
-		`DELETE FROM events
-		  WHERE ttl_seconds IS NOT NULL
-		    AND created_at < datetime('now', '-' || ttl_seconds || ' seconds')`,
-	)
-	if err != nil {
-		return fmt.Errorf("cleanup expired events: %w", err)
-	}
-
 	return nil
 }

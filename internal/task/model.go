@@ -17,12 +17,6 @@ const (
 	StatusDone       TaskStatus = "DONE"
 )
 
-// ValidStatuses is the set of all legal status values (mirrors CHECK constraint).
-var ValidStatuses = map[TaskStatus]bool{
-	StatusTODO: true, StatusInProgress: true, StatusBlocked: true,
-	StatusInReview: true, StatusDone: true,
-}
-
 // Task maps to the tasks table.
 type Task struct {
 	ID            string     `json:"id"`

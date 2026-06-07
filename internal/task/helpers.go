@@ -92,13 +92,16 @@ func (s *Service) retryOnBusy(fn func() error) error {
 }
 
 // 15 min lease: enough for a typical autonomous step, short enough to auto-reclaim hung tasks.
-const defaultLeaseMinutes = 15
+const (
+	defaultLeaseMinutes = 15
+	maxCandidateFetch   = 100
+)
 
 // Length limits prevent CLI overflow and keep task metadata concise.
 const (
-	maxTitleLength  = 500
-	maxNoteLength   = 10000
-	maxReasonLength = 1000
+	maxTitleLength   = 500
+	maxNoteLength    = 10000
+	maxReasonLength  = 1000
 	defaultViewLimit = 20
 )
 
@@ -116,15 +119,15 @@ func nextID(tx *sql.Tx) (string, error) {
 }
 
 // parseLeaseTime handles both RFC3339 (JSON) and SQLite's default datetime format.
-func parseLeaseTime(s string) *time.Time {
+func parseLeaseTime(s string) (*time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339, s)
 	if err != nil {
 		parsed, err = time.Parse("2006-01-02 15:04:05", s)
 	}
-	if err == nil {
-		return &parsed
+	if err != nil {
+		return nil, fmt.Errorf("parse lease time %q: %w", s, err)
 	}
-	return nil
+	return &parsed, nil
 }
 
 func scanTask(scanner interface {
@@ -149,7 +152,11 @@ func scanTask(scanner interface {
 	t.CreatedAt = createdAt
 	t.UpdatedAt = updatedAt
 	if lease.Valid {
-		t.LeaseUntil = parseLeaseTime(lease.String)
+		if lt, err := parseLeaseTime(lease.String); err != nil {
+			return t, fmt.Errorf("scan task %s lease: %w", t.ID, err)
+		} else {
+			t.LeaseUntil = lt
+		}
 	}
 	return t, nil
 }

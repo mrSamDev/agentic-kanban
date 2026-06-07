@@ -179,8 +179,12 @@ type SearchParams struct {
 }
 
 func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, error) {
-	if params.Status != "" && !ValidStatuses[params.Status] {
-		return nil, &ExitError{Code: 2, Message: fmt.Sprintf("invalid status: %q", params.Status)}
+	if params.Status != "" {
+		switch params.Status {
+		case StatusTODO, StatusInProgress, StatusBlocked, StatusInReview, StatusDone:
+		default:
+			return nil, &ExitError{Code: 2, Message: fmt.Sprintf("invalid status: %q", params.Status)}
+		}
 	}
 	var conditions []string
 	var args []any
@@ -276,42 +280,24 @@ func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
 		TotalTasks: 0,
 	}
 
-	rows, err := s.db.QueryContext(ctx, "SELECT status, COUNT(*) FROM tasks GROUP BY status")
+	rows, err := s.db.QueryContext(ctx, "SELECT status, role_boundary, COUNT(*) FROM tasks GROUP BY status, role_boundary")
 	if err != nil {
-		return stats, fmt.Errorf("stats by status: %w", err)
+		return stats, fmt.Errorf("stats query: %w", err)
 	}
 	for rows.Next() {
-		var status string
+		var status, role string
 		var count int
-		if err := rows.Scan(&status, &count); err != nil {
+		if err := rows.Scan(&status, &role, &count); err != nil {
 			rows.Close()
-			return stats, fmt.Errorf("scan status count: %w", err)
+			return stats, fmt.Errorf("scan stat row: %w", err)
 		}
-		stats.ByStatus[status] = count
+		stats.ByStatus[status] += count
+		stats.ByRole[role] += count
 		stats.TotalTasks += count
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return stats, fmt.Errorf("status count: %w", err)
-	}
-	rows.Close()
-
-	rows, err = s.db.QueryContext(ctx, "SELECT role_boundary, COUNT(*) FROM tasks GROUP BY role_boundary")
-	if err != nil {
-		return stats, fmt.Errorf("stats by role: %w", err)
-	}
-	for rows.Next() {
-		var role string
-		var count int
-		if err := rows.Scan(&role, &count); err != nil {
-			rows.Close()
-			return stats, fmt.Errorf("scan role count: %w", err)
-		}
-		stats.ByRole[role] = count
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return stats, fmt.Errorf("role count: %w", err)
+		return stats, fmt.Errorf("stat rows: %w", err)
 	}
 	rows.Close()
 

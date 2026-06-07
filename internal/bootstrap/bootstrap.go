@@ -72,6 +72,45 @@ func Init(opts InitOptions) error {
 	return nil
 }
 
+func ReInit(opts InitOptions) error {
+	if opts.Dir == "" {
+		opts.Dir = "."
+	}
+	if opts.DBPath == "" {
+		opts.DBPath = filepath.Join(opts.Dir, ".kanban", "kanban.db")
+	}
+
+	if opts.Harness != "" && !ValidHarnesses[opts.Harness] {
+		return fmt.Errorf("invalid harness: %q (choose pi, claude, or generic)", opts.Harness)
+	}
+
+	harness := opts.Harness
+	if harness == "" {
+		h, err := promptHarness()
+		if err != nil {
+			return err
+		}
+		harness = h
+	}
+
+	if err := scaffoldHarness(harness, opts.Dir); err != nil {
+		return fmt.Errorf("re-scaffold %s harness: %w", harness, err)
+	}
+
+	if opts.PlanPath != "" {
+		db, err := storage.Open(opts.DBPath, false)
+		if err != nil {
+			return fmt.Errorf("open db: %w", err)
+		}
+		defer db.Close()
+		if err := dispatchPlan(db.DB, opts.PlanPath); err != nil {
+			return fmt.Errorf("dispatch plan: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func promptHarness() (Harness, error) {
 	fmt.Print("Which agent harness? [pi / claude / generic]: ")
 

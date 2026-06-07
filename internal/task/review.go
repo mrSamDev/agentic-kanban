@@ -43,9 +43,12 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 		}
 		if n == 0 {
 			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			err := tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
 			}
 			return ErrInvalidState
 		}
@@ -116,9 +119,12 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		}
 		if n == 0 {
 			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			err := tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
 			}
 			return ErrInvalidState
 		}

@@ -16,16 +16,12 @@ import (
 
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
-	path := "/tmp/kanban-test-" + strconv.Itoa(os.Getpid()) + "-" + t.Name() + ".db"
-	os.Remove(path)
+	path := filepath.Join(t.TempDir(), "test.db")
 	db, err := storage.Open(path, false)
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	t.Cleanup(func() {
-		db.Close()
-		os.Remove(path)
-	})
+	t.Cleanup(func() { db.Close() })
 	return db
 }
 
