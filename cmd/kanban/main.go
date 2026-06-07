@@ -37,6 +37,8 @@ func main() {
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(initCmd())
 	rootCmd.AddCommand(pruneCmd())
+	rootCmd.AddCommand(statusCmd())
+	rootCmd.AddCommand(planCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		if exitErr, ok := err.(*task.ExitError); ok {

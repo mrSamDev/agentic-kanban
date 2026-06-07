@@ -61,3 +61,17 @@ kanban task claim-next \
 - Stale leases (expired `lease_until`) are reclaimed as if TODO.
 - Claim is atomic: two agents calling concurrently never get the same task.
 - Lease duration: 15 minutes. Use `log-progress` to renew as a heartbeat.
+
+## Batch claiming
+
+To claim multiple tasks for parallel execution, use `--count`:
+
+```bash
+kanban task claim-next \
+  --agent my-agent-name \
+  --role worker \
+  --count 3
+```
+
+Returns a JSON array of up to 3 tasks. Claims atomically in a single
+transaction.

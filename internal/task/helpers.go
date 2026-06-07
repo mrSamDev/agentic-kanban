@@ -22,6 +22,8 @@ var ErrInvalidState = &ExitError{Code: 2, Message: "invalid state transition"}
 
 var ErrNotAssigned = &ExitError{Code: 2, Message: "task not assigned to this agent"}
 
+var ErrSelfReview = &ExitError{Code: 2, Message: "cannot review your own task \u2014 another agent must approve"}
+
 type Service struct {
 	db          *sql.DB
 	timeout     time.Duration

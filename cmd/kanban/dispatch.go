@@ -53,10 +53,13 @@ func dispatchCmd() *cobra.Command {
 
 func claimNextCmd() *cobra.Command {
 	var agent, role, project string
+	var count int
 
 	cmd := &cobra.Command{
 		Use:   "claim-next",
 		Short: "Claim the next available task by role",
+		Long: `Claim the next available task by role.
+Use --count N to claim multiple tasks at once (returns JSON array).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := ConfigFromContext(cmd.Context())
 			s, close, err := openService(cfg)
@@ -64,6 +67,15 @@ func claimNextCmd() *cobra.Command {
 				return err
 			}
 			defer close()
+
+			if count > 1 {
+				tasks, err := s.ClaimBatch(cmd.Context(), agent, role, project, count)
+				if err != nil {
+					return err
+				}
+				writeJSON(tasks)
+				return nil
+			}
 
 			t, err := s.ClaimNext(cmd.Context(), agent, role, project)
 			if err != nil {
@@ -80,6 +92,7 @@ func claimNextCmd() *cobra.Command {
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().StringVar(&role, "role", "", "role (required)")
 	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
+	cmd.Flags().IntVar(&count, "count", 1, "number of tasks to claim (returns JSON array when > 1)")
 	cmd.MarkFlagRequired("agent")
 	cmd.MarkFlagRequired("role")
 	return cmd

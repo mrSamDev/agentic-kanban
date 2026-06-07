@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // Uses Serializable isolation so two concurrent claimers never get the same task.
@@ -86,7 +85,10 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				rows.Close()
 				return fmt.Errorf("scan candidate: %w", err)
 			}
-			if hasUnmetDeps(tx, t) {
+			if depsBlocked, err := hasUnmetDeps(tx, t); err != nil {
+				rows.Close()
+				return fmt.Errorf("check deps for %s: %w", t.ID, err)
+			} else if depsBlocked {
 				continue
 			}
 			claimable = append(claimable, t)
@@ -124,13 +126,16 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				continue // race lost, skip
 			}
 
-			// Update the task struct to reflect the new state
-			claimedEntry := t
-			claimedEntry.Status = StatusInProgress
-			agentCopy := agent
-			claimedEntry.AssignedAgent = &agentCopy
-			leaseUntil := time.Now().Add(time.Duration(defaultLeaseMinutes) * time.Minute)
-			claimedEntry.LeaseUntil = &leaseUntil
+			// Re-read from DB to get authoritative status, updated_at, lease_until
+			row := tx.QueryRow(
+				`SELECT id, title, status, role_boundary, project, priority,
+				        assigned_agent, lease_until, created_at, updated_at, depends_on
+				   FROM tasks WHERE id = ?`, t.ID,
+			)
+			claimedEntry, err := scanTask(row)
+			if err != nil {
+				return fmt.Errorf("re-read claimed task %s: %w", t.ID, err)
+			}
 
 			if _, err := tx.Exec(
 				`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'CLAIM')`,
@@ -178,10 +183,10 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 }
 
 // hasUnmetDeps checks whether any of t's dependencies are still not DONE.
-// Returns false (claimable) on query failure; the outer transaction catches it.
-func hasUnmetDeps(tx *sql.Tx, t Task) bool {
+// Propagates error so the caller can fail safely rather than silently claiming a dep-blocked task.
+func hasUnmetDeps(tx *sql.Tx, t Task) (bool, error) {
 	if t.DependsOn == nil || *t.DependsOn == "" {
-		return false
+		return false, nil
 	}
 	parts := strings.Split(*t.DependsOn, ",")
 	var ids []string
@@ -192,7 +197,7 @@ func hasUnmetDeps(tx *sql.Tx, t Task) bool {
 		}
 	}
 	if len(ids) == 0 {
-		return false
+		return false, nil
 	}
 
 	placeholders := make([]string, len(ids))
@@ -203,10 +208,11 @@ func hasUnmetDeps(tx *sql.Tx, t Task) bool {
 	}
 
 	var count int
-	// err ignored — count stays 0 on failure, so task appears claimable
-	_ = tx.QueryRow(
+	if err := tx.QueryRow(
 		`SELECT COUNT(*) FROM tasks WHERE id IN (`+strings.Join(placeholders, ",")+`) AND status != 'DONE'`,
 		args...,
-	).Scan(&count)
-	return count > 0
+	).Scan(&count); err != nil {
+		return false, fmt.Errorf("check deps for %s: %w", t.ID, err)
+	}
+	return count > 0, nil
 }

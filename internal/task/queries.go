@@ -236,10 +236,37 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 }
 
 type TaskStats struct {
-	ByStatus     map[string]int `json:"by_status"`
-	ByRole       map[string]int `json:"by_role"`
-	ExpiredLeases int           `json:"expired_leases"`
-	TotalTasks   int            `json:"total_tasks"`
+	ByStatus      map[string]int `json:"by_status"`
+	ByRole        map[string]int `json:"by_role"`
+	ExpiredLeases int            `json:"expired_leases"`
+	TotalTasks    int            `json:"total_tasks"`
+}
+
+type BurndownStats struct {
+	ByStatus    map[string]int `json:"by_status"`
+	ByRole      map[string]int `json:"by_role"`
+	Total       int            `json:"total"`
+	DoneCount   int            `json:"done_count"`
+	PercentDone float64        `json:"percent_done"`
+}
+
+func (s *Service) Burndown(ctx context.Context) (BurndownStats, error) {
+	raw, err := s.Stats(ctx)
+	if err != nil {
+		return BurndownStats{}, err
+	}
+	done := raw.ByStatus["DONE"]
+	pct := 0.0
+	if raw.TotalTasks > 0 {
+		pct = float64(done) / float64(raw.TotalTasks) * 100
+	}
+	return BurndownStats{
+		ByStatus:    raw.ByStatus,
+		ByRole:      raw.ByRole,
+		Total:       raw.TotalTasks,
+		DoneCount:   done,
+		PercentDone: pct,
+	}, nil
 }
 
 func (s *Service) Stats(ctx context.Context) (TaskStats, error) {

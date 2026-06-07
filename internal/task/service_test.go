@@ -343,6 +343,212 @@ func TestReviewReject(t *testing.T) {
 	}
 }
 
+func TestSelfReviewRejected(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	// Same agent tries to approve — should fail
+	_, err := s.ReviewApprove(t.Context(), "TASK-1", "alice")
+	if err != ErrSelfReview {
+		t.Fatalf("expected ErrSelfReview, got %v", err)
+	}
+
+	// Same agent tries to reject — should fail
+	_, err = s.ReviewReject(t.Context(), "TASK-1", "alice", "nope")
+	if err != ErrSelfReview {
+		t.Fatalf("expected ErrSelfReview, got %v", err)
+	}
+}
+
+func TestSelfReviewAllowedWithEnv(t *testing.T) {
+	t.Setenv("KANBAN_ALLOW_SELF_REVIEW", "true")
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	// Same agent can approve when env var is set
+	task, err := s.ReviewApprove(t.Context(), "TASK-1", "alice")
+	if err != nil {
+		t.Fatalf("expected no error with env override, got %v", err)
+	}
+	if task.Status != StatusDone {
+		t.Fatalf("expected DONE after self-approval, got %s", task.Status)
+	}
+}
+
+func TestSelfReviewDirectInReview(t *testing.T) {
+	// Task created directly in IN_REVIEW (no CLAIM history) — approve should work
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+	s.db.Exec("UPDATE tasks SET status = 'IN_REVIEW' WHERE id = 'TASK-1'")
+
+	task, err := s.ReviewApprove(t.Context(), "TASK-1", "alice")
+	if err != nil {
+		t.Fatalf("expected no error for direct IN_REVIEW, got %v", err)
+	}
+	if task.Status != StatusDone {
+		t.Fatalf("expected DONE, got %s", task.Status)
+	}
+}
+
+func TestDependsOnBlocksClaim(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "independent", "worker", "default", 10, nil)
+	dep, _ := s.Dispatch(t.Context(), "dependency", "worker", "default", 20, nil)
+	blocked := dep.ID
+	// Blocked task depends on the first task
+	s.Dispatch(t.Context(), "blocked", "worker", "default", 5, &blocked)
+
+	// Claim should get independent (highest priority with no unmet deps)
+	task, err := s.ClaimNext(t.Context(), "alice", "worker", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.ID != "TASK-1" {
+		t.Fatalf("expected TASK-1 (independent), got %s", task.ID)
+	}
+
+	// Blocked task (TASK-3) should still be TODO
+	blockedTask, _ := s.View(t.Context(), "TASK-3")
+	if blockedTask.Status != StatusTODO {
+		t.Fatalf("expected blocked task TODO, got %s", blockedTask.Status)
+	}
+}
+
+func TestDependsOnReleasesAfterComplete(t *testing.T) {
+	s := newTestService(t)
+	dep, _ := s.Dispatch(t.Context(), "dependency", "worker", "default", 1, nil)
+	blocked := dep.ID
+	s.Dispatch(t.Context(), "blocked", "worker", "default", 5, &blocked)
+
+	// Claim and complete the dependency
+	task, _ := s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), task.ID, "alice", false)
+
+	// Now the blocked task should be claimable
+	next, err := s.ClaimNext(t.Context(), "alice", "worker", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.ID != "TASK-2" {
+		t.Fatalf("expected TASK-2 (blocked) now claimable, got %s", next.ID)
+	}
+	if next.Status != StatusInProgress {
+		t.Fatalf("expected IN_PROGRESS, got %s", next.Status)
+	}
+}
+
+func TestDependsOnConcurrent(t *testing.T) {
+	s := newTestService(t)
+	dep, _ := s.Dispatch(t.Context(), "dependency", "worker", "default", 1, nil)
+	blocked := dep.ID
+	s.Dispatch(t.Context(), "blocked", "worker", "default", 1, &blocked)
+
+	var mu sync.Mutex
+	claimed := make(map[string]string)
+	var wg sync.WaitGroup
+
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func(agent string) {
+			defer wg.Done()
+			task, err := s.ClaimNext(t.Context(), agent, "worker", "")
+			if err != nil {
+				return
+			}
+			if task.ID == "" {
+				return
+			}
+			mu.Lock()
+			claimed[task.ID] = agent
+			mu.Unlock()
+		}("agent-" + strconv.Itoa(i))
+	}
+	wg.Wait()
+
+	// Only TASK-1 (the dep) should be claimable — TASK-2 depends on TASK-1, which is not DONE
+	if len(claimed) > 1 {
+		t.Fatalf("at most 1 task should be claimed (TASK-1), got %d: %v", len(claimed), claimed)
+	}
+	if len(claimed) == 1 {
+		for id := range claimed {
+			if id != "TASK-1" {
+				t.Fatalf("claimed %s but should only claim TASK-1", id)
+			}
+		}
+	}
+
+	// TASK-2 must remain TODO or IN_PROGRESS-by-TASK-1-agent (heartbeat race)
+	blockedTask, _ := s.View(t.Context(), "TASK-2")
+	if blockedTask.Status == StatusDone {
+		t.Fatalf("TASK-2 should not be done (depends on TASK-1), got %s", blockedTask.Status)
+	}
+}
+
+func TestExtendLease(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+
+	// Record pre-extension lease
+	pre, _ := s.View(t.Context(), "TASK-1")
+	preLease := *pre.LeaseUntil
+
+	task, err := s.ExtendLease(t.Context(), "TASK-1", "alice", 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.LeaseUntil == nil || !task.LeaseUntil.After(preLease) {
+		t.Fatal("lease should have been extended")
+	}
+	if task.AssignedAgent == nil || *task.AssignedAgent != "alice" {
+		t.Fatal("task should still be assigned to alice")
+	}
+	if task.Status != StatusInProgress {
+		t.Fatalf("expected IN_PROGRESS, got %s", task.Status)
+	}
+}
+
+func TestExtendLeaseWrongAgent(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+
+	_, err := s.ExtendLease(t.Context(), "TASK-1", "bob", 15)
+	if err != ErrNotAssigned {
+		t.Fatalf("expected ErrNotAssigned, got %v", err)
+	}
+}
+
+func TestExtendLeaseNotFound(t *testing.T) {
+	s := newTestService(t)
+	_, err := s.ExtendLease(t.Context(), "NONEXIST", "alice", 15)
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestExtendLeaseDefaultsMinutes(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+
+	pre, _ := s.View(t.Context(), "TASK-1")
+	preLease := *pre.LeaseUntil
+
+	// With minutes=0, should default to 15
+	task, err := s.ExtendLease(t.Context(), "TASK-1", "alice", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.LeaseUntil == nil || task.LeaseUntil.Before(preLease) {
+		t.Fatal("lease should have been extended with default minutes")
+	}
+}
+
 func TestLeaseReclaim(t *testing.T) {
 	s := newTestService(t)
 	s.Dispatch(t.Context(), "stale task", "worker", "default", 1, nil)

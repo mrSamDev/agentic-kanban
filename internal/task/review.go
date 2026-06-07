@@ -2,7 +2,9 @@ package task
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"os"
 )
 
 // Any reviewer can approve — no lease ownership check needed.
@@ -17,6 +19,13 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 			return fmt.Errorf("review begin tx: %w", err)
 		}
 		defer tx.Rollback()
+
+		// Check self-review gate (configurable via KANBAN_ALLOW_SELF_REVIEW env var)
+		if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
+			if err := checkSelfReview(tx, id, agent); err != nil {
+				return err
+			}
+		}
 
 		res, err := tx.Exec(
 			`UPDATE tasks
@@ -84,6 +93,13 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		}
 		defer tx.Rollback()
 
+		// Check self-review gate (configurable via KANBAN_ALLOW_SELF_REVIEW env var)
+		if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
+			if err := checkSelfReview(tx, id, agent); err != nil {
+				return err
+			}
+		}
+
 		res, err := tx.Exec(
 			`UPDATE tasks
 			    SET status = 'TODO', assigned_agent = NULL, lease_until = NULL,
@@ -140,4 +156,26 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		runHook(s.hooksDir, "review.rejected", payload)
 	}
 	return task, err
+}
+
+// checkSelfReview verifies the reviewing agent is not the same agent who claimed the task.
+// Returns nil (allows review) when there is no CLAIM history (task created directly in IN_REVIEW).
+// Disabled by setting KANBAN_ALLOW_SELF_REVIEW=true.
+func checkSelfReview(tx *sql.Tx, id, agent string) error {
+	var claimingAgent sql.NullString
+	err := tx.QueryRow(
+		`SELECT agent FROM history WHERE task_id=? AND action='CLAIM' ORDER BY id DESC LIMIT 1`,
+		id,
+	).Scan(&claimingAgent)
+
+	if err == sql.ErrNoRows {
+		return nil // no CLAIM history — task was created directly in review, allow
+	}
+	if err != nil {
+		return fmt.Errorf("check self-review: %w", err)
+	}
+	if claimingAgent.Valid && claimingAgent.String == agent {
+		return ErrSelfReview
+	}
+	return nil
 }

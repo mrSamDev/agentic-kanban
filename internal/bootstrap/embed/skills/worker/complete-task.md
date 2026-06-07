@@ -9,6 +9,18 @@ type: protocol
 Mark your current task as DONE. If a review is needed, use `--review` to
 submit for human (or reviewer agent) approval instead.
 
+## Long-running tasks
+
+For work that takes longer than 15 minutes, periodically extend your lease:
+
+```bash
+kanban task extend-lease TASK-101 \
+  --agent my-agent-name \
+  --minutes 30
+```
+
+This prevents the task from being reclaimed by another worker.
+
 ## Usage
 
 ```bash

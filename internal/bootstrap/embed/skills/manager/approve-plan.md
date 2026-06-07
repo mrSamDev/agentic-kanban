@@ -29,6 +29,9 @@ kanban task dispatch \
   --priority 10 \
   --role worker \
   --project default
+
+# Approve all tasks regardless of checkboxes:
+/approve-plan --all
 ```
 
 ## Proposal format
@@ -47,6 +50,11 @@ A `.kanban/tasks-proposal.md` file looks like:
 ```
 
 The user checked 1 and 3. Dispatch those. Skip unchecked items.
+
+## --all flag
+
+If the user passes `--all`, dispatch every task in the proposal regardless
+of checkbox state. Otherwise, only dispatch `[x]` checked items.
 
 ## Guidelines
 
