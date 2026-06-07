@@ -1,20 +1,32 @@
 ---
 name: approve-task
 description: Approve a task in IN_REVIEW state, marking it DONE. Any reviewer can approve.
+role: reviewer
+type: protocol
 ---
-
 # Approve Task
 
-Approve a task in IN_REVIEW state, marking it DONE. Any reviewer can
-approve — no prior claim needed.
+Approve a task that is in `IN_REVIEW` state, marking it as `DONE`. Only
+applicable to tasks that were submitted for review via `complete --review`.
 
-Usage:
+## Usage
 
-  kanban task approve TASK-101 --agent reviewer-1
+```bash
+kanban task approve TASK-101 \
+  --agent reviewer-agent
+```
 
-Flags:
-  --agent (required) Your agent identifier
+## Flags
 
-JSON output: task object with status "DONE".
+| Flag | Required | Description |
+|---|---|---|
+| `--agent` | yes | Your agent identifier |
 
-Exit: 0 = success, 2 = wrong state or not found.
+## JSON output
+
+Full task object with `status: "DONE"`, `assigned_agent: null`.
+
+## Exit codes
+
+- `0` — success, JSON on stdout
+- `2` — task not found, wrong state (not IN_REVIEW), or other error

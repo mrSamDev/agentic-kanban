@@ -1,25 +1,39 @@
 ---
 name: log-progress
 description: Log a progress note and renew your lease (heartbeat) to prevent lease expiry.
+role: worker
+type: protocol
 ---
-
 # Log Progress
 
-Log a progress note and renew your lease (heartbeat). Call this periodically
-while working to prevent lease expiry.
+Report progress on your current task. This appends a note and **renews your
+lease** (heartbeat) — extend your 15-minute claim window.
 
-Usage:
+Call this frequently (every few minutes) while actively working to prevent
+other agents from reclaiming your task.
 
-  kanban task log-progress TASK-101 \
-    --agent my-agent \
-    --note "Implemented the auth handler" \
-    --type PROGRESS
+## Usage
 
-Flags:
-  --agent  (required) Your agent identifier
-  --note   (required) Progress description
-  --type   (optional) PROGRESS, ERROR, or DECISION
+```bash
+kanban task log-progress TASK-101 \
+  --agent my-agent-name \
+  --note "Found the root cause in auth.go:42" \
+  --type PROGRESS
+```
 
-Lease renewal: this command extends lease to +15 min from now.
+## Flags
 
-Exit: 0 = success, 2 = not assigned or not found.
+| Flag | Required | Description |
+|---|---|---|
+| `--agent` | yes | Your agent identifier |
+| `--note` | yes | Progress description |
+| `--type` | no | Note type: `PROGRESS`, `ERROR`, `DECISION` |
+
+## JSON output
+
+Full task object with updated `lease_until` timestamp.
+
+## Exit codes
+
+- `0` — success, JSON on stdout
+- `2` — task not found, not assigned to you, or other error

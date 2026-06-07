@@ -1,24 +1,58 @@
 ---
 name: review-backlog
-description: Search tasks by filters to see what's available, blocked, or done.
+description: Search tasks by filters to see what is available, blocked, or done.
+role: manager
+type: protocol
 ---
-
 # Review Backlog
 
-Search tasks by filters to see what's available, blocked, or done.
+List all tasks visible to a manager. Apply optional filters to find specific
+tasks: stalled, unassigned, or in a certain state.
 
-Usage:
+## Usage
 
-  kanban task search --status TODO --role worker
-  kanban task search --status BLOCKED
-  kanban task search --agent my-agent
+```bash
+# All tasks
+kanban task search
 
-Flags:
-  --status (optional) Filter by status
-  --role   (optional) Filter by role boundary
-  --agent  (optional) Filter by assigned agent
-  --limit  (optional) Max results
+# Filter by status
+kanban task search --status BLOCKED
 
-JSON output: array of task objects sorted by priority.
+# Filter by role
+kanban task search --role worker --status TODO
 
-Exit: 0 = success, 2 = error.
+# Filter by agent
+kanban task search --agent alice
+```
+
+## Flags
+
+| Flag | Required | Description |
+|---|---|---|
+| `--status` | no | Filter by status: TODO, IN_PROGRESS, BLOCKED, IN_REVIEW, DONE |
+| `--role` | no | Filter by role boundary |
+| `--agent` | no | Filter by assigned agent |
+| `--limit` | no | Max results (default: no limit) |
+
+## JSON output
+
+```json
+[
+  {
+    "id": "TASK-101",
+    "title": "...",
+    "status": "TODO",
+    "role_boundary": "worker",
+    "priority": 50,
+    "assigned_agent": null,
+    "lease_until": null
+  }
+]
+```
+
+Empty array `[]` when no tasks match.
+
+## Exit codes
+
+- `0` — success
+- `2` — error

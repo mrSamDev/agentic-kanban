@@ -1,23 +1,34 @@
 ---
 name: reject-task
 description: Reject a task in IN_REVIEW state, sending it back to TODO for rework.
+role: reviewer
+type: protocol
 ---
-
 # Reject Task
 
-Reject a task in IN_REVIEW state, sending it back to TODO for rework.
-Any reviewer can reject — no prior claim needed.
+Reject a task that is in `IN_REVIEW` state, sending it **back to TODO** so a
+worker can pick it up again with the rejection feedback.
 
-Usage:
+## Usage
 
-  kanban task reject TASK-101 \
-    --agent reviewer-1 \
-    --reason "Needs more test coverage"
+```bash
+kanban task reject TASK-101 \
+  --agent reviewer-agent \
+  --reason "Missing test coverage for edge case"
+```
 
-Flags:
-  --agent  (required) Your agent identifier
-  --reason (required) Why the task was rejected
+## Flags
 
-JSON output: task object with status "TODO".
+| Flag | Required | Description |
+|---|---|---|
+| `--agent` | yes | Your agent identifier |
+| `--reason` | yes | Rejection reason (written as note on the task) |
 
-Exit: 0 = success, 2 = wrong state or not found.
+## JSON output
+
+Full task object with `status: "TODO"`, `assigned_agent: null`.
+
+## Exit codes
+
+- `0` — success, JSON on stdout
+- `2` — task not found, wrong state (not IN_REVIEW), or other error

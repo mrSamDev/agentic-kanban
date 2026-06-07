@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+
 	"agent-kanban/internal/bootstrap"
 
 	"github.com/spf13/cobra"
@@ -24,10 +26,10 @@ Creates .kanban/kanban.db, agent skill directories, and optionally parses
 
 Supported harnesses: pi (default), claude, generic.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg := ConfigFromContext(cmd.Context())
+			_ = ConfigFromContext(cmd.Context()) // init is project-scoped; ignore KANBAN_DB / findProjectRoot
 			return bootstrap.Init(bootstrap.InitOptions{
 				Dir:      dir,
-				DBPath:   cfg.DBPath,
+				DBPath:   filepath.Join(dir, ".kanban", "kanban.db"),
 				Harness:  bootstrap.Harness(harness),
 				PlanPath: plan,
 			})
@@ -56,10 +58,10 @@ new or updated skills (e.g. setup-hooks).
 
 Supported harnesses: pi, claude, generic. Prompts if omitted.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg := ConfigFromContext(cmd.Context())
+			_ = ConfigFromContext(cmd.Context()) // re-init is project-scoped; ignore KANBAN_DB / findProjectRoot
 			return bootstrap.ReInit(bootstrap.InitOptions{
 				Dir:      dir,
-				DBPath:   cfg.DBPath,
+				DBPath:   filepath.Join(dir, ".kanban", "kanban.db"),
 				Harness:  bootstrap.Harness(harness),
 				PlanPath: plan,
 			})

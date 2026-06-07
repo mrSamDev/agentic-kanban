@@ -1,20 +1,29 @@
 ---
 name: claim-review
 description: "Claim the next unclaimed reviewer task (TODO tasks tagged with role_boundary: reviewer)."
+role: reviewer
+type: protocol
 ---
-
 # Claim Review
 
-Claim the next unclaimed reviewer task (TODO tasks tagged with
-role_boundary: reviewer).
+Claim the next unclaimed reviewer task (TODO tasks tagged `role_boundary: reviewer`).
 
-For reviewing worker-submitted work (IN_REVIEW status), use approve
-or reject directly — no claim step needed.
+For reviewing worker-submitted work (`IN_REVIEW` status), use `approve` or `reject`
+directly — no claim step needed.
 
-Usage:
+## Usage
 
-  kanban task claim-next --agent reviewer-1 --role reviewer
+```bash
+kanban task claim-next \
+  --agent reviewer-agent \
+  --role reviewer
+```
 
-JSON output: same as Claim Next Task. Empty {} if no work.
+## JSON output
 
-Exit: 0 = success or no work, 2 = error.
+Same as `claim-next-task.md`. Empty `{}` if no reviews pending.
+
+## Exit codes
+
+- `0` — success (task claimed OR no work)
+- `2` — error

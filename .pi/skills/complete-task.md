@@ -1,25 +1,53 @@
 ---
 name: complete-task
 description: Mark a task as done, optionally submitting for review instead.
+role: worker
+type: protocol
 ---
-
 # Complete Task
 
-Mark a task as done. If the task needs review, use --review to submit
-for review instead.
+Mark your current task as DONE. If a review is needed, use `--review` to
+submit for human (or reviewer agent) approval instead.
 
-Usage (direct complete):
+## Long-running tasks
 
-  kanban task complete TASK-101 --agent my-agent
+For work that takes longer than 15 minutes, periodically extend your lease:
 
-Usage (submit for review):
+```bash
+kanban task extend-lease TASK-101 \
+  --agent my-agent-name \
+  --minutes 30
+```
 
-  kanban task complete TASK-101 --agent my-agent --review
+This prevents the task from being reclaimed by another worker.
 
-Flags:
-  --agent  (required) Your agent identifier
-  --review (optional) Submit for review instead of completing
+## Usage
 
-JSON output: task object with status "DONE" or "IN_REVIEW".
+```bash
+# Direct completion (status → DONE)
+kanban task complete TASK-101 \
+  --agent my-agent-name
 
-Exit: 0 = success, 2 = not assigned or error.
+# Submit for review (status → IN_REVIEW)
+kanban task complete TASK-101 \
+  --agent my-agent-name \
+  --review
+```
+
+## Flags
+
+| Flag | Required | Description |
+|---|---|---|
+| `--agent` | yes | Your agent identifier |
+| `--review` | no | Submit for review instead of completing directly |
+
+## JSON output
+
+Full task object with:
+- `status: "DONE"` (without `--review`)
+- `status: "IN_REVIEW"` (with `--review`), `assigned_agent: null`
+
+## Exit codes
+
+- `0` — success, JSON on stdout
+- `2` — task not found, not assigned to you, wrong state, or other error
