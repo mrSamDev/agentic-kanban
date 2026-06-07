@@ -27,6 +27,9 @@ kanban task claim-next \
 |---|---|---|
 | `--agent` | yes | Your agent identifier |
 | `--role` | yes | Your role (`worker`, `reviewer`, etc.) |
+| `--count` | no | Claim N tasks at once (default: 1) |
+| `--project` | no | Filter by project/scope |
+| `--respect-deps` | no | Skip tasks with unmet dependencies (default: true) |
 
 ## JSON output (task claimed)
 

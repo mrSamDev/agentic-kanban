@@ -88,7 +88,8 @@ func statsCmd() *cobra.Command {
 			}
 			defer close()
 
-			stats, err := s.Stats(cmd.Context())
+			project, _ := cmd.Flags().GetString("project")
+			stats, err := s.Stats(cmd.Context(), project)
 			if err != nil {
 				return err
 			}
@@ -96,6 +97,7 @@ func statsCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().String("project", "", "filter by project")
 	return cmd
 }
 
@@ -113,7 +115,8 @@ func statusCmd() *cobra.Command {
 			}
 			defer close()
 
-			stats, err := s.Burndown(cmd.Context())
+			project, _ := cmd.Flags().GetString("project")
+			stats, err := s.Burndown(cmd.Context(), project)
 			if err != nil {
 				return err
 			}
@@ -129,6 +132,7 @@ func statusCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "output as JSON")
 	cmd.Flags().BoolVar(&burndown, "burndown", false, "show progress bars per status")
+	cmd.Flags().String("project", "", "filter by project")
 	return cmd
 }
 

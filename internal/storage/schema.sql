@@ -1,8 +1,11 @@
+-- Single-row sequence table. The rowid acts as primary key so INSERT OR IGNORE
+-- on an explicit rowid prevents duplicate rows across init calls.
 CREATE TABLE IF NOT EXISTS task_seq (
-    next_id INTEGER NOT NULL DEFAULT 1
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    next_id INTEGER NOT NULL DEFAULT 0
 );
 
-INSERT OR IGNORE INTO task_seq (next_id) VALUES (0);
+INSERT OR IGNORE INTO task_seq (id, next_id) VALUES (1, 0);
 
 CREATE TABLE IF NOT EXISTS tasks (
     id            TEXT PRIMARY KEY,                  -- e.g. 'TASK-101'

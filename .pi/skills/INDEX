@@ -10,6 +10,10 @@ worker:claim-next-task.md
 worker:log-progress.md
 worker:block-task.md
 worker:complete-task.md
+worker:batch-claim-task.md
+worker:batch-complete-task.md
+worker:extend-lease.md
 reviewer:claim-review.md
 reviewer:approve-task.md
 reviewer:reject-task.md
+manager:review-gate-skill.md

@@ -247,15 +247,16 @@ type TaskStats struct {
 }
 
 type BurndownStats struct {
-	ByStatus    map[string]int `json:"by_status"`
-	ByRole      map[string]int `json:"by_role"`
-	Total       int            `json:"total"`
-	DoneCount   int            `json:"done_count"`
-	PercentDone float64        `json:"percent_done"`
+	ByStatus      map[string]int `json:"by_status"`
+	ByRole        map[string]int `json:"by_role"`
+	ExpiredLeases int            `json:"expired_leases"`
+	Total         int            `json:"total"`
+	DoneCount     int            `json:"done_count"`
+	PercentDone   float64        `json:"percent_done"`
 }
 
-func (s *Service) Burndown(ctx context.Context) (BurndownStats, error) {
-	raw, err := s.Stats(ctx)
+func (s *Service) Burndown(ctx context.Context, project string) (BurndownStats, error) {
+	raw, err := s.Stats(ctx, project)
 	if err != nil {
 		return BurndownStats{}, err
 	}
@@ -265,22 +266,31 @@ func (s *Service) Burndown(ctx context.Context) (BurndownStats, error) {
 		pct = float64(done) / float64(raw.TotalTasks) * 100
 	}
 	return BurndownStats{
-		ByStatus:    raw.ByStatus,
-		ByRole:      raw.ByRole,
-		Total:       raw.TotalTasks,
-		DoneCount:   done,
-		PercentDone: pct,
+		ByStatus:      raw.ByStatus,
+		ByRole:        raw.ByRole,
+		ExpiredLeases: raw.ExpiredLeases,
+		Total:         raw.TotalTasks,
+		DoneCount:     done,
+		PercentDone:   pct,
 	}, nil
 }
 
-func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
+func (s *Service) Stats(ctx context.Context, project string) (TaskStats, error) {
 	stats := TaskStats{
 		ByStatus:   make(map[string]int),
 		ByRole:     make(map[string]int),
 		TotalTasks: 0,
 	}
 
-	rows, err := s.db.QueryContext(ctx, "SELECT status, role_boundary, COUNT(*) FROM tasks GROUP BY status, role_boundary")
+	query := "SELECT status, role_boundary, COUNT(*) FROM tasks"
+	var args []any
+	if project != "" {
+		query += " WHERE project = ?"
+		args = append(args, project)
+	}
+	query += " GROUP BY status, role_boundary"
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return stats, fmt.Errorf("stats query: %w", err)
 	}
@@ -301,11 +311,18 @@ func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
 	}
 	rows.Close()
 
-	row := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM tasks WHERE status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP",
-	)
-	if err := row.Scan(&stats.ExpiredLeases); err != nil {
-		return stats, fmt.Errorf("stats expired leases: %w", err)
+	expQuery := "SELECT COUNT(*) FROM tasks WHERE status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP"
+	if project != "" {
+		expQuery += " AND project = ?"
+		row := s.db.QueryRowContext(ctx, expQuery, project)
+		if err := row.Scan(&stats.ExpiredLeases); err != nil {
+			return stats, fmt.Errorf("stats expired leases: %w", err)
+		}
+	} else {
+		row := s.db.QueryRowContext(ctx, expQuery)
+		if err := row.Scan(&stats.ExpiredLeases); err != nil {
+			return stats, fmt.Errorf("stats expired leases: %w", err)
+		}
 	}
 
 	return stats, nil

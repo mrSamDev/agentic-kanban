@@ -1166,3 +1166,165 @@ func TestBatchHookDoesNotFireOnEmptyUpdate(t *testing.T) {
 		t.Fatal("hook fired when no tasks were updated")
 	}
 }
+
+// --- Stability tests ---
+
+func TestSequenceStability(t *testing.T) {
+	s := newTestService(t)
+	n := 50
+	ids := make(chan string, n)
+
+	// Dispatch n tasks concurrently to stress-test nextID()
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			task, err := s.Dispatch(t.Context(), "stability task", "worker", "default", 100, nil)
+			if err != nil {
+				t.Errorf("dispatch: %v", err)
+				return
+			}
+			ids <- task.ID
+		}()
+	}
+	wg.Wait()
+	close(ids)
+
+	// Collect all IDs
+	var collected []string
+	for id := range ids {
+		collected = append(collected, id)
+	}
+
+	if len(collected) < n {
+		t.Fatalf("expected %d tasks, got %d — some dispatches failed", n, len(collected))
+	}
+
+	// Verify all IDs are unique
+	seen := make(map[string]bool)
+	for _, id := range collected {
+		if seen[id] {
+			t.Fatalf("duplicate ID: %s", id)
+		}
+		seen[id] = true
+	}
+
+	// Verify IDs are sequential (no gaps after sorting numeric part)
+	type idNum struct {
+		raw string
+		num int
+	}
+	var parsed []idNum
+	for _, id := range collected {
+		var n int
+		if _, err := fmt.Sscanf(id, "TASK-%d", &n); err != nil {
+			t.Fatalf("unexpected ID format: %s", id)
+		}
+		parsed = append(parsed, idNum{id, n})
+	}
+
+	// Find min and max to verify range is fully populated
+	min, max := parsed[0].num, parsed[0].num
+	for _, p := range parsed {
+		if p.num < min {
+			min = p.num
+		}
+		if p.num > max {
+			max = p.num
+		}
+	}
+
+	expectedCount := max - min + 1
+	if len(parsed) != expectedCount {
+		t.Fatalf("ID range %d-%d has %d values, expected %d (gaps detected)",
+			min, max, len(parsed), expectedCount)
+	}
+
+	// Verify task_seq is single-row (regression: old bug produced 39 rows of 0)
+	var seqRows int
+	s.db.QueryRow("SELECT COUNT(*) FROM task_seq").Scan(&seqRows)
+	if seqRows != 1 {
+		t.Fatalf("task_seq should have 1 row after 50 dispatches, got %d", seqRows)
+	}
+}
+
+func TestBatchCompletePartialFailure(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch 3 tasks
+	for i := 0; i < 3; i++ {
+		s.Dispatch(t.Context(), fmt.Sprintf("task-%d", i+1), "worker", "default", 10, nil)
+	}
+
+	// Claim 2 of them with agent-a
+	s.ClaimNext(t.Context(), "agent-a", "worker", "", true)
+	s.ClaimNext(t.Context(), "agent-a", "worker", "", true)
+
+	// Batch complete 3 tasks: 2 claimed by agent-a, 1 unclaimed
+	completed, errs := s.BatchComplete(t.Context(), []string{"TASK-1", "TASK-2", "TASK-3"}, "agent-a", false)
+
+	// Verify: 2 completed, 1 error
+	if len(completed) != 2 {
+		t.Fatalf("expected 2 completed, got %d", len(completed))
+	}
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error (unclaimed task), got %d", len(errs))
+	}
+
+	// Verify completed tasks are DONE
+	for _, tsk := range completed {
+		if tsk.Status != StatusDone {
+			t.Fatalf("task %s expected DONE, got %s", tsk.ID, tsk.Status)
+		}
+	}
+
+	// Verify error mentions the unclaimed task
+	if !strings.Contains(errs[0].Error(), "TASK-3") {
+		t.Fatalf("expected error about TASK-3, got: %v", errs[0])
+	}
+}
+
+func TestBatchClaimPriorityOrder(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch tasks with mixed priority
+	s.Dispatch(t.Context(), "low", "worker", "default", 100, nil)
+	s.Dispatch(t.Context(), "high", "worker", "default", 1, nil)
+	s.Dispatch(t.Context(), "medium", "worker", "default", 50, nil)
+
+	// Batch claim 3 tasks
+	tasks, err := s.ClaimBatch(t.Context(), "agent-a", "worker", "", 3, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tasks) != 3 {
+		t.Fatalf("expected 3 claimed tasks, got %d", len(tasks))
+	}
+
+	// Order should be by priority: high(1), medium(50), low(100)
+	expected := []string{"TASK-2", "TASK-3", "TASK-1"}
+	for i, tsk := range tasks {
+		if tsk.ID != expected[i] {
+			t.Fatalf("position %d: expected %s, got %s", i, expected[i], tsk.ID)
+		}
+	}
+}
+
+func TestBatchCompleteToReview(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "review-me", "worker", "default", 10, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "", true)
+
+	completed, errs := s.BatchComplete(t.Context(), []string{"TASK-1"}, "alice", true)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if len(completed) != 1 {
+		t.Fatalf("expected 1 completed, got %d", len(completed))
+	}
+	if completed[0].Status != StatusInReview {
+		t.Fatalf("expected IN_REVIEW, got %s", completed[0].Status)
+	}
+}

@@ -9,8 +9,8 @@ import (
 
 // Uses Serializable isolation so two concurrent claimers never get the same task.
 // Also reclaims tasks where the previous agent's lease expired.
-func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
-	tasks, err := s.ClaimBatch(ctx, agent, role, project, 1)
+func (s *Service) ClaimNext(ctx context.Context, agent, role, project string, respectDeps ...bool) (Task, error) {
+	tasks, err := s.ClaimBatch(ctx, agent, role, project, 1, respectDeps...)
 	if err != nil || len(tasks) == 0 {
 		return Task{}, err
 	}
@@ -19,13 +19,19 @@ func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (T
 
 // ClaimBatch claims up to count eligible tasks in one Serializable transaction.
 // This is the canonical claim implementation; ClaimNext delegates here.
+// If respectDeps is true (default), tasks with unmet dependencies are skipped.
 // Concurrency note: the current code uses one atomic SQL UPDATE (SELECT+UPDATE in one
 // statement), which makes double-claim impossible. This refactor switches to a
 // Serializable transaction with explicit SELECT-then-UPDATE — same correctness
 // guarantee, but the concurrency contract is now explicit (Serializable isolation,
 // not implicit atomicity). The SELECT-then-UPDATE approach is required to support
 // dependency filtering (hasUnmetDeps) and batch claims.
-func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, count int) ([]Task, error) {
+func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, count int, respectDeps ...bool) ([]Task, error) {
+	// Default: respect deps (backward compatible)
+	filterDeps := true
+	if len(respectDeps) > 0 {
+		filterDeps = respectDeps[0]
+	}
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
 
@@ -76,7 +82,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 			return fmt.Errorf("batch claim candidates: %w", err)
 		}
 
-		// Filter out tasks with unmet deps, collect up to count claimable
+		// Filter out tasks with unmet deps (unless --respect-deps=false), collect up to count claimable
 		var claimable []Task
 		for rows.Next() {
 			t, err := scanTask(rows)
@@ -84,11 +90,13 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				rows.Close()
 				return fmt.Errorf("scan candidate: %w", err)
 			}
-			if depsBlocked, err := hasUnmetDeps(tx, t); err != nil {
-				rows.Close()
-				return fmt.Errorf("check deps for %s: %w", t.ID, err)
-			} else if depsBlocked {
-				continue
+			if filterDeps {
+				if depsBlocked, err := hasUnmetDeps(tx, t); err != nil {
+					rows.Close()
+					return fmt.Errorf("check deps for %s: %w", t.ID, err)
+				} else if depsBlocked {
+					continue
+				}
 			}
 			claimable = append(claimable, t)
 			if len(claimable) >= count {

@@ -66,6 +66,24 @@ func Open(path string, debug bool) (*DB, error) {
 		return nil, fmt.Errorf("enable foreign_keys: %w", err)
 	}
 
+	// --- task_seq migration (must run before schema apply) ---
+	// Old task_seq had no id column and no PK, producing duplicate rows.
+	// Drop it now so the new CREATE TABLE takes effect.
+	// We detect old schema by checking if the id column is missing.
+	var hasSeqID bool
+	if err := db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('task_seq') WHERE name = 'id'`).Scan(&hasSeqID); err != nil {
+		// Table may not exist yet on fresh DB; ignore.
+	}
+	if !hasSeqID {
+		if _, err := db.Exec(`DROP TABLE IF EXISTS task_seq`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("drop old task_seq: %w", err)
+		}
+		if debug {
+			slog.Info("old task_seq dropped, recreating with single-row PK")
+		}
+	}
+
 	// Idempotent — all CREATE IF NOT EXISTS.
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
@@ -78,6 +96,22 @@ func Open(path string, debug bool) (*DB, error) {
 	}
 	if debug {
 		slog.Info("db schema applied")
+	}
+
+	// Always seed task_seq from existing tasks on every open.
+	// Without this, a DB opened by a version that didn't migrate old task_seq
+	// keeps next_id = 0 and nextID() could generate IDs that collide with
+	// pre-existing tasks from prior sessions.
+	if _, err := db.Exec(`
+		UPDATE task_seq SET next_id = (
+			SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
+		) WHERE id = 1
+	`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("seed task_seq: %w", err)
+	}
+	if debug {
+		slog.Info("task_seq seeded from existing tasks")
 	}
 
 	var hasProject bool

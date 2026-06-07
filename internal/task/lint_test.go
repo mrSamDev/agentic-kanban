@@ -110,7 +110,7 @@ func TestLintErrorsBeforeWarns(t *testing.T) {
 
 func TestBurndownEmpty(t *testing.T) {
 	s := newTestService(t)
-	stats, err := s.Burndown(t.Context())
+	stats, err := s.Burndown(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestBurndownCounts(t *testing.T) {
 	s.ClaimNext(t.Context(), "alice", "worker", "")
 	s.Complete(t.Context(), "TASK-1", "alice", false) // DONE
 
-	stats, err := s.Burndown(t.Context())
+	stats, err := s.Burndown(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

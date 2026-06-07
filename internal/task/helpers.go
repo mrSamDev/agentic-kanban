@@ -108,9 +108,22 @@ const (
 // Prefix "TASK-" for human-readable IDs in logs and CLI output.
 // Caller must already hold a write transaction.
 func nextID(tx *sql.Tx) (string, error) {
+	// Always reconcile sequence to MAX(id) before incrementing.
+	// Without the unconditional reconcile, a sequence that fell behind
+	// (e.g., DB opened by a version that didn't seed task_seq) could
+	// generate an ID that collides with an existing task.
+	_, err := tx.Exec(`
+		UPDATE task_seq SET next_id = (
+			SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
+		) WHERE id = 1
+	`)
+	if err != nil {
+		return "", fmt.Errorf("reconcile seq: %w", err)
+	}
+
 	var id int
-	err := tx.QueryRow(
-		"UPDATE task_seq SET next_id = next_id + 1 RETURNING next_id",
+	err = tx.QueryRow(
+		"UPDATE task_seq SET next_id = next_id + 1 WHERE id = 1 RETURNING next_id",
 	).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("next id: %w", err)
@@ -159,4 +172,24 @@ func scanTask(scanner interface {
 		}
 	}
 	return t, nil
+}
+
+// alreadyDone checks whether a task is already at the target status.
+// Used by BatchComplete to detect tasks completed by another writer between retries.
+func alreadyDone(tx *sql.Tx, id, status string) bool {
+	var current string
+	if err := tx.QueryRow(`SELECT status FROM tasks WHERE id = ?`, id).Scan(&current); err != nil {
+		return false
+	}
+	return current == status
+}
+
+// reRead fetches a full Task by ID inside an existing transaction.
+func reRead(tx *sql.Tx, id string) (Task, error) {
+	row := tx.QueryRow(
+		`SELECT id, title, status, role_boundary, project, priority,
+		        assigned_agent, lease_until, created_at, updated_at, depends_on
+		   FROM tasks WHERE id = ?`, id,
+	)
+	return scanTask(row)
 }

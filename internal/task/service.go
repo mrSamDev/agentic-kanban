@@ -287,6 +287,116 @@ func (s *Service) ExtendLease(ctx context.Context, id, agent string, minutes int
 	return task, err
 }
 
+// BatchComplete completes multiple tasks in one serializable transaction.
+// Processes all IDs; returns completed tasks + per-ID errors for partial failures.
+func (s *Service) BatchComplete(ctx context.Context, ids []string, agent string, toReview bool) ([]Task, []error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
+
+	newStatus := StatusDone
+	action := "COMPLETE"
+	eventType := "task.completed"
+	if toReview {
+		newStatus = StatusInReview
+		action = "REVIEW"
+		eventType = "task.submitted_for_review"
+	}
+
+	var completed []Task
+	var errs []error
+
+	err := s.retryOnBusy(func() error {
+		// Reset on retry to avoid duplicate entries
+		completed = nil
+		errs = nil
+
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err != nil {
+			return fmt.Errorf("batch complete begin tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		for _, id := range ids {
+			res, err := tx.Exec(
+				`UPDATE tasks
+				    SET status = ?, assigned_agent = NULL, lease_until = NULL,
+				        updated_at = CURRENT_TIMESTAMP
+				  WHERE id = ?
+				    AND assigned_agent = ?
+				    AND status IN ('IN_PROGRESS', 'IN_REVIEW')`,
+				string(newStatus), id, agent,
+			)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("complete %s: %w", id, err))
+				continue
+			}
+			n, _ := res.RowsAffected()
+			if n == 0 {
+				if alreadyDone(tx, id, string(newStatus)) {
+					t, err := reRead(tx, id)
+					if err != nil {
+						errs = append(errs, err)
+					} else {
+						completed = append(completed, t)
+					}
+				} else {
+					errs = append(errs, fmt.Errorf("%s: not assigned to %s", id, agent))
+				}
+				continue
+			}
+
+			if _, err := tx.Exec(
+				`INSERT INTO history (task_id, agent, action) VALUES (?, ?, ?)`,
+				id, agent, action,
+			); err != nil {
+				errs = append(errs, fmt.Errorf("%s history: %w", id, err))
+				continue
+			}
+
+			payload := eventPayload(tx, id, EventPayload{Agent: agent})
+			if err := insertEvent(tx, eventType, payload); err != nil {
+				errs = append(errs, fmt.Errorf("%s event: %w", id, err))
+				continue
+			}
+
+			// Re-read task
+			row := tx.QueryRow(
+				`SELECT id, title, status, role_boundary, project, priority,
+				        assigned_agent, lease_until, created_at, updated_at, depends_on
+				   FROM tasks WHERE id = ?`, id,
+			)
+			t, scanErr := scanTask(row)
+			if scanErr != nil {
+				errs = append(errs, fmt.Errorf("%s re-read: %w", id, scanErr))
+				continue
+			}
+			completed = append(completed, t)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("batch complete commit: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return completed, append(errs, fmt.Errorf("tx: %w", err))
+	}
+
+	// Fire hooks outside tx
+	for _, t := range completed {
+		payload := EventPayload{
+			TaskID:       t.ID,
+			Agent:        agent,
+			Title:        t.Title,
+			Project:      t.Project,
+			Priority:     fmt.Sprintf("%d", t.Priority),
+			RoleBoundary: t.RoleBoundary,
+		}
+		runHook(s.hooksDir, eventType, payload)
+	}
+	return completed, errs
+}
+
 func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
