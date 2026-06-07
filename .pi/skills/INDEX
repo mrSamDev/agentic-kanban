@@ -7,6 +7,7 @@ manager:review-backlog.md
 manager:setup-hooks.md
 manager:view-task.md
 worker:claim-next-task.md
+worker:claim-task.md
 worker:log-progress.md
 worker:block-task.md
 worker:complete-task.md

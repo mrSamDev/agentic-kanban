@@ -46,7 +46,7 @@ type SkillInfo struct {
 
 var SkillNames = map[string][]string{
 	"manager":  {"dispatch-task", "dispatch-plan", "approve-plan", "review-backlog", "setup-hooks", "view-task"},
-	"worker":   {"claim-next-task", "log-progress", "block-task", "complete-task"},
+	"worker":   {"claim-next-task", "claim-task", "log-progress", "block-task", "complete-task"},
 	"reviewer": {"claim-review", "approve-task", "reject-task"},
 }
 

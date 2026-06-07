@@ -124,9 +124,75 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       agent: Type.String({ description: "Your agent identifier (required)" }),
       role: Type.String({ description: "Role: worker, reviewer, etc. (required)" }),
+      count: Type.Optional(Type.Number({ description: "Number of tasks to claim (returns JSON array when > 1). Default: 1" })),
+      respect_deps: Type.Optional(Type.Boolean({ description: "Skip tasks with unmet dependencies. Default: true" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      return execKanban(["task", "claim-next", "--agent", params.agent, "--role", params.role], ctx);
+      const args = ["task", "claim-next", "--agent", params.agent, "--role", params.role];
+      if (params.count !== undefined) args.push("--count", String(params.count));
+      if (params.respect_deps === false) args.push("--respect-deps=false");
+      return execKanban(args, ctx);
+    },
+  });
+
+  pi.registerTool({
+    name: "batch_claim_task",
+    label: "Batch Claim Tasks",
+    description: "Claim multiple tasks atomically by role and count. Returns JSON array. Use instead of N sequential claim_next calls.",
+    promptSnippet: "Claim multiple tasks atomically for parallel execution",
+    promptGuidelines: [
+      "Use batch_claim_task when you need multiple tasks claimed atomically — this is the batch variant of claim_next.",
+    ],
+    parameters: Type.Object({
+      agent: Type.String({ description: "Your agent identifier (required)" }),
+      role: Type.String({ description: "Role: worker, reviewer, etc. (required)" }),
+      count: Type.Number({ description: "Number of tasks to claim (required, must be > 1)" }),
+      project: Type.Optional(Type.String({ description: "Filter by project/scope" })),
+      respect_deps: Type.Optional(Type.Boolean({ description: "Skip tasks with unmet dependencies. Default: true" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const args = ["task", "batch", "claim", "--agent", params.agent, "--role", params.role, "--count", String(params.count)];
+      if (params.project) args.push("--project", params.project);
+      if (params.respect_deps === false) args.push("--respect-deps=false");
+      return execKanban(args, ctx);
+    },
+  });
+
+  pi.registerTool({
+    name: "batch_complete_task",
+    label: "Batch Complete Tasks",
+    description: "Complete multiple tasks in one transaction. Submit comma-separated IDs. Optionally submit for review.",
+    promptSnippet: "Complete multiple tasks in one transaction",
+    promptGuidelines: [
+      "Use batch_complete_task when you have multiple tasks to complete at once — one write, not N. Pass --review to submit all for review.",
+    ],
+    parameters: Type.Object({
+      task_ids: Type.String({ description: "Comma-separated task IDs (e.g. TASK-18,TASK-19). Required." }),
+      agent: Type.String({ description: "Your agent identifier (required)" }),
+      to_review: Type.Optional(Type.Boolean({ description: "Submit for review instead of completing. Default: false" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const args = ["task", "batch", "complete", "--ids", params.task_ids, "--agent", params.agent];
+      if (params.to_review) args.push("--to-review");
+      return execKanban(args, ctx);
+    },
+  });
+
+  pi.registerTool({
+    name: "claim_task",
+    label: "Claim Task by ID",
+    description: "Claim a specific task by ID instead of taking the next available. Use when a manager tells you exactly which task to work on. Rejects if task is already claimed or has unmet dependencies.",
+    promptSnippet: "Claim a specific task by ID for a worker to execute",
+    promptGuidelines: [
+      "Use claim_task when a manager or parent agent explicitly assigns a task to a worker subagent — do not use bash kanban task claim.",
+      "The worker calls claim_task with the exact TASK-ID from the parent task board, preventing shadow task creation.",
+    ],
+    parameters: Type.Object({
+      task_id: Type.String({ description: "Task ID to claim (e.g. TASK-12)" }),
+      agent: Type.String({ description: "Your agent identifier" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      return execKanban(["task", "claim", params.task_id, "--agent", params.agent], ctx);
     },
   });
 

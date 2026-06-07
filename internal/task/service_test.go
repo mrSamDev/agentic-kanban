@@ -161,6 +161,104 @@ func TestClaimNextAtomic(t *testing.T) {
 	}
 }
 
+func TestClaimByID(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+
+	// Claim by ID
+	task, err := s.ClaimByID(t.Context(), "TASK-1", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.ID != "TASK-1" {
+		t.Fatalf("expected TASK-1, got %s", task.ID)
+	}
+	if task.Status != StatusInProgress {
+		t.Fatalf("expected IN_PROGRESS, got %s", task.Status)
+	}
+	if *task.AssignedAgent != "alice" {
+		t.Fatalf("expected alice, got %s", *task.AssignedAgent)
+	}
+	if task.LeaseUntil == nil {
+		t.Fatal("lease should be set")
+	}
+
+	// Claiming same task again should fail
+	_, err = s.ClaimByID(t.Context(), "TASK-1", "bob")
+	if err == nil {
+		t.Fatal("expected error claiming already-claimed task")
+	}
+}
+
+func TestClaimByIDNotFound(t *testing.T) {
+	s := newTestService(t)
+	_, err := s.ClaimByID(t.Context(), "TASK-999", "alice")
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestClaimByIDWrongState(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+
+	// Complete without claiming first — should be DONE
+	s.ClaimByID(t.Context(), "TASK-1", "alice")
+	s.Complete(t.Context(), "TASK-1", "alice", false)
+
+	// Now claim should fail — status is DONE
+	_, err := s.ClaimByID(t.Context(), "TASK-1", "bob")
+	if err == nil {
+		t.Fatal("expected error claiming DONE task")
+	}
+}
+
+func TestClaimByIDBlocksOnDeps(t *testing.T) {
+	s := newTestService(t)
+	dep, _ := s.Dispatch(t.Context(), "dependency", "worker", "default", 1, nil)
+	blocked := dep.ID
+	s.Dispatch(t.Context(), "blocked", "worker", "default", 5, &blocked)
+
+	// Try to claim blocked task directly — should fail
+	_, err := s.ClaimByID(t.Context(), "TASK-2", "alice")
+	if err == nil {
+		t.Fatal("expected error claiming task with unmet deps")
+	}
+
+	// Claim and complete the dependency
+	s.ClaimByID(t.Context(), "TASK-1", "alice")
+	s.Complete(t.Context(), "TASK-1", "alice", false)
+
+	// Now blocked task should be claimable
+	task, err := s.ClaimByID(t.Context(), "TASK-2", "alice")
+	if err != nil {
+		t.Fatalf("expected success after dep resolved, got %v", err)
+	}
+	if task.Status != StatusInProgress {
+		t.Fatalf("expected IN_PROGRESS, got %s", task.Status)
+	}
+}
+
+func TestClaimByIDReclaimsExpiredLease(t *testing.T) {
+	s := newTestService(t)
+	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
+
+	// Claim by agent-1
+	s.ClaimByID(t.Context(), "TASK-1", "agent-1")
+
+	// Manually expire the lease
+	s.db.Exec("UPDATE tasks SET lease_until = datetime('now', '-1 minute') WHERE id = 'TASK-1'")
+
+	// Agent-2 should be able to reclaim
+	task, err := s.ClaimByID(t.Context(), "TASK-1", "agent-2")
+	if err != nil {
+		t.Fatalf("expected reclaim on expired lease, got %v", err)
+	}
+	if *task.AssignedAgent != "agent-2" {
+		t.Fatalf("expected agent-2, got %s", *task.AssignedAgent)
+	}
+}
+
 func TestComplete(t *testing.T) {
 	s := newTestService(t)
 	s.Dispatch(t.Context(), "task", "worker", "default", 1, nil)
@@ -972,17 +1070,34 @@ func TestHookDLexOrder(t *testing.T) {
 	s := newTestService(t)
 	dir := t.TempDir()
 	hooksDir := filepath.Join(dir, "hooks")
-	s1 := filepath.Join(dir, "s1")
-	s2 := filepath.Join(dir, "s2")
-	makeHookD(t, hooksDir, "task.created", "a", "touch "+s1)
-	makeHookD(t, hooksDir, "task.created", "b", "touch "+s2)
+	order := filepath.Join(dir, "order")
+	makeHookD(t, hooksDir, "task.created", "a", "echo a >>"+order)
+	makeHookD(t, hooksDir, "task.created", "b", "echo b >>"+order)
+	makeHookD(t, hooksDir, "task.created", "c", "echo c >>"+order)
 	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
 	}
-	waitForSentinel(t, s1)
-	waitForSentinel(t, s2)
+	// Poll until all three hooks have written
+	var lines []string
+	for range 50 {
+		data, _ := os.ReadFile(order)
+		lines = strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) >= 3 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(lines) < 3 {
+		t.Fatalf("expected 3 hook executions, got %d", len(lines))
+	}
+	expected := []string{"a", "b", "c"}
+	for i, line := range lines[:3] {
+		if line != expected[i] {
+			t.Fatalf("hook order: expected %s, got %s at position %d", expected[i], line, i)
+		}
+	}
 }
 
 func TestHookDNonExecutableSkipped(t *testing.T) {

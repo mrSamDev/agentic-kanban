@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Uses Serializable isolation so two concurrent claimers never get the same task.
@@ -187,6 +188,122 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 		})
 	}
 	return claimed, nil
+}
+
+// ClaimByID claims a specific task by ID. Returns ErrNotFound if not found,
+// ErrNotAssigned if already claimed, ErrInvalidState if not TODO,
+// or ErrDependencyBlocked if dependencies are unmet.
+func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
+
+	var task Task
+	var payload EventPayload
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err != nil {
+			return fmt.Errorf("claim-by-id begin tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		// Read current state
+		var currentStatus string
+		var assignedAgent sql.NullString
+		var dependsOn sql.NullString
+		err = tx.QueryRow(
+			`SELECT status, assigned_agent, depends_on FROM tasks WHERE id = ?`, id,
+		).Scan(&currentStatus, &assignedAgent, &dependsOn)
+		if err == sql.ErrNoRows {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("claim-by-id read task %s: %w", id, err)
+		}
+
+		// Must be TODO (or expired IN_PROGRESS that nobody reclaimed via claim-next)
+		switch TaskStatus(currentStatus) {
+		case StatusTODO:
+			// fine
+		case StatusInProgress:
+			// Check lease expiry for reclamation
+			if assignedAgent.Valid && assignedAgent.String == agent {
+				return &ExitError{Code: 2, Message: fmt.Sprintf("already claimed by %s", agent)}
+			}
+			var leaseUntil sql.NullString
+			tx.QueryRow(`SELECT lease_until FROM tasks WHERE id = ?`, id).Scan(&leaseUntil)
+			if leaseUntil.Valid {
+				parsed, err := parseLeaseTime(leaseUntil.String)
+				if err == nil && parsed.After(time.Now()) {
+					return ErrNotAssigned
+				}
+				// Lease expired — allow reclaim
+			}
+		default:
+			return ErrInvalidState
+		}
+
+		// Check unmet dependencies
+		t := Task{ID: id, DependsOn: NullableStringFromDB(dependsOn)}
+		if blocked, err := hasUnmetDeps(tx, t); err != nil {
+			return fmt.Errorf("claim-by-id check deps %s: %w", id, err)
+		} else if blocked {
+			return &ExitError{Code: 2, Message: fmt.Sprintf("task %s has unmet dependencies", id)}
+		}
+
+		// Claim it
+		res, err := tx.Exec(
+			`UPDATE tasks
+			    SET status = 'IN_PROGRESS', assigned_agent = ?,
+			        lease_until = datetime('now', '+' || ? || ' minutes'),
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ?`,
+			agent, defaultLeaseMinutes, id,
+		)
+		if err != nil {
+			return fmt.Errorf("claim-by-id update %s: %w", id, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("claim-by-id rows affected %s: %w", id, err)
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+
+		// Re-read for authoritative state
+		task, err = reRead(tx, id)
+		if err != nil {
+			return fmt.Errorf("claim-by-id re-read %s: %w", id, err)
+		}
+
+		// History
+		if _, err := tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'CLAIM')`,
+			id, agent,
+		); err != nil {
+			return fmt.Errorf("claim-by-id history %s: %w", id, err)
+		}
+
+		// Event
+		payload = EventPayload{
+			TaskID:   id,
+			Agent:    agent,
+			Title:    task.Title,
+			Project:  task.Project,
+			Priority: fmt.Sprintf("%d", task.Priority),
+			RoleBoundary: task.RoleBoundary,
+		}
+		if err := insertEvent(tx, "task.claimed", payload); err != nil {
+			return fmt.Errorf("claim-by-id event %s: %w", id, err)
+		}
+
+		return tx.Commit()
+	})
+	if err != nil {
+		return Task{}, err
+	}
+	runHook(s.hooksDir, "task.claimed", payload)
+	return task, nil
 }
 
 // hasUnmetDeps checks whether any of t's dependencies are still not DONE.
