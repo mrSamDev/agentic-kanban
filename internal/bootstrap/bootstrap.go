@@ -105,7 +105,7 @@ func dispatchPlan(sqlDB *sql.DB, planPath string) error {
 		if priority == 0 {
 			priority = 100
 		}
-		if _, err := svc.Dispatch(context.Background(), pt.Title, role, "default", priority); err != nil {
+		if _, err := svc.Dispatch(context.Background(), pt.Title, role, "default", priority, nil); err != nil {
 			return fmt.Errorf("dispatch %q: %w", pt.Title, err)
 		}
 	}

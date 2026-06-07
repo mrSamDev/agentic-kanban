@@ -129,23 +129,25 @@ func scanTask(scanner interface {
 	Scan(dest ...any) error
 }) (Task, error) {
 	var t Task
-	var assigned, lease, project sql.NullString
+	var assigned, lease, project, dependsOn sql.NullString
 	var createdAt, updatedAt time.Time
 	err := scanner.Scan(
 		&t.ID, &t.Title, (*string)(&t.Status),
 		&t.RoleBoundary, &project, &t.Priority,
 		&assigned, &lease,
 		&createdAt, &updatedAt,
+		&dependsOn,
 	)
 	if err != nil {
 		return t, err
 	}
 	t.Project = project.String
-	t.AssignedAgent = NullableStringFromDB(sql.NullString{String: assigned.String, Valid: assigned.Valid})
+	t.AssignedAgent = NullableStringFromDB(assigned)
+	t.DependsOn = NullableStringFromDB(dependsOn)
+	t.CreatedAt = createdAt
+	t.UpdatedAt = updatedAt
 	if lease.Valid {
 		t.LeaseUntil = parseLeaseTime(lease.String)
 	}
-	t.CreatedAt = createdAt
-	t.UpdatedAt = updatedAt
 	return t, nil
 }

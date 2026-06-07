@@ -8,6 +8,8 @@ Branch: `post-mortem-fixes`
 
 Ordered by leverage, not implementation convenience.
 
+Version note: codebase is currently at v0.1.9. v0.2 and v0.3 are reserved for the hooks system and events tail work already merged on this branch. These three releases pick up from v0.4.
+
 ### Release 1 — Make multi-agent execution safe (v0.4)
 
 Safety before speed. These three changes turn the system from "works in demos" into "safe for real projects."
@@ -67,51 +69,38 @@ type Task struct {
 ```
 
 ### Claim guard in `ClaimNext`
-**Key change**: `ClaimNext` currently fetches 1 candidate. Must now fetch N candidates and loop until it finds one with no unmet deps (or runs out).
+**Key change**: `ClaimNext` currently issues a single atomic SQL update (SELECT + UPDATE in one statement) — impossible to double-claim. The new approach uses a Serializable transaction with SELECT-then-UPDATE: same correctness guarantee, but the concurrency contract is now explicit (Serializable isolation, not implicit atomicity). This is the correct tradeoff — it enables dep filtering while preserving safety.
 
-**scanTask update**: `scanTask()` in `helpers.go` currently scans 12 fields. `depends_on` makes 13. Add `depends_on` to `scanTask()` — the migration runs at `Open()`, so by the time any service method runs, the column exists.
+After Step 4, `ClaimNext` is refactored to call `ClaimBatch(ctx, agent, role, project, 1)` and return the first result. This means one code path, one test suite, one place for dep bugs.
+
+**scanTask update**: `scanTask()` in `helpers.go` currently scans 10 fields. `depends_on` makes 11. Add `depends_on` to `scanTask()` — the migration runs at `Open()`, so by the time any service method runs, the column exists.
+
+**depends_on trade-off**: Comma-separated TEXT works for the forward query ("can I claim this task?") but makes reverse queries ("what tasks depend on TASK-8?") require a LIKE scan. No FK constraint. Pragmatic choice — acceptable for the dependency fan-out sizes expected here.
 
 ```go
+// ClaimNext delegates to ClaimBatch after Step 4.
+// Until then, inline the same SELECT-then-UPDATE logic with count=1.
 func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
-    // ... existing setup ...
-
-    // Fetch up to 20 candidates (not just 1) to account for dep filtering
-    rows, _ := tx.Query(`
-        SELECT id, title, status, role_boundary, project, priority,
-               assigned_agent, lease_until, created_at, updated_at, depends_on
-          FROM tasks
-         WHERE role_boundary = ?
-           AND project = ?
-           AND (status = 'TODO'
-                OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
-         ORDER BY priority ASC, created_at ASC
-         LIMIT 20`, role, project,
-    )
-
-    var candidate Task
-    for rows.Next() {
-        t, _ := scanTask(rows)
-        if hasUnmetDeps(tx, t) {
-            continue
-        }
-        candidate = t
-        break
+    tasks, err := s.ClaimBatch(ctx, agent, role, project, 1)
+    if err != nil || len(tasks) == 0 {
+        return Task{}, err
     }
-    if candidate.ID == "" {
-        return Task{}, nil // nothing claimable
-    }
-
-    // Claim the found candidate (existing logic)
-    // ...
+    return tasks[0], nil
 }
 
 func hasUnmetDeps(tx *sql.Tx, t Task) bool {
     if t.DependsOn == nil || *t.DependsOn == "" {
         return false
     }
-    ids := strings.Split(*t.DependsOn, ",")
-    for i := range ids {
-        ids[i] = strings.TrimSpace(ids[i])
+    parts := strings.Split(*t.DependsOn, ",")
+    var ids []string
+    for _, p := range parts {
+        if id := strings.TrimSpace(p); id != "" { // skip whitespace-only entries
+            ids = append(ids, id)
+        }
+    }
+    if len(ids) == 0 {
+        return false
     }
     // Build dynamic IN clause
     placeholders := make([]string, len(ids))
@@ -121,6 +110,7 @@ func hasUnmetDeps(tx *sql.Tx, t Task) bool {
         args[i] = id
     }
     var count int
+    // err intentionally ignored — returns false (claimable) on query failure; outer tx will catch
     tx.QueryRow(
         `SELECT COUNT(*) FROM tasks WHERE id IN (`+strings.Join(placeholders, ",")+`) AND status != 'DONE'`,
         args...,
@@ -128,6 +118,8 @@ func hasUnmetDeps(tx *sql.Tx, t Task) bool {
     return count > 0
 }
 ```
+
+**Concurrency test to add**: Two goroutines each call `ClaimNext` concurrently; one task has unmet deps. Assert: exactly one task claimed total, no double-claim, dep-blocked task remains TODO.
 
 ### Dispatch update
 `Dispatch` accepts optional `--depends-on` flag (comma-separated task IDs). Stored as-is in the column.
@@ -208,17 +200,16 @@ kanban task view <id> | jq '.task.lease_until'
 
 ### Files changed
 - `internal/task/review.go` — one check in `ReviewApprove` and `ReviewReject`
-- `cmd/kanban/config.go` — `review.require_separate_agent` config key (default: `true`)
 
 ### Configurability
 
-The gate is on by default but can be disabled for small single-agent projects:
+The gate is on by default but can be disabled for small single-agent projects via env var (matches the `KANBAN_DB` pattern already in the codebase — no TOML parser needed):
 
 ```bash
-kanban config set review.require_separate_agent=false
+KANBAN_ALLOW_SELF_REVIEW=true kanban task approve <id> --agent worker-1
 ```
 
-Stored in `.kanban/config.toml`. When `false`, self-review is allowed and `checkSelfReview` returns `nil` immediately.
+Read with `os.Getenv("KANBAN_ALLOW_SELF_REVIEW") == "true"` before calling `checkSelfReview`. When set, `checkSelfReview` returns `nil` immediately.
 
 ### Logic
 Query the history table for the last agent who claimed the task:
@@ -259,7 +250,7 @@ func checkSelfReview(tx *sql.Tx, id, agent string) error {
 ```
 
 ### Implementation
-Add as first check inside the retry callback in both `ReviewApprove` and `ReviewReject`. Read `review.require_separate_agent` from config before calling.
+Add as first check inside the retry callback in both `ReviewApprove` and `ReviewReject`. Check `os.Getenv("KANBAN_ALLOW_SELF_REVIEW")` before calling.
 
 ### Verification
 ```bash
@@ -273,8 +264,7 @@ kanban task approve <id> --agent worker-1
 kanban task approve <id> --agent reviewer-2
 # → Task marked DONE
 # 4. Disable gate for single-agent project
-kanban config set review.require_separate_agent=false
-kanban task approve <id> --agent worker-1  # → OK
+KANBAN_ALLOW_SELF_REVIEW=true kanban task approve <id> --agent worker-1  # → OK
 ```
 
 ---
@@ -282,7 +272,7 @@ kanban task approve <id> --agent worker-1  # → OK
 ## Step 4: `claim-next --count N` — Batch parallelism (PM#1)
 
 ### Files changed
-- `internal/task/claim.go` — new `ClaimBatch` method (internal)
+- `internal/task/claim.go` — `ClaimBatch` becomes the canonical implementation; `ClaimNext` delegates to it with `count=1`
 - `cmd/kanban/dispatch.go` — extend `claim-next` with `--count` flag
 
 ### API design
@@ -303,9 +293,12 @@ SQLite flattens LIMIT in subquery-UPDATE. Use explicit two-step.
 
 **Design choice**: Fetch ALL eligible candidates (up to 100), filter in Go for unmet deps, then claim up to N. If fewer than N remain after filtering, return what's available (no partial failure).
 
+Note: `_` in pseudo-code below represents error handling omitted for brevity — actual implementation must check all errors (see existing `ClaimNext` for the pattern).
+
 ```go
 func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, count int) ([]Task, error) {
-    tx, _ := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+    tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+    if err != nil { return nil, err }
     defer tx.Rollback()
 
     // Step 1: select ALL eligible candidates (cap at 100 to avoid OOM)
@@ -547,12 +540,13 @@ kanban plan lint --json   # machine-readable output
 
 Checks run against the current board state:
 
-| Check | Example warning |
-|-------|----------------|
-| Unknown dependency | `WARN: TASK-12 depends on unknown task TASK-99` |
-| Dependency cycle | `ERROR: Cycle detected: TASK-3 → TASK-5 → TASK-3` |
-| Task with no role | `WARN: TASK-7 has no role_boundary set` |
-| Blocked by nonexistent task | `WARN: TASK-10 is blocked but blocker TASK-4 is DONE` |
+| Check | Example warning | Note |
+|-------|----------------|------|
+| Unknown dependency | `WARN: TASK-12 depends on unknown task TASK-99` | |
+| Dependency cycle | `ERROR: Cycle detected: TASK-3 → TASK-5 → TASK-3` | |
+| Task with no role | `WARN: TASK-7 has no role_boundary set` | Schema enforces NOT NULL, so this catches empty string `""` only |
+
+Dropped: "blocked by nonexistent task" — schema has no `blocked_by` column; BLOCKED status uses free-text notes, not task refs. No reliable way to parse blocker IDs.
 
 ### Output
 

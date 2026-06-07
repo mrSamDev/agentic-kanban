@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project string, priority int) (Task, error) {
+func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project string, priority int, dependsOn *string) (Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
 	if len(title) > maxTitleLength {
@@ -34,9 +34,9 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 	}
 
 	_, err = tx.Exec(
-		`INSERT INTO tasks (id, title, status, role_boundary, project, priority)
-		 VALUES (?, ?, 'TODO', ?, ?, ?)`,
-		id, title, roleBoundary, project, priority,
+		`INSERT INTO tasks (id, title, status, role_boundary, project, priority, depends_on)
+		 VALUES (?, ?, 'TODO', ?, ?, ?, ?)`,
+		id, title, roleBoundary, project, priority, dependsOn,
 	)
 	if err != nil {
 		return Task{}, fmt.Errorf("insert task: %w", err)
@@ -229,6 +229,54 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 	if err == nil {
 		runHook(s.hooksDir, "task.progress", payload)
 	}
+	return task, err
+}
+
+func (s *Service) ExtendLease(ctx context.Context, id, agent string, minutes int) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
+	if minutes <= 0 {
+		minutes = defaultLeaseMinutes
+	}
+
+	var task Task
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		res, err := tx.Exec(
+			`UPDATE tasks
+			    SET lease_until = datetime('now', '+' || ? || ' minutes'),
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND assigned_agent = ?`,
+			minutes, id, agent,
+		)
+		if err != nil {
+			return fmt.Errorf("extend lease: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("extend lease rows affected: %w", err)
+		}
+		if n == 0 {
+			var exists bool
+			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if !exists {
+				return ErrNotFound
+			}
+			return ErrNotAssigned
+		}
+
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		task, err = s.View(ctx, id)
+		return err
+	})
 	return task, err
 }
 

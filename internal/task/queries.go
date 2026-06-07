@@ -12,7 +12,7 @@ import (
 func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, title, status, role_boundary, project, priority,
-		        assigned_agent, lease_until, created_at, updated_at
+		        assigned_agent, lease_until, created_at, updated_at, depends_on
 		   FROM tasks WHERE id = ?`, id,
 	)
 	t, err := scanTask(row)
@@ -202,7 +202,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 		args = append(args, params.Project)
 	}
 
-	query := "SELECT id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at FROM tasks"
+	query := "SELECT id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at, depends_on FROM tasks"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}

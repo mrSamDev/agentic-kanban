@@ -14,7 +14,11 @@ curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install
 
 ## Why
 
-AI agents need shared state without standing up infrastructure. Kanban gives them a SQLite task board they all read and write. Agents claim tasks, report progress, complete work, and the `.db` file is the only coordination point.
+Started with a markdown file. Sprint 1, task 1.1, task 1.2. Agents kept overwriting each other's updates, forgetting to mark things done, or picking up work already claimed. The file became noise fast.
+
+The answer was a database. Every state change is a transaction, so two agents can't claim the same task. If one crashes, its lease expires and another picks it up, same as Rust's ownership model: one owner at a time, released when the owner disappears.
+
+The `.db` file is the only coordination point.
 
 ## When it fits
 

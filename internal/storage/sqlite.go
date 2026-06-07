@@ -105,6 +105,18 @@ func Open(path string, debug bool) (*DB, error) {
 		}
 	}
 
+	var hasDependsOn bool
+	db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'depends_on'`).Scan(&hasDependsOn)
+	if !hasDependsOn {
+		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN depends_on TEXT"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("add depends_on column: %w", err)
+		}
+		if debug {
+			slog.Info("db depends_on column migration applied")
+		}
+	}
+
 	return &DB{db, debug}, nil
 }
 

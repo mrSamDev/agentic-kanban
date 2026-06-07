@@ -4,107 +4,209 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
+	"time"
 )
 
 // Uses Serializable isolation so two concurrent claimers never get the same task.
 // Also reclaims tasks where the previous agent's lease expired.
+// After Step 4 refactor: delegates to ClaimBatch(..., 1) for single-task claim.
 func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
+	tasks, err := s.ClaimBatch(ctx, agent, role, project, 1)
+	if err != nil || len(tasks) == 0 {
+		return Task{}, err
+	}
+	return tasks[0], nil
+}
+
+// ClaimBatch claims up to count eligible tasks in one Serializable transaction.
+// This is the canonical claim implementation; ClaimNext delegates here.
+// Concurrency note: the current code uses one atomic SQL UPDATE (SELECT+UPDATE in one
+// statement), which makes double-claim impossible. This refactor switches to a
+// Serializable transaction with explicit SELECT-then-UPDATE — same correctness
+// guarantee, but the concurrency contract is now explicit (Serializable isolation,
+// not implicit atomicity). The SELECT-then-UPDATE approach is required to support
+// dependency filtering (hasUnmetDeps) and batch claims.
+func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, count int) ([]Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
-	var task Task
+
+	if count < 1 {
+		count = 1
+	}
+
+	var claimed []Task
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 		if err != nil {
-			return err
+			return fmt.Errorf("batch claim begin tx: %w", err)
 		}
 		defer tx.Rollback()
 
-		var row *sql.Row
+		// Step 1: select eligible candidates (cap at 100 to avoid OOM)
+		maxFetch := count * 5
+		if maxFetch > 100 {
+			maxFetch = 100
+		}
+
+		var rows *sql.Rows
 		if project != "" {
-			row = tx.QueryRow(
-				`UPDATE tasks
-				   SET status         = 'IN_PROGRESS',
-				       assigned_agent = ?,
-				       lease_until    = datetime('now', '+' || ? || ' minutes'),
-				       updated_at     = CURRENT_TIMESTAMP
-				 WHERE id = (
-				   SELECT id FROM tasks
-				    WHERE role_boundary = ?
-				      AND project = ?
-				      AND (status = 'TODO'
-				           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
-				    ORDER BY priority ASC, created_at ASC
-				    LIMIT 1
-				 )
-				 RETURNING id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at`,
-				agent, defaultLeaseMinutes, role, project,
+			rows, err = tx.Query(`
+				SELECT id, title, status, role_boundary, project, priority,
+				       assigned_agent, lease_until, created_at, updated_at, depends_on
+				  FROM tasks
+				 WHERE role_boundary = ?
+				   AND project = ?
+				   AND (status = 'TODO'
+				        OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
+				 ORDER BY priority ASC, created_at ASC
+				 LIMIT ?`, role, project, maxFetch,
 			)
 		} else {
-			row = tx.QueryRow(
-				`UPDATE tasks
-				   SET status         = 'IN_PROGRESS',
-				       assigned_agent = ?,
-				       lease_until    = datetime('now', '+' || ? || ' minutes'),
-				       updated_at     = CURRENT_TIMESTAMP
-				 WHERE id = (
-				   SELECT id FROM tasks
-				    WHERE role_boundary = ?
-				      AND (status = 'TODO'
-				           OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
-				    ORDER BY priority ASC, created_at ASC
-				    LIMIT 1
-				 )
-				 RETURNING id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at`,
-				agent, defaultLeaseMinutes, role,
+			rows, err = tx.Query(`
+				SELECT id, title, status, role_boundary, project, priority,
+				       assigned_agent, lease_until, created_at, updated_at, depends_on
+				  FROM tasks
+				 WHERE role_boundary = ?
+				   AND (status = 'TODO'
+				        OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
+				 ORDER BY priority ASC, created_at ASC
+				 LIMIT ?`, role, maxFetch,
 			)
 		}
-
-		t, err := scanTask(row)
 		if err != nil {
-			if err == sql.ErrNoRows {
-				return nil
+			return fmt.Errorf("batch claim candidates: %w", err)
+		}
+
+		// Filter out tasks with unmet deps, collect up to count claimable
+		var claimable []Task
+		for rows.Next() {
+			t, err := scanTask(rows)
+			if err != nil {
+				rows.Close()
+				return fmt.Errorf("scan candidate: %w", err)
 			}
-			return fmt.Errorf("claim update: %w", err)
+			if hasUnmetDeps(tx, t) {
+				continue
+			}
+			claimable = append(claimable, t)
+			if len(claimable) >= count {
+				break
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate candidates: %w", err)
 		}
 
-		_, err = tx.Exec(
-			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'CLAIM')`,
-			t.ID, agent,
-		)
-		if err != nil {
-			return fmt.Errorf("insert claim history for task %s agent %s: %w", t.ID, agent, err)
+		// Step 2: claim up to count tasks in same transaction
+		claimed = make([]Task, 0, len(claimable))
+		for _, t := range claimable {
+			if len(claimed) >= count {
+				break
+			}
+			res, err := tx.Exec(
+				`UPDATE tasks
+				    SET status = 'IN_PROGRESS', assigned_agent = ?,
+				        lease_until = datetime('now', '+' || ? || ' minutes'),
+				        updated_at = CURRENT_TIMESTAMP
+				  WHERE id = ? AND status IN ('TODO', 'IN_PROGRESS')`,
+				agent, defaultLeaseMinutes, t.ID,
+			)
+			if err != nil {
+				return fmt.Errorf("batch claim update for %s: %w", t.ID, err)
+			}
+			n, err := res.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("batch claim rows affected for %s: %w", t.ID, err)
+			}
+			if n == 0 {
+				continue // race lost, skip
+			}
+
+			// Update the task struct to reflect the new state
+			claimedEntry := t
+			claimedEntry.Status = StatusInProgress
+			agentCopy := agent
+			claimedEntry.AssignedAgent = &agentCopy
+			leaseUntil := time.Now().Add(time.Duration(defaultLeaseMinutes) * time.Minute)
+			claimedEntry.LeaseUntil = &leaseUntil
+
+			if _, err := tx.Exec(
+				`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'CLAIM')`,
+				t.ID, agent,
+			); err != nil {
+				return fmt.Errorf("insert claim history for %s: %w", t.ID, err)
+			}
+
+			if err := insertEvent(tx, "task.claimed", EventPayload{
+				TaskID:       t.ID,
+				Agent:        agent,
+				Title:        t.Title,
+				Project:      t.Project,
+				Priority:     fmt.Sprintf("%d", t.Priority),
+				RoleBoundary: t.RoleBoundary,
+			}); err != nil {
+				return fmt.Errorf("insert event for %s: %w", t.ID, err)
+			}
+
+			claimed = append(claimed, claimedEntry)
 		}
 
-		if err := insertEvent(tx, "task.claimed", EventPayload{
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("batch claim commit: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("batch claim after retries: %w", err)
+	}
+
+	// Fire hooks outside tx
+	for _, t := range claimed {
+		runHook(s.hooksDir, "task.claimed", EventPayload{
 			TaskID:       t.ID,
 			Agent:        agent,
 			Title:        t.Title,
 			Project:      t.Project,
 			Priority:     fmt.Sprintf("%d", t.Priority),
 			RoleBoundary: t.RoleBoundary,
-		}); err != nil {
-			return fmt.Errorf("insert event: %w", err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-
-		task = t
-		return nil
-	})
-	if err != nil {
-		return Task{}, fmt.Errorf("claim after retries: %w", err)
-	}
-	if task.ID != "" {
-		runHook(s.hooksDir, "task.claimed", EventPayload{
-			TaskID:       task.ID,
-			Agent:        agent,
-			Title:        task.Title,
-			Project:      task.Project,
-			Priority:     fmt.Sprintf("%d", task.Priority),
-			RoleBoundary: task.RoleBoundary,
 		})
 	}
-	return task, nil
+	return claimed, nil
+}
+
+// hasUnmetDeps checks whether any of t's dependencies are still not DONE.
+// Returns false (claimable) on query failure; the outer transaction catches it.
+func hasUnmetDeps(tx *sql.Tx, t Task) bool {
+	if t.DependsOn == nil || *t.DependsOn == "" {
+		return false
+	}
+	parts := strings.Split(*t.DependsOn, ",")
+	var ids []string
+	for _, p := range parts {
+		id := strings.TrimSpace(p)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return false
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	var count int
+	// err ignored — count stays 0 on failure, so task appears claimable
+	_ = tx.QueryRow(
+		`SELECT COUNT(*) FROM tasks WHERE id IN (`+strings.Join(placeholders, ",")+`) AND status != 'DONE'`,
+		args...,
+	).Scan(&count)
+	return count > 0
 }

@@ -35,6 +35,7 @@ type Task struct {
 	LeaseUntil    *time.Time `json:"lease_until"`    // nullable
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	DependsOn     *string    `json:"depends_on"` // comma-separated dependency IDs, nullable
 }
 
 // Note maps to the notes table.
