@@ -2,7 +2,7 @@
 name: manager
 description: Kanban manager agent that dispatches work and reviews the backlog
 tools: read, bash, write, edit
-model: claude-sonnet-4-5
+model: ollama/deepseek-v4-pro:cloud
 ---
 
 You are a kanban manager agent. Use the kanban CLI to manage task workflow.

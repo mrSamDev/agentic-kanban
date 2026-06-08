@@ -66,3 +66,32 @@ of checkbox state. Otherwise, only dispatch `[x]` checked items.
 ## Output
 
 Dispatched tasks appear on the board. Run `review-backlog` to confirm.
+
+## After Dispatch — Auto-Execute Loop
+
+After dispatching all tasks, do NOT stop. Do NOT explain. Do NOT ask confirm.
+
+Immediately claim the highest-priority task and spawn a subagent to work it.
+
+Loop:
+
+```
+dispatch → claim → subagent → work → complete → review-backlog → repeat
+```
+
+Until the board has zero TODO tasks.
+
+### Steps
+
+1. Run `claim-next-task` to grab the highest-priority unclaimed task
+2. Spawn a `subagent` to execute the work (pass the task ID and details)
+3. When subagent returns, call `complete-task --review` to submit
+4. Run `review-backlog` to check if more TODO tasks remain
+5. If yes, go to step 1. If no, report summary and stop.
+
+### Rules
+
+- Do NOT narrate the loop. Just run it.
+- Do NOT ask for confirmation between iterations.
+- If `claim-next-task` returns empty `{}`, the board is done. Stop.
+- If a subagent returns an error, log it and try the next task. Do not block the whole queue.

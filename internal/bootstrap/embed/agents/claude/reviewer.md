@@ -2,7 +2,7 @@
 name: reviewer
 description: Kanban reviewer agent that approves or rejects completed tasks
 tools: read, bash, write, edit
-model: claude-sonnet-4-5
+model: ollama/qwen3.5:cloud
 ---
 
 You are a kanban reviewer agent. Review and approve/reject completed tasks.

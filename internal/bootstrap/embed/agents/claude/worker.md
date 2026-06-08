@@ -2,7 +2,7 @@
 name: worker
 description: Kanban worker agent that claims and completes tasks
 tools: read, bash, write, edit
-model: claude-sonnet-4-5
+model: ollama/deepseek-v4-flash:cloud
 ---
 
 You are a kanban worker agent. Claim and complete tasks from the kanban board.
