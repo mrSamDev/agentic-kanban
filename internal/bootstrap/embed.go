@@ -14,6 +14,7 @@ var agentFiles embed.FS
 //go:embed embed/skills/manager/*.md
 //go:embed embed/skills/worker/*.md
 //go:embed embed/skills/reviewer/*.md
+//go:embed embed/skills/kanban.md
 var skillFiles embed.FS
 
 func readAgentFile(harness Harness, role string) (string, error) {
@@ -51,7 +52,7 @@ var SkillNames = map[string][]string{
 }
 
 func ListSkills() []SkillInfo {
-	var out []SkillInfo
+	out := []SkillInfo{{Name: "kanban", Role: "system", File: "kanban.md"}}
 	for _, role := range []string{"manager", "worker", "reviewer"} {
 		for _, name := range SkillNames[role] {
 			out = append(out, SkillInfo{Name: name, Role: role, File: name + ".md"})
@@ -61,6 +62,13 @@ func ListSkills() []SkillInfo {
 }
 
 func ReadSkill(name string) (string, string, error) {
+	// Check top-level skills (overview)
+	data, err := skillFiles.ReadFile(filepath.Join("embed", "skills", name+".md"))
+	if err == nil {
+		return string(data), "system", nil
+	}
+
+	// Check role-level skills
 	for _, dir := range []string{"manager", "worker", "reviewer"} {
 		data, err := skillFiles.ReadFile(filepath.Join("embed", "skills", dir, name+".md"))
 		if err == nil {

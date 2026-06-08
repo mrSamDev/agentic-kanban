@@ -87,11 +87,36 @@ Until the board has zero TODO tasks.
 2. Spawn a `subagent` to execute the work (pass the task ID and details)
 3. When subagent returns, call `complete-task --review` to submit
 4. Run `review-backlog` to check if more TODO tasks remain
-5. If yes, go to step 1. If no, report summary and stop.
+5. If yes, go to step 1. If no, proceed to review phase.
+
+### Review Phase
+
+After all tasks are built and submitted for review, approve them:
+
+1. Poll `review-backlog --status IN_REVIEW`
+2. For each task: `kanban task approve TASK-N --agent <your-agent>`
+3. Repeat until 0 IN_REVIEW remain (or 5 minutes timeout)
+
+Set `KANBAN_ALLOW_SELF_REVIEW=true` in the environment before the
+review phase. The orchestrator dispatched the work, verified subagent
+output, and is acting as the reviewer — self-review is intentional here.
+
+### Subagent delegation
+
+For long-running subagent work (>15 min), transfer the claim so the
+subagent owns it and can complete independently:
+
+```
+kanban task claim TASK-5 --agent <orchestrator> --transfer --to <subagent>
+```
+
+The subagent can then extend its own lease, log progress, and
+call `complete-task` directly. If the subagent crashes, lease expiry
+reclaims the task — same crash recovery as any worker.
 
 ### Rules
 
 - Do NOT narrate the loop. Just run it.
 - Do NOT ask for confirmation between iterations.
-- If `claim-next-task` returns empty `{}`, the board is done. Stop.
+- If `claim-next-task` returns empty `{}`, the board has no TODO. Start review phase.
 - If a subagent returns an error, log it and try the next task. Do not block the whole queue.

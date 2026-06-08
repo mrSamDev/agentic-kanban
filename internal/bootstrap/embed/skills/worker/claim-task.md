@@ -31,7 +31,39 @@ kanban task claim TASK-12 \
 - Other agents cannot claim an active lease
 - Expired leases are reclaimed automatically
 
-## JSON output
+## Claim transfer (hierarchical delegation)
+
+Transfer a claimed task to another agent so the subagent owns the claim:
+
+```bash
+kanban task claim TASK-5 \
+  --agent orchestrator \
+  --transfer \
+  --to pi-worker
+```
+
+### When to use
+
+- Subagent work may exceed 15 minutes
+- You want crash recovery: if the subagent crashes, lease expiry reclaims
+  the task rather than orphaning it
+
+### Behavior
+
+- `--agent` must be the current `assigned_agent` (the claim holder)
+- `--to` is the new owner — gets a fresh 15-minute lease
+- Task must be `IN_PROGRESS` (cannot transfer unclaimed or done tasks)
+- History records the transfer; event `task.transferred` fires
+- The subagent can now call `complete-task`, `log-progress`,
+  `extend-lease` directly
+
+### Fast subagent pattern (no transfer needed)
+
+For quick work (<15 min), the orchestrator keeps the claim:
+
+```
+orchestrator claims → spawns subagent → collects result → complete-task
+```
 
 Full task object with `status: "IN_PROGRESS"`, `assigned_agent: "<name>"`,
 `lease_until: "<timestamp>"`.

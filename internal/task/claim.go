@@ -306,7 +306,109 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 	return task, nil
 }
 
-// hasUnmetDeps checks whether any of t's dependencies are still not DONE.
+
+// TransferClaim transfers a claimed task from one agent to another.
+// The caller (fromAgent) must be the current assigned_agent.
+// toAgent becomes the new owner with a fresh lease.
+func (s *Service) TransferClaim(ctx context.Context, id, fromAgent, toAgent string) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
+
+	var task Task
+	var payload EventPayload
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err != nil {
+			return fmt.Errorf("transfer begin tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		// Read current state
+		var currentStatus string
+		var assignedAgent sql.NullString
+		err = tx.QueryRow(
+			`SELECT status, assigned_agent FROM tasks WHERE id = ?`, id,
+		).Scan(&currentStatus, &assignedAgent)
+		if err == sql.ErrNoRows {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("transfer read task %s: %w", id, err)
+		}
+
+		if TaskStatus(currentStatus) != StatusInProgress {
+			return &ExitError{Code: 2, Message: fmt.Sprintf("task %s is not IN_PROGRESS", id)}
+		}
+
+		if !assignedAgent.Valid || assignedAgent.String != fromAgent {
+			var actual string
+			if assignedAgent.Valid {
+				actual = assignedAgent.String
+			} else {
+				actual = "unclaimed"
+			}
+			return &ExitError{Code: 2, Message: fmt.Sprintf("task not assigned to %s (assigned to: %s)", fromAgent, actual)}
+		}
+
+		if fromAgent == toAgent {
+			return &ExitError{Code: 2, Message: "cannot transfer task to yourself"}
+		}
+
+		// Transfer: reassign agent, reset lease
+		res, err := tx.Exec(
+			`UPDATE tasks
+			    SET assigned_agent = ?,
+			        lease_until = datetime('now', '+' || ? || ' minutes'),
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND assigned_agent = ?`,
+			toAgent, defaultLeaseMinutes, id, fromAgent,
+		)
+		if err != nil {
+			return fmt.Errorf("transfer update %s: %w", id, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("transfer rows affected %s: %w", id, err)
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+
+		// Re-read for authoritative state
+		task, err = reRead(tx, id)
+		if err != nil {
+			return fmt.Errorf("transfer re-read %s: %w", id, err)
+		}
+
+		// History
+		if _, err := tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'TRANSFER')`,
+			id, fromAgent+"→"+toAgent,
+		); err != nil {
+			return fmt.Errorf("transfer history %s: %w", id, err)
+		}
+
+		// Event
+		payload = EventPayload{
+			TaskID:    id,
+			Agent:     toAgent,
+			FromAgent: fromAgent,
+			Title:     task.Title,
+			Project:   task.Project,
+			Priority:  fmt.Sprintf("%d", task.Priority),
+		}
+		if err := insertEvent(tx, "task.transferred", payload); err != nil {
+			return fmt.Errorf("transfer event %s: %w", id, err)
+		}
+
+		return tx.Commit()
+	})
+	if err != nil {
+		return Task{}, err
+	}
+	runHook(s.hooksDir, "task.transferred", payload)
+	return task, nil
+}
 // Propagates error so the caller can fail safely rather than silently claiming a dep-blocked task.
 func hasUnmetDeps(tx *sql.Tx, t Task) (bool, error) {
 	if t.DependsOn == nil || *t.DependsOn == "" {

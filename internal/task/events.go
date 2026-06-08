@@ -15,6 +15,7 @@ type EventPayload struct {
 	Project      string `json:"project,omitempty"`
 	Priority     string `json:"priority,omitempty"`
 	Agent        string `json:"agent,omitempty"`
+	FromAgent    string `json:"from_agent,omitempty"`
 	NoteType     string `json:"note_type,omitempty"`
 	Reason       string `json:"reason,omitempty"`
 	RoleBoundary string `json:"role_boundary,omitempty"`
@@ -33,6 +34,7 @@ func eventPayload(tx *sql.Tx, taskID string, extra EventPayload) EventPayload {
 		p.Priority = fmt.Sprintf("%d", priority)
 	}
 	p.Agent = extra.Agent
+	p.FromAgent = extra.FromAgent
 	p.NoteType = extra.NoteType
 	p.Reason = extra.Reason
 	p.RoleBoundary = extra.RoleBoundary

@@ -145,6 +145,7 @@ Drop an executable in `.kanban/hooks/` named after an event. The hook gets JSON 
 | `task.progress` | Progress logged |
 | `task.completed` | Task finished |
 | `task.submitted_for_review` | Submitted |
+| `task.transferred` | Claim transferred to another agent |
 | `task.blocked` | Blocked |
 | `review.approved` | Approved |
 | `review.rejected` | Rejected |
