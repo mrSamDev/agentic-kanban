@@ -73,6 +73,38 @@ func logProgressCmd() *cobra.Command {
 	return cmd
 }
 
+func extendLeaseCmd() *cobra.Command {
+	var agent string
+	var minutes int
+
+	cmd := &cobra.Command{
+		Use:   "extend-lease <id>",
+		Short: "Extend the lease on a claimed task",
+		Long: `Extend the lease on a claimed task (heartbeat, no state transition).
+Defaults to 15 minutes if --minutes is omitted.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := ConfigFromContext(cmd.Context())
+			s, close, err := openService(cfg)
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			t, err := s.ExtendLease(cmd.Context(), args[0], agent, minutes)
+			if err != nil {
+				return err
+			}
+			writeJSON(t)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
+	cmd.Flags().IntVar(&minutes, "minutes", 0, "lease duration in minutes (default: 15)")
+	cmd.MarkFlagRequired("agent")
+	return cmd
+}
+
 func blockCmd() *cobra.Command {
 	var agent, reason string
 

@@ -1,0 +1,50 @@
+Kanban 0.1.11. Honest delta from your last review:
+
+ What Changed ✅
+
+ ┌────────────────────────────────────┬─────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ Your complaint                     │ Fixed?  │ Detail                                                                                                                              │
+ ├────────────────────────────────────┼─────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ --all flag missing in approve-plan │ FIXED   │ /approve-plan --all works now, skipped checkbox UX hell this session                                                                │
+ ├────────────────────────────────────┼─────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No dependency checking             │ PARTIAL │ kanban plan lint checks unknown deps + cycles. DB has depends_on field. But no enforcement — claim-next still ignores deps entirely │
+ ├────────────────────────────────────┼─────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ Project isolation                  │ PARTIAL │ --project filter added to search + plan lint. But no $KANBAN_DB auto-detect per project still buggy                                 │
+ ├────────────────────────────────────┼─────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No event visibility                │ FIXED   │ kanban events list + kanban events tail (NDJSON stream) added                                                                       │
+ ├────────────────────────────────────┼─────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No task notes/history              │ FIXED   │ kanban task view --notes / --history — I didn't use it, but it exists                                                               │
+ ├────────────────────────────────────┼─────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ re-init missing                    │ FIXED   │ kanban re-init scaffolds agent files w/o touching DB                                                                                │
+ ├────────────────────────────────────┼─────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ upgrade --check missing            │ FIXED   │ kanban upgrade --check added                                                                                                        │
+ └────────────────────────────────────┴─────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ What Didn't Change ❌
+
+ ┌─────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ Your complaint              │ Still true                                                                                                                                                         │
+ ├─────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No parallelism              │ kanban task batch still only set-priority/set-project. No batch claim, no batch complete. I had to claim+complete 11 tasks one-at-a-time (33 round trips). Absurd. │
+ ├─────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No dependency enforcement   │ plan lint checks but doesn't block. Worker can claim "deploy" before "auth API" exists. The DB has the column — the CLI just doesn't use it.                       │
+ ├─────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No reviewer separation gate │ claim-review skill exists but nothing enforces cross-agent approval. Manager can still self-approve.                                                               │
+ ├─────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No progress metrics         │ kanban task stats exists but outputs nothing useful (no args, no output shown). No burn-down, no cycle time.                                                       │
+ ├─────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No auto-lease renewal       │ extend-lease command exists but subagents don't call it. Same 15-min expiry trap.                                                                                  │
+ ├─────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ CLI UX still minimalist     │ No colors, no tables, no spinners. kanban status looks the same.                                                                                                   │
+ └─────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ Verdict
+
+ Some good incremental fixes (events, notes, --all, plan lint). But the core structural problems remain. The tool is still a solo-agent serial queue masquerading as a multi-agent coordination engine. The biggest
+ gap — no parallelism and no dependency enforcement — is the difference between a demo and a production tool.
+
+ If this were my codebase, I'd spend the next build cycle on exactly three things:
+
+ 1. kanban task batch claim and kanban task batch complete — unlocks parallel workers
+ 2. kanban task claim-next --resolve-deps — skip tasks whose deps aren't DONE
+ 3. kanban status --project daily-task-tracker --json — so agents can read progress programmatically, not just squint at ASCII

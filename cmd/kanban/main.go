@@ -3,13 +3,17 @@ package main
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"agent-kanban/internal/task"
 
 	"github.com/spf13/cobra"
 )
 
-var version = "0.1.9"
+var (
+	version   = "0.1.12-beta"
+	checkOnce sync.Once
+)
 
 func main() {
 	var dbPath string
@@ -21,6 +25,7 @@ func main() {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := resolveConfig(dbPath, debug)
 			cmd.SetContext(contextWithConfig(cmd.Context(), cfg))
+			checkOnce.Do(autoVersionCheck)
 			return nil
 		},
 	}
@@ -36,7 +41,11 @@ func main() {
 	rootCmd.AddCommand(eventsCmd())
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(initCmd())
+	rootCmd.AddCommand(reInitCmd())
+	rootCmd.AddCommand(upgradeCmd())
 	rootCmd.AddCommand(pruneCmd())
+	rootCmd.AddCommand(statusCmd())
+	rootCmd.AddCommand(planCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		if exitErr, ok := err.(*task.ExitError); ok {
@@ -49,11 +58,17 @@ func main() {
 }
 
 func versionCmd() *cobra.Command {
-	return &cobra.Command{
+	var check bool
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version",
 		Run: func(_ *cobra.Command, _ []string) {
 			fmt.Println("kanban " + version)
+			if check {
+				versionCheck()
+			}
 		},
 	}
+	cmd.Flags().BoolVar(&check, "check", false, "check for newer version")
+	return cmd
 }

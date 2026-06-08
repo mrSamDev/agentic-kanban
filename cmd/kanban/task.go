@@ -29,9 +29,11 @@ func taskCmd() *cobra.Command {
 	}
 	cmd.AddCommand(
 		dispatchCmd(),
+		claimCmd(),
 		claimNextCmd(),
 		viewCmd(),
 		completeCmd(),
+		extendLeaseCmd(),
 		logProgressCmd(),
 		blockCmd(),
 		searchCmd(),

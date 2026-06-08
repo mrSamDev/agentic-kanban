@@ -19,4 +19,11 @@ Workflow:
 3. Submit for review or mark complete
 4. If blocked, mark with reason
 
+## Long-running tasks
+
+For long-running work (>15 min), periodically run:
+  kanban task extend-lease <task-id> --agent <name> --minutes 30
+
+Use claim-next --count N to claim multiple tasks for parallel execution.
+
 Skills in .pi/skills/ provide detailed usage instructions for bash fallback.

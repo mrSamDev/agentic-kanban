@@ -17,12 +17,6 @@ const (
 	StatusDone       TaskStatus = "DONE"
 )
 
-// ValidStatuses is the set of all legal status values (mirrors CHECK constraint).
-var ValidStatuses = map[TaskStatus]bool{
-	StatusTODO: true, StatusInProgress: true, StatusBlocked: true,
-	StatusInReview: true, StatusDone: true,
-}
-
 // Task maps to the tasks table.
 type Task struct {
 	ID            string     `json:"id"`
@@ -35,6 +29,7 @@ type Task struct {
 	LeaseUntil    *time.Time `json:"lease_until"`    // nullable
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	DependsOn     *string    `json:"depends_on"` // comma-separated dependency IDs, nullable
 }
 
 // Note maps to the notes table.

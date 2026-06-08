@@ -22,6 +22,8 @@ var ErrInvalidState = &ExitError{Code: 2, Message: "invalid state transition"}
 
 var ErrNotAssigned = &ExitError{Code: 2, Message: "task not assigned to this agent"}
 
+var ErrSelfReview = &ExitError{Code: 2, Message: "cannot review your own task \u2014 another agent must approve"}
+
 type Service struct {
 	db          *sql.DB
 	timeout     time.Duration
@@ -90,22 +92,38 @@ func (s *Service) retryOnBusy(fn func() error) error {
 }
 
 // 15 min lease: enough for a typical autonomous step, short enough to auto-reclaim hung tasks.
-const defaultLeaseMinutes = 15
+const (
+	defaultLeaseMinutes = 15
+	maxCandidateFetch   = 100
+)
 
 // Length limits prevent CLI overflow and keep task metadata concise.
 const (
-	maxTitleLength  = 500
-	maxNoteLength   = 10000
-	maxReasonLength = 1000
+	maxTitleLength   = 500
+	maxNoteLength    = 10000
+	maxReasonLength  = 1000
 	defaultViewLimit = 20
 )
 
 // Prefix "TASK-" for human-readable IDs in logs and CLI output.
 // Caller must already hold a write transaction.
 func nextID(tx *sql.Tx) (string, error) {
+	// Always reconcile sequence to MAX(id) before incrementing.
+	// Without the unconditional reconcile, a sequence that fell behind
+	// (e.g., DB opened by a version that didn't seed task_seq) could
+	// generate an ID that collides with an existing task.
+	_, err := tx.Exec(`
+		UPDATE task_seq SET next_id = (
+			SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
+		) WHERE id = 1
+	`)
+	if err != nil {
+		return "", fmt.Errorf("reconcile seq: %w", err)
+	}
+
 	var id int
-	err := tx.QueryRow(
-		"UPDATE task_seq SET next_id = next_id + 1 RETURNING next_id",
+	err = tx.QueryRow(
+		"UPDATE task_seq SET next_id = next_id + 1 WHERE id = 1 RETURNING next_id",
 	).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("next id: %w", err)
@@ -114,38 +132,64 @@ func nextID(tx *sql.Tx) (string, error) {
 }
 
 // parseLeaseTime handles both RFC3339 (JSON) and SQLite's default datetime format.
-func parseLeaseTime(s string) *time.Time {
+func parseLeaseTime(s string) (*time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339, s)
 	if err != nil {
 		parsed, err = time.Parse("2006-01-02 15:04:05", s)
 	}
-	if err == nil {
-		return &parsed
+	if err != nil {
+		return nil, fmt.Errorf("parse lease time %q: %w", s, err)
 	}
-	return nil
+	return &parsed, nil
 }
 
 func scanTask(scanner interface {
 	Scan(dest ...any) error
 }) (Task, error) {
 	var t Task
-	var assigned, lease, project sql.NullString
+	var assigned, lease, project, dependsOn sql.NullString
 	var createdAt, updatedAt time.Time
 	err := scanner.Scan(
 		&t.ID, &t.Title, (*string)(&t.Status),
 		&t.RoleBoundary, &project, &t.Priority,
 		&assigned, &lease,
 		&createdAt, &updatedAt,
+		&dependsOn,
 	)
 	if err != nil {
 		return t, err
 	}
 	t.Project = project.String
-	t.AssignedAgent = NullableStringFromDB(sql.NullString{String: assigned.String, Valid: assigned.Valid})
-	if lease.Valid {
-		t.LeaseUntil = parseLeaseTime(lease.String)
-	}
+	t.AssignedAgent = NullableStringFromDB(assigned)
+	t.DependsOn = NullableStringFromDB(dependsOn)
 	t.CreatedAt = createdAt
 	t.UpdatedAt = updatedAt
+	if lease.Valid {
+		if lt, err := parseLeaseTime(lease.String); err != nil {
+			return t, fmt.Errorf("scan task %s lease: %w", t.ID, err)
+		} else {
+			t.LeaseUntil = lt
+		}
+	}
 	return t, nil
+}
+
+// alreadyDone checks whether a task is already at the target status.
+// Used by BatchComplete to detect tasks completed by another writer between retries.
+func alreadyDone(tx *sql.Tx, id, status string) bool {
+	var current string
+	if err := tx.QueryRow(`SELECT status FROM tasks WHERE id = ?`, id).Scan(&current); err != nil {
+		return false
+	}
+	return current == status
+}
+
+// reRead fetches a full Task by ID inside an existing transaction.
+func reRead(tx *sql.Tx, id string) (Task, error) {
+	row := tx.QueryRow(
+		`SELECT id, title, status, role_boundary, project, priority,
+		        assigned_agent, lease_until, created_at, updated_at, depends_on
+		   FROM tasks WHERE id = ?`, id,
+	)
+	return scanTask(row)
 }

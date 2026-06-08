@@ -1,6 +1,6 @@
 ---
 name: claim-review
-description: Claim the next unclaimed reviewer task (TODO tasks tagged with role_boundary: reviewer).
+description: "Claim the next unclaimed reviewer task (TODO tasks tagged with role_boundary: reviewer)."
 role: reviewer
 type: protocol
 ---

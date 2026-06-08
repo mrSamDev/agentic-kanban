@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
 	"agent-kanban/internal/task"
 
 	"github.com/spf13/cobra"
@@ -69,7 +72,7 @@ func searchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&role, "role", "", "filter by role boundary")
 	cmd.Flags().StringVar(&agent, "agent", "", "filter by assigned agent")
 	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
-	cmd.Flags().IntVar(&limit, "limit", 0, "max results")
+	cmd.Flags().IntVar(&limit, "limit", 0, "max results (0 = unlimited)")
 	return cmd
 }
 
@@ -85,7 +88,8 @@ func statsCmd() *cobra.Command {
 			}
 			defer close()
 
-			stats, err := s.Stats(cmd.Context())
+			project, _ := cmd.Flags().GetString("project")
+			stats, err := s.Stats(cmd.Context(), project)
 			if err != nil {
 				return err
 			}
@@ -93,5 +97,87 @@ func statsCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().String("project", "", "filter by project")
 	return cmd
+}
+
+func statusCmd() *cobra.Command {
+	var asJSON, burndown bool
+
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show board status and progress",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg := ConfigFromContext(cmd.Context())
+			s, close, err := openService(cfg)
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			project, _ := cmd.Flags().GetString("project")
+			stats, err := s.Burndown(cmd.Context(), project)
+			if err != nil {
+				return err
+			}
+
+			if asJSON {
+				writeJSON(stats)
+				return nil
+			}
+
+			printStatusTable(stats, burndown)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "output as JSON")
+	cmd.Flags().BoolVar(&burndown, "burndown", false, "show progress bars per status")
+	cmd.Flags().String("project", "", "filter by project")
+	return cmd
+}
+
+var statusOrder = []string{"TODO", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "DONE"}
+
+func printStatusTable(stats task.BurndownStats, burndown bool) {
+	sep := strings.Repeat("─", 40)
+	if burndown {
+		fmt.Printf("%-16s %-7s %s\n", "Status", "Count", "Progress")
+	} else {
+		fmt.Printf("%-16s %s\n", "Status", "Count")
+	}
+	fmt.Println(sep)
+
+	for _, status := range statusOrder {
+		count := stats.ByStatus[status]
+		if burndown && stats.Total > 0 {
+			bars := int(float64(count) / float64(stats.Total) * 20)
+			bar := strings.Repeat("█", bars)
+			fmt.Printf("%-16s %-7d %s\n", status, count, bar)
+		} else {
+			fmt.Printf("%-16s %d\n", status, count)
+		}
+	}
+	// Any statuses not in the fixed order
+	for status, count := range stats.ByStatus {
+		known := false
+		for _, s := range statusOrder {
+			if s == status {
+				known = true
+				break
+			}
+		}
+		if !known {
+			fmt.Printf("%-16s %d\n", status, count)
+		}
+	}
+
+	fmt.Println(sep)
+	fmt.Printf("Total: %d  Done: %d  %.0f%% complete\n\n", stats.Total, stats.DoneCount, stats.PercentDone)
+
+	if len(stats.ByRole) > 0 {
+		fmt.Println("By Role:")
+		for role, count := range stats.ByRole {
+			fmt.Printf("  %-12s %d\n", role, count)
+		}
+	}
 }

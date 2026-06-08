@@ -72,6 +72,45 @@ func Init(opts InitOptions) error {
 	return nil
 }
 
+func ReInit(opts InitOptions) error {
+	if opts.Dir == "" {
+		opts.Dir = "."
+	}
+	if opts.DBPath == "" {
+		opts.DBPath = filepath.Join(opts.Dir, ".kanban", "kanban.db")
+	}
+
+	if opts.Harness != "" && !ValidHarnesses[opts.Harness] {
+		return fmt.Errorf("invalid harness: %q (choose pi, claude, or generic)", opts.Harness)
+	}
+
+	harness := opts.Harness
+	if harness == "" {
+		h, err := promptHarness()
+		if err != nil {
+			return err
+		}
+		harness = h
+	}
+
+	if err := scaffoldHarness(harness, opts.Dir); err != nil {
+		return fmt.Errorf("re-scaffold %s harness: %w", harness, err)
+	}
+
+	if opts.PlanPath != "" {
+		db, err := storage.Open(opts.DBPath, false)
+		if err != nil {
+			return fmt.Errorf("open db: %w", err)
+		}
+		defer db.Close()
+		if err := dispatchPlan(db.DB, opts.PlanPath); err != nil {
+			return fmt.Errorf("dispatch plan: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func promptHarness() (Harness, error) {
 	fmt.Print("Which agent harness? [pi / claude / generic]: ")
 
@@ -105,7 +144,7 @@ func dispatchPlan(sqlDB *sql.DB, planPath string) error {
 		if priority == 0 {
 			priority = 100
 		}
-		if _, err := svc.Dispatch(context.Background(), pt.Title, role, "default", priority); err != nil {
+		if _, err := svc.Dispatch(context.Background(), pt.Title, role, "default", priority, nil); err != nil {
 			return fmt.Errorf("dispatch %q: %w", pt.Title, err)
 		}
 	}
@@ -203,6 +242,12 @@ func writeFlatSkills(skillsDir string) error {
 	}
 
 	allSkills := map[string]string{}
+
+	// Read top-level overview skill
+	if data, err := skillFiles.ReadFile("embed/skills/kanban.md"); err == nil {
+		allSkills["kanban.md"] = string(data)
+	}
+
 	for _, skills := range roleSkillMap {
 		for name, content := range skills {
 			allSkills[name] = content
@@ -218,6 +263,7 @@ func writeFlatSkills(skillsDir string) error {
 	// Write role index alongside flat skills
 	var sb strings.Builder
 	sb.WriteString("# Skill Index\n\n")
+	sb.WriteString("system:kanban.md\n")
 	for role, names := range SkillNames {
 		for _, name := range names {
 			sb.WriteString(fmt.Sprintf("%s:%s.md\n", role, name))

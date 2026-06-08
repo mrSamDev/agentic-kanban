@@ -7,8 +7,7 @@ import (
 
 func TestTTLDefaultOnInsert(t *testing.T) {
 	s := newTestService(t)
-	s.Dispatch(t.Context(), "test", "worker", "default", 1)
-
+	s.Dispatch(t.Context(), "test", "worker", "default", 1, nil)
 	// Event should have default TTL of 259200 (3 days)
 	var ttl *int
 	err := s.db.QueryRow("SELECT ttl_seconds FROM events WHERE event_type = 'task.created'").Scan(&ttl)
@@ -39,8 +38,7 @@ func TestTTLAutoCleanup(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Insert another event — this should trigger cleanup
-	s.Dispatch(t.Context(), "trigger cleanup", "worker", "default", 1)
-
+	s.PruneEvents(t.Context())
 	// The expired event should be gone
 	var count int
 	s.db.QueryRow("SELECT COUNT(*) FROM events WHERE event_type = 'test.expired'").Scan(&count)
@@ -62,8 +60,7 @@ func TestTTLNullNeverExpires(t *testing.T) {
 	}
 
 	// Insert another event — cleanup should not affect NULL TTL events
-	s.Dispatch(t.Context(), "trigger cleanup", "worker", "default", 1)
-
+	s.PruneEvents(t.Context())
 	var count int
 	s.db.QueryRow("SELECT COUNT(*) FROM events WHERE event_type = 'test.permanent'").Scan(&count)
 	if count != 1 {
@@ -84,8 +81,7 @@ func TestTTLAutoCleanupNonExpired(t *testing.T) {
 	}
 
 	// Insert another event — cleanup should not affect non-expired events
-	s.Dispatch(t.Context(), "trigger cleanup", "worker", "default", 1)
-
+	s.PruneEvents(t.Context())
 	var count int
 	s.db.QueryRow("SELECT COUNT(*) FROM events WHERE event_type = 'test.fresh'").Scan(&count)
 	if count != 1 {
