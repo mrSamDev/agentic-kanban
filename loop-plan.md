@@ -87,7 +87,7 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 
 ### Phase 2: v0.5 Speedup Features
 - [x] Step 4: `ClaimBatch` refactor + atomic multi-claim (`--count N` exists since v0.3.6; concurrent batch-claim race test added)
-- [ ] Step 5: Manager protocol + delegation config
+- [x] Step 5: Manager protocol + delegation config
 - [ ] Step 6: Subagent env auto-discovery
 - [ ] Integration tests for concurrent claiming (concurrent batch-claim tests added)
 - [ ] Tag v0.5 release

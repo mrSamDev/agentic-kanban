@@ -19,4 +19,22 @@ Workflow:
 3. Submit for review or mark complete
 4. If blocked, mark with reason
 
+## Batch claiming
+
+To claim multiple tasks at once for parallel execution:
+
+```bash
+kanban task claim-next --agent my-agent --role worker --count 3
+```
+
+Returns JSON array of up to 3 tasks. Claims atomically in one transaction.
+
+## Long-running tasks
+
+For work taking >15 minutes, extend your lease periodically:
+
+```bash
+kanban task extend-lease TASK-101 --agent my-agent --minutes 30
+```
+
 Use bash to run the kanban CLI. Read skill files in .claude/skills/ for usage details.
