@@ -112,10 +112,14 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
   - AUDIT.md written: schema state, index coverage, migration paths, safety
   - Two index migrations applied (idx_tasks_claim + idx_tasks_claim_project)
   - No blockers — schema is production-ready
-- [ ] Finalize documentation
+- [x] Finalize documentation
+  - README.md: added missing commands (extend-lease, claim --transfer, plan lint, burndown, batch claim/complete, approve --all)
+  - README.md: fixed stale embed/skills/ paths → internal/bootstrap/embed/skills/
+  - README.md: added claim-task to worker skills table
+  - approve-task.md skill: added --all and --project flags
 - [ ] Prepare v1.0 feature lock
 
-**Next task**: Finalize documentation — review README.md, embed/skills, and AGENTS.md for consistency with current v0.6 feature set
+**Next task**: Prepare v1.0 feature lock — review scope, tag v1.0.0-alpha, write release notes
 
 ---
 

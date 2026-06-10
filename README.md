@@ -34,7 +34,7 @@ kanban init --harness pi
 
 # Product owner workflow: an LLM reads your spec or roadmap, writes a task
 # proposal, you approve, then it dispatches. See the dispatch-plan and
-# approve-plan skills under embed/skills/manager/.
+# approve-plan skills under internal/bootstrap/embed/skills/manager/.
 
 # For simple plans, the built-in parser works too.
 kanban init --harness pi --plan plan.md
@@ -52,17 +52,24 @@ A short table since these are reference docs:
 | Command | Who | What |
 |---|---|---|
 | `task dispatch --title --role` | anyone | Create a task as TODO |
-| `task claim-next --agent --role` | worker, reviewer | Atomically grab top task |
+| `task claim-next --agent --role [--count N]` | worker | Atomically grab top task(s) |
+| `task claim <id> --agent [--transfer --to]` | worker | Claim by ID or transfer claim |
 | `task log-progress <id> --agent --note` | worker | Log progress, renew lease |
+| `task extend-lease <id> --agent [--minutes]` | worker | Renew lease without state change |
 | `task block <id> --agent --reason` | worker | Mark blocked, drop lease |
-| `task complete <id> --agent --review` | worker | Mark done or submit for review |
+| `task complete <id> --agent [--review]` | worker | Mark done or submit for review |
 | `task view <id>` | anyone | Full details plus notes and history |
 | `task search --status --role --agent` | manager | Filter the board |
-| `task approve <id> --agent` | reviewer | IN_REVIEW to DONE |
+| `task approve <id> --agent` | reviewer | IN_REVIEW to DONE (single) |
+| `task approve --all --agent [--project]` | reviewer | Batch approve all IN_REVIEW |
 | `task reject <id> --agent --reason` | reviewer | IN_REVIEW to TODO |
+| `kanban plan lint` | manager | Detect dep cycles, unknown deps |
+| `kanban status [--burndown] [--project]` | anyone | Status counts or progress bars |
+| `batch claim --agent --role [--count N]` | worker | Claim multiple tasks atomically |
+| `batch complete --ids --agent [--to-review]` | worker | Complete multiple tasks |
 | `batch set-priority --ids --priority` | manager | Bulk priority update |
 | `batch set-project --ids --project` | manager | Bulk project label |
-| `prune --before --dry-run` | ops | Clean old events and notes |
+| `prune [--before] [--dry-run]` | ops | Clean old events and notes |
 | `init --harness --plan --dir` | setup | Scaffold DB and agent files |
 
 ## Workflow
@@ -88,7 +95,7 @@ These are the **protocol skills** — they teach coordination, not software engi
 | Role | Skills | What the agent learns |
 |---|---|---|
 | `manager/` | dispatch-task, dispatch-plan, approve-plan, review-backlog, view-task | Plan work, dispatch tasks, review progress |
-| `worker/` | claim-next-task, log-progress, complete-task, block-task | Claim tasks, report progress, finish work |
+| `worker/` | claim-next-task, claim-task, log-progress, complete-task, block-task | Claim tasks, report progress, finish work |
 | `reviewer/` | claim-review, approve-task, reject-task | Review submissions, approve or reject |
 
 ```text
@@ -127,9 +134,9 @@ internal/
   bootstrap/kanban_extension.go Pi extension (TypeScript template)
   storage/                      SQLite connection, schema, migration
   task/                         Models, queries, service logic
-embed/skills/               Embedded skill templates (canonical source)
+internal/bootstrap/embed/skills/   Embedded skill templates (canonical source)
   manager/                 dispatch-task, dispatch-plan, approve-plan, review-backlog, view-task
-  worker/                  claim-next-task, log-progress, complete-task, block-task
+  worker/                  claim-next-task, claim-task, log-progress, complete-task, block-task
   reviewer/                claim-review, approve-task, reject-task
 examples/                       Integration guides for pi and Claude Code
 ```
@@ -198,7 +205,7 @@ You review and check [x] on approved items
 Agent reads the proposal and dispatches each checked task
 ```
 
-The skills live at `embed/skills/manager/dispatch-plan.md` and `embed/skills/manager/approve-plan.md`.
+The skills live at `internal/bootstrap/embed/skills/manager/dispatch-plan.md` and `internal/bootstrap/embed/skills/manager/approve-plan.md`.
 
 ## Observability
 
