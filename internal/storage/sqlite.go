@@ -151,6 +151,36 @@ func Open(path string, debug bool) (*DB, error) {
 		}
 	}
 
+	// idx_tasks_claim migration: add lease_until for IN_PROGRESS+lease expiry filter
+	// Old index: role_boundary, status, priority, created_at
+	// New index: role_boundary, status, priority, created_at, lease_until
+	// Old index definition has 4 columns; new has 5. Check via index_info count.
+	var oldClaimCols int
+	db.QueryRow(`SELECT COUNT(*) FROM pragma_index_info('idx_tasks_claim')`).Scan(&oldClaimCols)
+	if oldClaimCols > 0 && oldClaimCols < 5 {
+		if _, err := db.Exec("DROP INDEX IF EXISTS idx_tasks_claim"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("drop old idx_tasks_claim: %w", err)
+		}
+		if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_claim
+		    ON tasks(role_boundary, status, priority, created_at, lease_until)`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("recreate idx_tasks_claim: %w", err)
+		}
+		if debug {
+			slog.Info("idx_tasks_claim migrated: added lease_until column")
+		}
+	}
+	// idx_tasks_claim_project: new index for project-filtered claim queries
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_claim_project
+	    ON tasks(role_boundary, project, status, priority, created_at, lease_until)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create idx_tasks_claim_project: %w", err)
+	}
+	if debug {
+		slog.Info("idx_tasks_claim_project index created")
+	}
+
 	return &DB{db, debug}, nil
 }
 

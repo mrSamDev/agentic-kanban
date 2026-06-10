@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_claim
-    ON tasks(role_boundary, status, priority, created_at);
+    ON tasks(role_boundary, status, priority, created_at, lease_until);
+CREATE INDEX IF NOT EXISTS idx_tasks_claim_project
+    ON tasks(role_boundary, project, status, priority, created_at, lease_until);
 CREATE INDEX IF NOT EXISTS idx_tasks_lease
     ON tasks(status, lease_until);
 CREATE INDEX IF NOT EXISTS idx_tasks_project
