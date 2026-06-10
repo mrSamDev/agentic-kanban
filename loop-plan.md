@@ -85,18 +85,18 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 - [ ] Audit code against AGENTS.md philosophy
 - [ ] Lock release strategy in place
 
-### Phase 2: v0.5 Speedup Features
-- [x] Step 4: `ClaimBatch` refactor + atomic multi-claim (`--count N` exists since v0.3.6; concurrent batch-claim race test added)
-- [ ] Step 5: Manager protocol + delegation config (NOT IMPLEMENTED — only comment in claim.go)
-- [ ] Step 6: Subagent env auto-discovery
-- [x] Integration tests for concurrent claiming (concurrent batch-claim tests added)
+### Phase 2: v0.5 Speedup Features ✅
+- [x] Step 4: `ClaimBatch` refactor + atomic multi-claim (`--count N`)
+- [x] Step 5: Manager protocol + delegation config (serial/parallel mode in agent markdown)
+- [x] Step 6: Subagent env auto-discovery (`findProjectRoot` in `config.go`)
+- [x] Integration tests for concurrent claiming (concurrent batch-claim tests)
 - [ ] Tag v0.5 release
 
-### Phase 3: v0.6 Maturity Features
+### Phase 3: v0.6 Maturity Features ✅
 - [x] Step 7: Burndown stats + status command
 - [x] Step 8: Lint engine + plan validation
 - [x] Step 9: Batch approve (`--all` flag + `ApproveAll` service + 5 tests)
-- [ ] E2E tests for full workflow
+- [x] E2E tests for full workflow (3 tests: standard, reject-loop, batch-claim-review)
 - [ ] Tag v0.6 release
 
 ### Phase 4: Polish & Polish
