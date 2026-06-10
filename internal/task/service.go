@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 )
 
 func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project string, priority int, dependsOn *string) (Task, error) {
@@ -477,3 +478,105 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 }
 
 
+
+// ApproveAll batch-approves all IN_REVIEW tasks for a given project (or all projects if empty).
+func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
+
+	var approved []Task
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err != nil {
+			return fmt.Errorf("approve all begin tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		query := `SELECT id, title, status, role_boundary, project, priority,
+		        assigned_agent, lease_until, created_at, updated_at, depends_on
+		   FROM tasks WHERE status = 'IN_REVIEW'`
+		var args []any
+		if project != "" {
+			query += " AND project = ?"
+			args = append(args, project)
+		}
+		query += " ORDER BY priority ASC"
+
+		rows, err := tx.QueryContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("approve all query: %w", err)
+		}
+		defer rows.Close()
+
+		var tasks []Task
+		for rows.Next() {
+			t, err := scanTask(rows)
+			if err != nil {
+				return fmt.Errorf("approve all scan: %w", err)
+			}
+			tasks = append(tasks, t)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("approve all rows: %w", err)
+		}
+		rows.Close()
+
+		for _, t := range tasks {
+			if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
+				if err := checkSelfReview(tx, t.ID, agent); err != nil {
+					return fmt.Errorf("%s: %w", t.ID, err)
+				}
+			}
+
+			res, err := tx.Exec(
+				`UPDATE tasks
+				    SET status = 'DONE', assigned_agent = NULL, lease_until = NULL,
+				        updated_at = CURRENT_TIMESTAMP
+				  WHERE id = ? AND status = 'IN_REVIEW'`,
+				t.ID,
+			)
+			if err != nil {
+				return fmt.Errorf("approve all update %s: %w", t.ID, err)
+			}
+			n, _ := res.RowsAffected()
+			if n == 0 {
+				continue
+			}
+
+			if _, err := tx.Exec(
+				`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'REVIEW')`,
+				t.ID, agent,
+			); err != nil {
+				return fmt.Errorf("approve all history %s: %w", t.ID, err)
+			}
+
+			payload := eventPayload(tx, t.ID, EventPayload{Agent: agent})
+			if err := insertEvent(tx, "review.approved", payload); err != nil {
+				return fmt.Errorf("approve all event %s: %w", t.ID, err)
+			}
+
+			approved = append(approved, t)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("approve all commit: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return approved, err
+	}
+
+	for _, t := range approved {
+		payload := EventPayload{
+			TaskID:       t.ID,
+			Agent:        agent,
+			Title:        t.Title,
+			Project:      t.Project,
+			Priority:     fmt.Sprintf("%d", t.Priority),
+			RoleBoundary: t.RoleBoundary,
+		}
+		runHook(s.hooksDir, "review.approved", payload)
+	}
+	return approved, nil
+}

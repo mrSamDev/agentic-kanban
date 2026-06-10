@@ -1536,3 +1536,120 @@ func TestBatchCompleteToReview(t *testing.T) {
 		t.Fatalf("expected IN_REVIEW, got %s", completed[0].Status)
 	}
 }
+
+func TestApproveAll(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch 3 tasks, claim and submit for review
+	for i := 0; i < 3; i++ {
+		s.Dispatch(t.Context(), fmt.Sprintf("task-%d", i+1), "worker", "default", 10*i, nil)
+	}
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true) // IN_REVIEW
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-2", "alice", true) // IN_REVIEW
+
+	// TASK-3 still TODO — not in review
+
+	// ApproveAll — should approve 2 tasks
+	tasks, err := s.ApproveAll(t.Context(), "bob", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 approved, got %d", len(tasks))
+	}
+
+	for _, tsk := range tasks {
+		task, _ := s.View(t.Context(), tsk.ID)
+		if task.Status != StatusDone {
+			t.Fatalf("%s expected DONE, got %s", tsk.ID, task.Status)
+		}
+	}
+
+	// TASK-3 should still be TODO
+	task3, _ := s.View(t.Context(), "TASK-3")
+	if task3.Status != StatusTODO {
+		t.Fatalf("TASK-3 expected TODO, got %s", task3.Status)
+	}
+}
+
+func TestApproveAllFiltersByProject(t *testing.T) {
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "proj-a-task", "worker", "project-a", 10, nil)
+	s.Dispatch(t.Context(), "proj-b-task", "worker", "project-b", 20, nil)
+
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-2", "alice", true)
+
+	// ApproveAll only for project-a — should approve 1 task
+	tasks, err := s.ApproveAll(t.Context(), "bob", "project-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 approved (project-a), got %d", len(tasks))
+	}
+	if tasks[0].ID != "TASK-1" {
+		t.Fatalf("expected TASK-1, got %s", tasks[0].ID)
+	}
+
+	// TASK-2 (project-b) should still be IN_REVIEW
+	task2, _ := s.View(t.Context(), "TASK-2")
+	if task2.Status != StatusInReview {
+		t.Fatalf("TASK-2 expected IN_REVIEW, got %s", task2.Status)
+	}
+}
+
+func TestApproveAllNoTasksInReview(t *testing.T) {
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
+	// Not submitted for review
+
+	tasks, err := s.ApproveAll(t.Context(), "bob", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 approved (none in review), got %d", len(tasks))
+	}
+}
+
+func TestApproveAllRespectsSelfReview(t *testing.T) {
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	// alice tries to approve all — self-review should block
+	_, err := s.ApproveAll(t.Context(), "alice", "")
+	if err == nil {
+		t.Fatal("expected self-review error")
+	}
+	if !strings.Contains(err.Error(), ErrSelfReview.Error()) {
+		t.Fatalf("expected ErrSelfReview, got %v", err)
+	}
+}
+
+func TestApproveAllSelfReviewAllowedWithEnv(t *testing.T) {
+	t.Setenv("KANBAN_ALLOW_SELF_REVIEW", "true")
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	tasks, err := s.ApproveAll(t.Context(), "alice", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 approved, got %d", len(tasks))
+	}
+}

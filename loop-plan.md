@@ -69,7 +69,7 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 |------|---------|-------|
 | 7 | `kanban status --burndown` | `BurndownStats` struct; progress %; human table + `--json`; new query |
 | 8 | `kanban plan lint` | Dependency cycle detection (DFS); unknown dep warnings; lint rules in --json |
-| 9 | `approve-plan --all` flag | Manager skill enhancement (markdown); batch-approve all IN_REVIEW tasks |
+| 9 | `approve --all` flag | ✅ Added `ApproveAll` in service.go + `--all`/`--project` flags in approve command + 5 tests |
 
 **Why**: Managers need to see progress (burndown). Plans with cycles hang forever (lint catches this). Batch-approve is faster than one-at-a-time.
 
@@ -87,15 +87,15 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 
 ### Phase 2: v0.5 Speedup Features
 - [x] Step 4: `ClaimBatch` refactor + atomic multi-claim (`--count N` exists since v0.3.6; concurrent batch-claim race test added)
-- [x] Step 5: Manager protocol + delegation config
+- [ ] Step 5: Manager protocol + delegation config (NOT IMPLEMENTED — only comment in claim.go)
 - [ ] Step 6: Subagent env auto-discovery
-- [ ] Integration tests for concurrent claiming (concurrent batch-claim tests added)
+- [x] Integration tests for concurrent claiming (concurrent batch-claim tests added)
 - [ ] Tag v0.5 release
 
 ### Phase 3: v0.6 Maturity Features
-- [ ] Step 7: Burndown stats + status command
-- [ ] Step 8: Lint engine + plan validation
-- [ ] Step 9: Skill update + batch approve
+- [x] Step 7: Burndown stats + status command
+- [x] Step 8: Lint engine + plan validation
+- [x] Step 9: Batch approve (`--all` flag + `ApproveAll` service + 5 tests)
 - [ ] E2E tests for full workflow
 - [ ] Tag v0.6 release
 
