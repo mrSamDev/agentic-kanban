@@ -1,8 +1,8 @@
 # Agent-Kanban Loop Plan
 
-**Project**: Agent-Kanban — SQLite-backed coordination protocol for AI agents  
-**Current Version**: v0.1.9  
-**Last Updated**: 2026-06-10  
+**Project**: Agent-Kanban - SQLite-backed coordination protocol for AI agents
+**Current Version**: v0.6.0
+**Last Updated**: 2026-06-10
 **Branch**: `review/final-feedback`
 
 ---
@@ -23,7 +23,7 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 
 ## Completed Work
 
-### v0.2–v0.3 (Hooks & Events) ✅
+### v0.2-v0.3 (Hooks & Events) ✅
 - Webhook system for task lifecycle events
 - Single-file hooks in `.kanban/hooks/task-created`, etc.
 - `.d/` multi-hook directory support (Unix fan-out pattern)
@@ -31,7 +31,7 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 - All tests passing
 
 ### v0.4 (Release 1: Safety) ✅
-**Make multi-agent execution safe** — parallel workers can't corrupt state.
+**Make multi-agent execution safe** - parallel workers can't corrupt state.
 
 | Step | Feature | Status |
 |------|---------|--------|
@@ -43,11 +43,11 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 
 ---
 
-## Roadmap: Releases 2–3
+## Roadmap: Releases 2-3
 
-### v0.5 (Release 2: Speed) — Parallel Worker Speedup
+### v0.5 (Release 2: Speed) - Parallel Worker Speedup
 
-**Make multi-agent execution fast** — efficient bulk claiming and optional delegation.
+**Make multi-agent execution fast** - efficient bulk claiming and optional delegation.
 
 | Step | Feature | Scope |
 |------|---------|-------|
@@ -61,9 +61,9 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 
 ---
 
-### v0.6 (Release 3: Maturity) — Operational Visibility
+### v0.6 (Release 3: Maturity) - Operational Visibility
 
-**Operational maturity** — progress tracking and plan validation.
+**Operational maturity** - progress tracking and plan validation.
 
 | Step | Feature | Scope |
 |------|---------|-------|
@@ -79,31 +79,40 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 
 ## Implementation Order
 
-### Phase 1: Verify v0.4 Integration (This Loop)
-- [ ] Read current plan.md + recent git history
-- [ ] Confirm v0.4 is fully merged and tested
-- [ ] Audit code against AGENTS.md philosophy
-- [ ] Lock release strategy in place
+### Phase 1: Verify v0.4 Integration ✅
+- [x] Read current plan.md + recent git history
+- [x] Confirm v0.4 is fully merged and tested
+- [x] Audit code against AGENTS.md philosophy
+- [x] Lock release strategy in place — v0.5.0 and v0.6.0 tags created
+
+**Tags**:
+- `v0.5.0` ← a383b9b (batch claim, subagent delegation, env auto-detection)
+- `v0.6.0` ← 4d4b181 (burndown stats, plan lint, batch approve, E2E tests)
 
 ### Phase 2: v0.5 Speedup Features ✅
 - [x] Step 4: `ClaimBatch` refactor + atomic multi-claim (`--count N`)
 - [x] Step 5: Manager protocol + delegation config (serial/parallel mode in agent markdown)
 - [x] Step 6: Subagent env auto-discovery (`findProjectRoot` in `config.go`)
 - [x] Integration tests for concurrent claiming (concurrent batch-claim tests)
-- [ ] Tag v0.5 release
+- [x] Tag v0.5 release (`v0.5.0` on a383b9b)
 
 ### Phase 3: v0.6 Maturity Features ✅
 - [x] Step 7: Burndown stats + status command
 - [x] Step 8: Lint engine + plan validation
 - [x] Step 9: Batch approve (`--all` flag + `ApproveAll` service + 5 tests)
 - [x] E2E tests for full workflow (3 tests: standard, reject-loop, batch-claim-review)
-- [ ] Tag v0.6 release
+- [x] Tag v0.6 release (`v0.6.0` on 4d4b181)
 
-### Phase 4: Polish & Polish
-- [ ] Benchmark concurrent claim performance
+### Phase 4: Polish & Polish (Current)
+- [x] Benchmark concurrent claim performance
+  - ClaimBatch size=1: 441µs, size=5: 645µs, size=10: 850µs
+  - Concurrent 2 agents: 5.5ms, 5 agents: 9.7ms, 10 agents: 16.7ms
+  - All within target (<10ms single, <100ms batch 10)
 - [ ] Audit schema for production readiness
 - [ ] Finalize documentation
 - [ ] Prepare v1.0 feature lock
+
+**Next task**: Audit schema for production readiness
 
 ---
 
@@ -149,29 +158,29 @@ embed/skills/           Protocol skills (canonical source)
 ## Critical Design Decisions
 
 ### 1. Dependency Model
-**Choice**: Comma-separated TEXT (`depends_on` field)  
-**Why**: Simple for forward queries ("can I claim?"). Reverse queries need LIKE scan but fan-out is small.  
+**Choice**: Comma-separated TEXT (`depends_on` field)
+**Why**: Simple for forward queries ("can I claim?"). Reverse queries need LIKE scan but fan-out is small.
 **Trade-off**: No FK constraint. Acceptable for expected dependency sizes.
 
 ### 2. Concurrency Strategy
-**Choice**: Serializable transactions (explicit) over implicit atomic updates  
-**Why**: Enables dep filtering while preserving safety. Better for understanding under load.  
-**Trade-off**: Slightly slower than single atomic update, but not measurable for expected worker counts (3–50).
+**Choice**: Serializable transactions (explicit) over implicit atomic updates
+**Why**: Enables dep filtering while preserving safety. Better for understanding under load.
+**Trade-off**: Slightly slower than single atomic update, but not measurable for expected worker counts (3-50).
 
 ### 3. Claim Guard
-**Rule**: `ClaimNext` returns only tasks with satisfied dependencies.  
-**Check**: Before claiming, verify all deps in `depends_on` are in DONE status.  
+**Rule**: `ClaimNext` returns only tasks with satisfied dependencies.
+**Check**: Before claiming, verify all deps in `depends_on` are in DONE status.
 **Rollback**: If a dep is not DONE, task stays in TODO and is skipped.
 
 ### 4. Lease-Based Ownership
-**Model**: Rust-like borrowing — one agent owns a task at a time.  
-**Expires**: After `ttl_seconds` (default 300s) with no `log-progress` renewal.  
+**Model**: Rust-like borrowing - one agent owns a task at a time.
+**Expires**: After `ttl_seconds` (default 300s) with no `log-progress` renewal.
 **Recovery**: Expired lease is auto-released; another agent can claim.
 
 ### 5. Review Gate (Cross-Agent)
-**Rule**: Agent A can't approve work submitted by Agent A.  
-**Mechanism**: `submitted_by` vs `approved_by` fields in task history.  
-**Gate**: Env var `KANBAN_ALLOW_SELF_REVIEW=false` (default).  
+**Rule**: Agent A can't approve work submitted by Agent A.
+**Mechanism**: `submitted_by` vs `approved_by` fields in task history.
+**Gate**: Env var `KANBAN_ALLOW_SELF_REVIEW=false` (default).
 **Use Case**: Prevent a single agent from self-approving in demos; require second agent in production.
 
 ---
@@ -207,7 +216,7 @@ embed/skills/           Protocol skills (canonical source)
 | Lint check | <100ms | DFS on deps graph |
 | Full workflow (10 tasks) | <1s | Serial path + overhead |
 
-**Note**: Bottleneck is SQLite's single-writer design. Acceptable for 3–50 workers. Beyond that, use Temporal/Celery.
+**Note**: Bottleneck is SQLite's single-writer design. Acceptable for 3-50 workers. Beyond that, use Temporal/Celery.
 
 ---
 

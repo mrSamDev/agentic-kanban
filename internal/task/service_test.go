@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,6 +28,22 @@ func newTestDB(t *testing.T) *storage.DB {
 
 func newTestService(t *testing.T) *Service {
 	db := newTestDB(t)
+	return NewService(db.DB, 0)
+}
+
+func newBenchDB(b *testing.B) *storage.DB {
+	b.Helper()
+	path := filepath.Join(b.TempDir(), "test.db")
+	db, err := storage.Open(path, false)
+	if err != nil {
+		b.Fatalf("open bench db: %v", err)
+	}
+	b.Cleanup(func() { db.Close() })
+	return db
+}
+
+func newBenchService(b *testing.B) *Service {
+	db := newBenchDB(b)
 	return NewService(db.DB, 0)
 }
 
@@ -1832,6 +1849,77 @@ func TestE2EFullWorkflowWithReject(t *testing.T) {
 	stats, _ := s.Burndown(t.Context(), "")
 	if stats.DoneCount != 1 || stats.Total != 1 {
 		t.Fatalf("expected 1/1 done, got %d/%d", stats.DoneCount, stats.Total)
+	}
+}
+
+// --- Benchmarks ---
+
+func BenchmarkClaimBatchSize(b *testing.B) {
+	ctx := context.Background()
+
+	for _, batchSize := range []int{1, 5, 10} {
+		b.Run(fmt.Sprintf("size-%d", batchSize), func(b *testing.B) {
+			totalTasks := batchSize * 3
+
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				s := newBenchService(b)
+				for j := 0; j < totalTasks; j++ {
+					s.Dispatch(ctx, fmt.Sprintf("t-%d-%d", i, j), "worker", "default", 100, nil)
+				}
+
+				b.StartTimer()
+				claimed, err := s.ClaimBatch(ctx, "bench-agent", "worker", "", batchSize, true)
+				b.StopTimer()
+				if err != nil {
+					b.Fatalf("ClaimBatch: %v", err)
+				}
+				_ = claimed
+			}
+		})
+	}
+}
+
+func BenchmarkClaimBatchConcurrent(b *testing.B) {
+	for _, agentCount := range []int{2, 5, 10} {
+		b.Run(fmt.Sprintf("agents-%d", agentCount), func(b *testing.B) {
+			ctx := context.Background()
+
+			for i := 0; i < b.N; i++ {
+				s := newBenchService(b)
+				totalTasks := agentCount * 4 // enough for all agents to get some
+				for j := 0; j < totalTasks; j++ {
+					if _, err := s.Dispatch(ctx, fmt.Sprintf("t-%d-%d", i, j), "worker", "default", 100, nil); err != nil {
+						b.Fatalf("dispatch: %v", err)
+					}
+				}
+
+				b.StopTimer()
+				var wg sync.WaitGroup
+				errs := make(chan error, agentCount)
+				b.StartTimer()
+
+				for a := 0; a < agentCount; a++ {
+					wg.Add(1)
+					go func(agent string) {
+						defer wg.Done()
+						claimed, err := s.ClaimBatch(ctx, agent, "worker", "", 3, true)
+						if err != nil {
+							errs <- err
+							return
+						}
+						_ = claimed
+					}(fmt.Sprintf("agent-%d", a))
+				}
+				wg.Wait()
+				b.StopTimer()
+
+				close(errs)
+				for err := range errs {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
