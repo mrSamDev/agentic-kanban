@@ -88,6 +88,7 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
 **Tags**:
 - `v0.5.0` ← a383b9b (batch claim, subagent delegation, env auto-detection)
 - `v0.6.0` ← 4d4b181 (burndown stats, plan lint, batch approve, E2E tests)
+- `v1.0.0-alpha` ← 3261e86 (feature lock — v0.4 safety + v0.5 speed + v0.6 maturity)
 
 ### Phase 2: v0.5 Speedup Features ✅
 - [x] Step 4: `ClaimBatch` refactor + atomic multi-claim (`--count N`)
@@ -117,9 +118,12 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
   - README.md: fixed stale embed/skills/ paths → internal/bootstrap/embed/skills/
   - README.md: added claim-task to worker skills table
   - approve-task.md skill: added --all and --project flags
-- [ ] Prepare v1.0 feature lock
+- [x] Prepare v1.0 feature lock
+  - RELEASE_NOTES.md written
+  - Version bumped to v1.0.0-alpha
+  - Feature scope locked (v0.4 safety + v0.5 speed + v0.6 maturity)
 
-**Next task**: Prepare v1.0 feature lock — review scope, tag v1.0.0-alpha, write release notes
+**Next task**: None — feature lock complete
 
 ---
 
