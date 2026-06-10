@@ -108,11 +108,14 @@ Multiple AI agents working on the same machine/filesystem need durable coordinat
   - ClaimBatch size=1: 441µs, size=5: 645µs, size=10: 850µs
   - Concurrent 2 agents: 5.5ms, 5 agents: 9.7ms, 10 agents: 16.7ms
   - All within target (<10ms single, <100ms batch 10)
-- [ ] Audit schema for production readiness
+- [x] Audit schema for production readiness
+  - AUDIT.md written: schema state, index coverage, migration paths, safety
+  - Two index migrations applied (idx_tasks_claim + idx_tasks_claim_project)
+  - No blockers — schema is production-ready
 - [ ] Finalize documentation
 - [ ] Prepare v1.0 feature lock
 
-**Next task**: Audit schema for production readiness
+**Next task**: Finalize documentation — review README.md, embed/skills, and AGENTS.md for consistency with current v0.6 feature set
 
 ---
 
