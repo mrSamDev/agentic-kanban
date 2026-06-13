@@ -119,9 +119,9 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				`UPDATE tasks
 				    SET status = 'IN_PROGRESS', assigned_agent = ?,
 				        lease_until = datetime('now', '+' || ? || ' minutes'),
-				        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
-				        updated_at = CURRENT_TIMESTAMP
-				  WHERE id = ? AND status IN ('TODO', 'IN_PROGRESS')`,
+        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
+			        updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND status IN ('TODO', 'IN_PROGRESS')`,
 				agent, defaultLeaseMinutes, agent, t.ID,
 			)
 			if err != nil {
@@ -256,7 +256,7 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 			`UPDATE tasks
 			    SET status = 'IN_PROGRESS', assigned_agent = ?,
 			        lease_until = datetime('now', '+' || ? || ' minutes'),
-			        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
+        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
 			        updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ?`,
 			agent, defaultLeaseMinutes, agent, id,

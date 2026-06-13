@@ -56,7 +56,6 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 
 	for _, t := range tasks {
 		nodeIDs = append(nodeIDs, t.ID)
-
 		// Missing role_boundary (schema enforces NOT NULL, so this catches empty string "")
 		if strings.TrimSpace(t.RoleBoundary) == "" {
 			warns = append(warns, LintIssue{TaskID: t.ID, Severity: "warn", Message: "no role_boundary set"})
@@ -93,6 +92,8 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 	return append(errors, warns...), nil
 }
 
+// detectCycles finds all cycles in the dependency graph using iterative DFS.
+// Each returned slice is the cycle path with the start node repeated at the end.
 // detectCycles finds all cycles in the dependency graph using iterative DFS.
 // Each returned slice is the cycle path with the start node repeated at the end.
 // nodes must contain every task ID in the graph; detectCycles iterates over it

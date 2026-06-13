@@ -107,9 +107,6 @@ const (
 // Prefix "TASK-" for human-readable IDs in logs and CLI output.
 // Caller must already hold a write transaction.
 func nextID(tx *sql.Tx) (string, error) {
-	// task_seq is seeded from MAX(id) at DB open time (see storage.Open).
-	// No reconcile needed here — just increment the counter inside the active
-	// serializable transaction so concurrent dispatchers never collide.
 	var id int
 	err := tx.QueryRow(
 		"UPDATE task_seq SET next_id = next_id + 1 WHERE id = 1 RETURNING next_id",
@@ -122,7 +119,6 @@ func nextID(tx *sql.Tx) (string, error) {
 
 // parseLeaseTime handles both RFC3339 (JSON) and SQLite's default datetime format.
 func parseLeaseTime(s string) (*time.Time, error) {
-	// SQLite datetime format is the 99% case; RFC3339 is the rare case from JSON serialization.
 	parsed, err := time.Parse("2006-01-02 15:04:05", s)
 	if err != nil {
 		parsed, err = time.Parse(time.RFC3339, s)

@@ -536,8 +536,6 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 	return task, err
 }
 
-
-
 // ApproveAll batch-approves all IN_REVIEW tasks for a given project (or all projects if empty).
 func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task, error) {
 	ctx, cancel := s.withTimeout(ctx)

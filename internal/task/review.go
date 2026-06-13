@@ -165,6 +165,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 }
 
 // checkSelfReview verifies the reviewing agent is not the same agent who claimed the task.
+// checkSelfReview verifies the reviewing agent is not the same agent who claimed the task.
 // Uses the claimed_by column (immutable snapshot set on first claim, preserved across lease
 // reclamations) rather than the prunable history table.
 // Returns nil (allows review) when there is no claiming agent (task created directly in IN_REVIEW).
