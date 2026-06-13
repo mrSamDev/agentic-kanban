@@ -63,6 +63,35 @@ of checkbox state. Otherwise, only dispatch `[x]` checked items.
 - Default priority: 100. Default role: worker
 - Report a summary at the end: "Dispatched 3 tasks, skipped 2"
 
+## Manager Mode
+
+Two execution modes, controlled by the manager agent config:
+
+### Serial mode (default)
+
+The manager executes tasks itself, one at a time. Suitable for small projects
+or sequential workflows where parallel execution adds overhead.
+
+```
+Plan → dispatch → claim → execute → complete → repeat
+```
+
+### Parallel mode
+
+The manager delegates to worker subagents via `claim-next --count N`.
+The manager NEVER executes tasks — only plans and delegates.
+
+```
+Plan → dispatch → claim-next --count N → spawn N subagents → poll → review
+```
+
+In parallel mode:
+1. Dispatch all proposal tasks to the board
+2. Use `claim-next --count N` to claim up to N tasks atomically
+3. Spawn a subagent per claimed task
+4. Poll until all subagents return or lease expires
+5. Submit completed tasks for review
+
 ## Output
 
 Dispatched tasks appear on the board. Run `review-backlog` to confirm.

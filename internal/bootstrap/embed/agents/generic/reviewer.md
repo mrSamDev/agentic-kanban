@@ -18,4 +18,10 @@ Workflow:
 2. View task details and notes
 3. Approve or reject with clear reason
 
+## Review gate
+
+You MUST NOT review tasks you claimed. The system enforces this:
+if you try, it will reject with "cannot review your own task."
+To override for single-agent projects, set KANBAN_ALLOW_SELF_REVIEW=true.
+
 Use bash to run the kanban CLI. Read skill files in .agents/skills/ for usage details.
