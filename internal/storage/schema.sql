@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority      INTEGER NOT NULL DEFAULT 100,      -- lower = more urgent
     assigned_agent TEXT,                             -- current lease holder, nullable
     lease_until   DATETIME,                          -- nullable when unclaimed
+    claimed_by    TEXT,                               -- immutable snapshot of who claimed it (for self-review check)
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

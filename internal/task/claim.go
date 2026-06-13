@@ -58,7 +58,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 		if project != "" {
 			rows, err = tx.Query(`
 				SELECT id, title, status, role_boundary, project, priority,
-				       assigned_agent, lease_until, created_at, updated_at, depends_on
+				       assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 				  FROM tasks
 				 WHERE role_boundary = ?
 				   AND project = ?
@@ -70,7 +70,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 		} else {
 			rows, err = tx.Query(`
 				SELECT id, title, status, role_boundary, project, priority,
-				       assigned_agent, lease_until, created_at, updated_at, depends_on
+				       assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 				  FROM tasks
 				 WHERE role_boundary = ?
 				   AND (status = 'TODO'
@@ -119,9 +119,10 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				`UPDATE tasks
 				    SET status = 'IN_PROGRESS', assigned_agent = ?,
 				        lease_until = datetime('now', '+' || ? || ' minutes'),
+				        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
 				        updated_at = CURRENT_TIMESTAMP
 				  WHERE id = ? AND status IN ('TODO', 'IN_PROGRESS')`,
-				agent, defaultLeaseMinutes, t.ID,
+				agent, defaultLeaseMinutes, agent, t.ID,
 			)
 			if err != nil {
 				return fmt.Errorf("batch claim update for %s: %w", t.ID, err)
@@ -137,7 +138,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 			// Re-read from DB to get authoritative status, updated_at, lease_until
 			row := tx.QueryRow(
 				`SELECT id, title, status, role_boundary, project, priority,
-				        assigned_agent, lease_until, created_at, updated_at, depends_on
+				        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 				   FROM tasks WHERE id = ?`, t.ID,
 			)
 			claimedEntry, err := scanTask(row)
@@ -255,9 +256,10 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 			`UPDATE tasks
 			    SET status = 'IN_PROGRESS', assigned_agent = ?,
 			        lease_until = datetime('now', '+' || ? || ' minutes'),
+			        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
 			        updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ?`,
-			agent, defaultLeaseMinutes, id,
+			agent, defaultLeaseMinutes, agent, id,
 		)
 		if err != nil {
 			return fmt.Errorf("claim-by-id update %s: %w", id, err)

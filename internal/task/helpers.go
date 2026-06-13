@@ -32,14 +32,13 @@ type Service struct {
 	hooksDir    string
 }
 
-func (s *Service) SetHooksDir(dir string) { s.hooksDir = dir }
-
-func NewService(db *sql.DB, timeout time.Duration) *Service {
+func NewService(db *sql.DB, timeout time.Duration, hooksDir string) *Service {
 	return &Service{
 		db:          db,
 		timeout:     timeout,
 		maxRetries:  3,
 		retryBaseMs: 100,
+		hooksDir:    hooksDir,
 	}
 }
 
@@ -108,21 +107,11 @@ const (
 // Prefix "TASK-" for human-readable IDs in logs and CLI output.
 // Caller must already hold a write transaction.
 func nextID(tx *sql.Tx) (string, error) {
-	// Always reconcile sequence to MAX(id) before incrementing.
-	// Without the unconditional reconcile, a sequence that fell behind
-	// (e.g., DB opened by a version that didn't seed task_seq) could
-	// generate an ID that collides with an existing task.
-	_, err := tx.Exec(`
-		UPDATE task_seq SET next_id = (
-			SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
-		) WHERE id = 1
-	`)
-	if err != nil {
-		return "", fmt.Errorf("reconcile seq: %w", err)
-	}
-
+	// task_seq is seeded from MAX(id) at DB open time (see storage.Open).
+	// No reconcile needed here — just increment the counter inside the active
+	// serializable transaction so concurrent dispatchers never collide.
 	var id int
-	err = tx.QueryRow(
+	err := tx.QueryRow(
 		"UPDATE task_seq SET next_id = next_id + 1 WHERE id = 1 RETURNING next_id",
 	).Scan(&id)
 	if err != nil {
@@ -133,9 +122,10 @@ func nextID(tx *sql.Tx) (string, error) {
 
 // parseLeaseTime handles both RFC3339 (JSON) and SQLite's default datetime format.
 func parseLeaseTime(s string) (*time.Time, error) {
-	parsed, err := time.Parse(time.RFC3339, s)
+	// SQLite datetime format is the 99% case; RFC3339 is the rare case from JSON serialization.
+	parsed, err := time.Parse("2006-01-02 15:04:05", s)
 	if err != nil {
-		parsed, err = time.Parse("2006-01-02 15:04:05", s)
+		parsed, err = time.Parse(time.RFC3339, s)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("parse lease time %q: %w", s, err)
@@ -147,14 +137,14 @@ func scanTask(scanner interface {
 	Scan(dest ...any) error
 }) (Task, error) {
 	var t Task
-	var assigned, lease, project, dependsOn sql.NullString
+	var assigned, lease, project, dependsOn, claimedBy sql.NullString
 	var createdAt, updatedAt time.Time
 	err := scanner.Scan(
 		&t.ID, &t.Title, (*string)(&t.Status),
 		&t.RoleBoundary, &project, &t.Priority,
 		&assigned, &lease,
 		&createdAt, &updatedAt,
-		&dependsOn,
+		&dependsOn, &claimedBy,
 	)
 	if err != nil {
 		return t, err
@@ -162,6 +152,7 @@ func scanTask(scanner interface {
 	t.Project = project.String
 	t.AssignedAgent = NullableStringFromDB(assigned)
 	t.DependsOn = NullableStringFromDB(dependsOn)
+	t.ClaimedBy = NullableStringFromDB(claimedBy)
 	t.CreatedAt = createdAt
 	t.UpdatedAt = updatedAt
 	if lease.Valid {
@@ -188,7 +179,7 @@ func alreadyDone(tx *sql.Tx, id, status string) bool {
 func reRead(tx *sql.Tx, id string) (Task, error) {
 	row := tx.QueryRow(
 		`SELECT id, title, status, role_boundary, project, priority,
-		        assigned_agent, lease_until, created_at, updated_at, depends_on
+		        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 		   FROM tasks WHERE id = ?`, id,
 	)
 	return scanTask(row)

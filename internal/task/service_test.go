@@ -28,7 +28,13 @@ func newTestDB(t *testing.T) *storage.DB {
 
 func newTestService(t *testing.T) *Service {
 	db := newTestDB(t)
-	return NewService(db.DB, 0)
+	return NewService(db.DB, 0, "")
+}
+
+func newTestServiceWithHooks(t *testing.T, hooksDir string) *Service {
+	t.Helper()
+	db := newTestDB(t)
+	return NewService(db.DB, 0, hooksDir)
 }
 
 func newBenchDB(b *testing.B) *storage.DB {
@@ -44,7 +50,7 @@ func newBenchDB(b *testing.B) *storage.DB {
 
 func newBenchService(b *testing.B) *Service {
 	db := newBenchDB(b)
-	return NewService(db.DB, 0)
+	return NewService(db.DB, 0, "")
 }
 
 func TestDispatch(t *testing.T) {
@@ -991,11 +997,10 @@ func waitForSentinel(t *testing.T, path string) {
 }
 
 func TestHookFiresAfterDispatch(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	sentinel := filepath.Join(dir, "fired")
-	makeHook(t, filepath.Join(dir, "hooks"), "task.created", "touch "+sentinel)
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
+	makeHook(t, hooksDir, "task.created", "touch "+sentinel)
 
 	if _, err := s.Dispatch(t.Context(), "hook test", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1004,11 +1009,10 @@ func TestHookFiresAfterDispatch(t *testing.T) {
 }
 
 func TestHookDoesNotFireOnRollback(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	sentinel := filepath.Join(dir, "fired")
-	makeHook(t, filepath.Join(dir, "hooks"), "task.completed", "touch "+sentinel)
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
+	makeHook(t, hooksDir, "task.completed", "touch "+sentinel)
 
 	// Complete with wrong agent — guaranteed rollback, no hook
 	s.Dispatch(t.Context(), "task", "worker", "default", 50, nil)
@@ -1021,11 +1025,10 @@ func TestHookDoesNotFireOnRollback(t *testing.T) {
 }
 
 func TestHookClaimNextEmptyResultNoFire(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	sentinel := filepath.Join(dir, "fired")
-	makeHook(t, filepath.Join(dir, "hooks"), "task.claimed", "touch "+sentinel)
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
+	makeHook(t, hooksDir, "task.claimed", "touch "+sentinel)
 
 	// No tasks in DB — ClaimNext returns zero-value task, hook must not fire
 	s.ClaimNext(t.Context(), "agent", "worker", "")
@@ -1036,8 +1039,7 @@ func TestHookClaimNextEmptyResultNoFire(t *testing.T) {
 }
 
 func TestHookMissingIsSilent(t *testing.T) {
-	s := newTestService(t)
-	s.SetHooksDir(t.TempDir()) // empty dir, no hook scripts
+	s := newTestServiceWithHooks(t, t.TempDir()) // empty dir, no hook scripts
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatalf("Dispatch failed with missing hook: %v", err)
@@ -1045,10 +1047,9 @@ func TestHookMissingIsSilent(t *testing.T) {
 }
 
 func TestHookNonZeroExitIsSilent(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	makeHook(t, filepath.Join(dir, "hooks"), "task.created", "exit 1")
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	makeHook(t, hooksDir, "task.created", "exit 1")
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatalf("Dispatch failed with non-zero hook exit: %v", err)
@@ -1067,14 +1068,12 @@ func makeHookD(t *testing.T, hooksDir, eventType, name, script string) {
 }
 
 func TestHookDAllFire(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	s1 := filepath.Join(dir, "s1")
-	s2 := filepath.Join(dir, "s2")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	s1 := filepath.Join(filepath.Dir(hooksDir), "s1")
+	s2 := filepath.Join(filepath.Dir(hooksDir), "s2")
 	makeHookD(t, hooksDir, "task.created", "slack", "touch "+s1)
 	makeHookD(t, hooksDir, "task.created", "metrics", "touch "+s2)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1084,14 +1083,12 @@ func TestHookDAllFire(t *testing.T) {
 }
 
 func TestHookDLexOrder(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	order := filepath.Join(dir, "order")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	order := filepath.Join(filepath.Dir(hooksDir), "order")
 	makeHookD(t, hooksDir, "task.created", "a", "echo a >>"+order)
 	makeHookD(t, hooksDir, "task.created", "b", "echo b >>"+order)
 	makeHookD(t, hooksDir, "task.created", "c", "echo c >>"+order)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1118,15 +1115,12 @@ func TestHookDLexOrder(t *testing.T) {
 }
 
 func TestHookDNonExecutableSkipped(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	dDir := filepath.Join(hooksDir, "task-created.d")
-	sentinel := filepath.Join(dir, "fired")
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
 	os.MkdirAll(dDir, 0755)
-	// write without execute bit
 	os.WriteFile(filepath.Join(dDir, "nope"), []byte("#!/bin/sh\ntouch "+sentinel+"\n"), 0644)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1137,14 +1131,12 @@ func TestHookDNonExecutableSkipped(t *testing.T) {
 }
 
 func TestHookDAndSingleFileBothFire(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	single := filepath.Join(dir, "single")
-	multi := filepath.Join(dir, "multi")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	single := filepath.Join(filepath.Dir(hooksDir), "single")
+	multi := filepath.Join(filepath.Dir(hooksDir), "multi")
 	makeHook(t, hooksDir, "task.created", "touch "+single)
 	makeHookD(t, hooksDir, "task.created", "extra", "touch "+multi)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1154,13 +1146,11 @@ func TestHookDAndSingleFileBothFire(t *testing.T) {
 }
 
 func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	sentinel := filepath.Join(dir, "fired")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
 	makeHookD(t, hooksDir, "task.created", "a", "exit 1")
 	makeHookD(t, hooksDir, "task.created", "b", "touch "+sentinel)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatalf("Dispatch failed: %v", err)
@@ -1169,14 +1159,12 @@ func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
 }
 
 func TestBatchPriorityHookFiresPerTask(t *testing.T) {
-	s := newTestService(t)
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	s.Dispatch(t.Context(), "task-a", "worker", "default", 10, nil)
 	s.Dispatch(t.Context(), "task-b", "worker", "default", 20, nil)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	s.SetHooksDir(hooksDir)
-	// Each hook invocation touches a unique file named after the task_id from stdin
-	makeHook(t, hooksDir, "task.priority_updated", `cat > /dev/null; echo $(( $(cat `+filepath.Join(dir, `count`)+` 2>/dev/null || echo 0) + 1 )) > `+filepath.Join(dir, `count`))
+	countFile := filepath.Join(filepath.Dir(hooksDir), "count")
+	makeHook(t, hooksDir, "task.priority_updated", `cat > /dev/null; echo $(( $(cat `+countFile+` 2>/dev/null || echo 0) + 1 )) > `+countFile)
 
 	n, err := s.BatchUpdatePriority(t.Context(), []string{"TASK-1", "TASK-2"}, 99)
 	if err != nil {
@@ -1188,7 +1176,7 @@ func TestBatchPriorityHookFiresPerTask(t *testing.T) {
 
 	var count int
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		data, _ := os.ReadFile(filepath.Join(dir, "count"))
+		data, _ := os.ReadFile(countFile)
 		if len(data) > 0 {
 			fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &count)
 			if count == 2 {
@@ -1203,13 +1191,12 @@ func TestBatchPriorityHookFiresPerTask(t *testing.T) {
 }
 
 func TestBatchProjectHookFiresPerTask(t *testing.T) {
-	s := newTestService(t)
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	s.Dispatch(t.Context(), "task-a", "worker", "default", 10, nil)
 	s.Dispatch(t.Context(), "task-b", "worker", "default", 20, nil)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	s.SetHooksDir(hooksDir)
-	makeHook(t, hooksDir, "task.project_updated", `cat > /dev/null; echo $(( $(cat `+filepath.Join(dir, `count`)+` 2>/dev/null || echo 0) + 1 )) > `+filepath.Join(dir, `count`))
+	countFile := filepath.Join(filepath.Dir(hooksDir), "count")
+	makeHook(t, hooksDir, "task.project_updated", `cat > /dev/null; echo $(( $(cat `+countFile+` 2>/dev/null || echo 0) + 1 )) > `+countFile)
 
 	n, err := s.BatchUpdateProject(t.Context(), []string{"TASK-1", "TASK-2"}, "new-project")
 	if err != nil {
@@ -1221,7 +1208,7 @@ func TestBatchProjectHookFiresPerTask(t *testing.T) {
 
 	var count int
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		data, _ := os.ReadFile(filepath.Join(dir, "count"))
+		data, _ := os.ReadFile(countFile)
 		if len(data) > 0 {
 			fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &count)
 			if count == 2 {
@@ -1236,14 +1223,11 @@ func TestBatchProjectHookFiresPerTask(t *testing.T) {
 }
 
 func TestBatchHookPayloadEnriched(t *testing.T) {
-	s := newTestService(t)
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	s.Dispatch(t.Context(), "my task", "worker", "default", 10, nil)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	payloadFile := filepath.Join(dir, "payload")
-	// Write the full stdin (event+payload wrapper) to file
+	payloadFile := filepath.Join(filepath.Dir(hooksDir), "payload")
 	makeHook(t, hooksDir, "task.priority_updated", `cat > `+payloadFile)
-	s.SetHooksDir(hooksDir)
 
 	_, err := s.BatchUpdatePriority(t.Context(), []string{"TASK-1"}, 99)
 	if err != nil {
@@ -1278,13 +1262,10 @@ func TestBatchHookPayloadEnriched(t *testing.T) {
 }
 
 func TestBatchHookDoesNotFireOnEmptyUpdate(t *testing.T) {
-	s := newTestService(t)
-
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	fired := filepath.Join(dir, "fired")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	fired := filepath.Join(filepath.Dir(hooksDir), "fired")
 	makeHook(t, hooksDir, "task.priority_updated", "touch "+fired)
-	s.SetHooksDir(hooksDir)
 
 	n, err := s.BatchUpdatePriority(t.Context(), []string{"NONEXIST"}, 99)
 	if err != nil {

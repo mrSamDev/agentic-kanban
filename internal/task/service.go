@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project string, priority int, dependsOn *string) (Task, error) {
@@ -53,6 +54,64 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 
 	if err := insertEvent(tx, "task.created", eventPayload(tx, id, EventPayload{})); err != nil {
 		return Task{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	// Prevent impossible dependency graphs: detect cycles before committing.
+	// Walk the transitive closure of the new task's dependencies. If any path
+	// revisits a node already on the current recursion stack, the new task would
+	// inherit a cycle. O(depth) instead of O(total-tasks).
+	if dependsOn != nil && *dependsOn != "" {
+		onStack := map[string]bool{}
+		var walk func(current string) (bool, error)
+		walk = func(current string) (bool, error) {
+			if onStack[current] {
+				return true, nil // back edge found
+			}
+			onStack[current] = true
+			var raw sql.NullString
+			err := tx.QueryRow(`SELECT depends_on FROM tasks WHERE id = ?`, current).Scan(&raw)
+			if err == sql.ErrNoRows {
+				delete(onStack, current)
+				return false, nil
+			}
+			if err != nil {
+				delete(onStack, current)
+				return false, fmt.Errorf("cycle check look up %s: %w", current, err)
+			}
+			if raw.Valid && raw.String != "" {
+				for _, d := range strings.Split(raw.String, ",") {
+					d = strings.TrimSpace(d)
+					if d == "" {
+						continue
+					}
+					cycle, err := walk(d)
+					if err != nil {
+						delete(onStack, current)
+						return false, err
+					}
+					if cycle {
+						delete(onStack, current)
+						return true, nil
+					}
+				}
+			}
+			delete(onStack, current)
+			return false, nil
+		}
+
+		for _, d := range strings.Split(*dependsOn, ",") {
+			d = strings.TrimSpace(d)
+			if d == "" {
+				continue
+			}
+			cycle, err := walk(d)
+			if err != nil {
+				return Task{}, err
+			}
+			if cycle {
+				return Task{}, fmt.Errorf("cycle detected: adding %s would create a dependency cycle", id)
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -363,7 +422,7 @@ func (s *Service) BatchComplete(ctx context.Context, ids []string, agent string,
 			// Re-read task
 			row := tx.QueryRow(
 				`SELECT id, title, status, role_boundary, project, priority,
-				        assigned_agent, lease_until, created_at, updated_at, depends_on
+				        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 				   FROM tasks WHERE id = ?`, id,
 			)
 			t, scanErr := scanTask(row)
@@ -493,7 +552,7 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		defer tx.Rollback()
 
 		query := `SELECT id, title, status, role_boundary, project, priority,
-		        assigned_agent, lease_until, created_at, updated_at, depends_on
+		        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 		   FROM tasks WHERE status = 'IN_REVIEW'`
 		var args []any
 		if project != "" {

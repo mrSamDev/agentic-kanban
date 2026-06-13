@@ -139,15 +139,27 @@ func Open(path string, debug bool) (*DB, error) {
 		}
 	}
 
-	var hasDependsOn bool
-	db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'depends_on'`).Scan(&hasDependsOn)
-	if !hasDependsOn {
+	var hasDepsOn bool
+	db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'depends_on'`).Scan(&hasDepsOn)
+	if !hasDepsOn {
 		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN depends_on TEXT"); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("add depends_on column: %w", err)
 		}
 		if debug {
 			slog.Info("db depends_on column migration applied")
+		}
+	}
+
+	var hasClaimedBy bool
+	db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'claimed_by'`).Scan(&hasClaimedBy)
+	if !hasClaimedBy {
+		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN claimed_by TEXT"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("add claimed_by column: %w", err)
+		}
+		if debug {
+			slog.Info("db claimed_by column migration applied")
 		}
 	}
 
