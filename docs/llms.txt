@@ -1,0 +1,35 @@
+# agentic-kanban
+
+> Agent coordination engine — shared task state for cooperating agents. One SQLite file. Zero infrastructure. No servers, no daemons, no queues.
+
+SQLite-backed task coordination for AI agents. Agents claim work atomically, report progress, survive crashes, and hand off reviews without anything in the middle. Concurrency tested up to 50 agents.
+
+## Install
+
+- [Install script](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh): `curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh`
+- [GitHub Releases](https://github.com/mrSamDev/agentic-kanban/releases): Pinned versions for CI/CD
+
+## Docs
+
+- [Landing page](https://mrsamdev.github.io/agentic-kanban/): Full documentation with workflow, command reference, and skill hierarchy
+
+## Source
+
+- [GitHub repository](https://github.com/mrSamDev/agentic-kanban): Go source, issues, discussions
+
+## Optional
+
+- [Skill: dispatch-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Create a new task in the kanban board
+- [Skill: claim-next-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Claim the highest-priority unclaimed task
+- [Skill: create-plan](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): 3-pass extraction from a plan file
+- [Skill: approve-plan](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Dispatch approved tasks from proposal to board
+- [Skill: complete-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Mark a task as done or submit for review
+- [Skill: log-progress](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Log progress and renew lease on a claimed task
+- [Skill: block-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Mark a task as blocked with explanation
+- [Skill: review-backlog](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Search tasks by filters
+- [Skill: view-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): View task details, notes, and history
+- [Skill: claim-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Claim a specific task by ID
+- [Skill: setup-hooks](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Set up event hooks for notifications and automation
+- [Skill: claim-review](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Claim next reviewer task
+- [Skill: approve-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Approve a task in review
+- [Skill: reject-task](https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/docs/llms-full.txt): Reject a task in review, send back to TODO
