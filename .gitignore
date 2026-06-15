@@ -1,6 +1,7 @@
 .kanban
-/kanban
 *.db
-graphify-out
+/kanban
 evaluations
+graphify-out
 kanban-test
+ralph.sh

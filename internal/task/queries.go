@@ -12,7 +12,7 @@ import (
 func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, title, status, role_boundary, project, priority,
-		        assigned_agent, lease_until, created_at, updated_at, depends_on
+		        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 		   FROM tasks WHERE id = ?`, id,
 	)
 	t, err := scanTask(row)
@@ -179,8 +179,12 @@ type SearchParams struct {
 }
 
 func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, error) {
-	if params.Status != "" && !ValidStatuses[params.Status] {
-		return nil, &ExitError{Code: 2, Message: fmt.Sprintf("invalid status: %q", params.Status)}
+	if params.Status != "" {
+		switch params.Status {
+		case StatusTODO, StatusInProgress, StatusBlocked, StatusInReview, StatusDone:
+		default:
+			return nil, &ExitError{Code: 2, Message: fmt.Sprintf("invalid status: %q", params.Status)}
+		}
 	}
 	var conditions []string
 	var args []any
@@ -202,7 +206,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 		args = append(args, params.Project)
 	}
 
-	query := "SELECT id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at, depends_on FROM tasks"
+	query := "SELECT id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by FROM tasks"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -243,15 +247,16 @@ type TaskStats struct {
 }
 
 type BurndownStats struct {
-	ByStatus    map[string]int `json:"by_status"`
-	ByRole      map[string]int `json:"by_role"`
-	Total       int            `json:"total"`
-	DoneCount   int            `json:"done_count"`
-	PercentDone float64        `json:"percent_done"`
+	ByStatus      map[string]int `json:"by_status"`
+	ByRole        map[string]int `json:"by_role"`
+	ExpiredLeases int            `json:"expired_leases"`
+	Total         int            `json:"total"`
+	DoneCount     int            `json:"done_count"`
+	PercentDone   float64        `json:"percent_done"`
 }
 
-func (s *Service) Burndown(ctx context.Context) (BurndownStats, error) {
-	raw, err := s.Stats(ctx)
+func (s *Service) Burndown(ctx context.Context, project string) (BurndownStats, error) {
+	raw, err := s.Stats(ctx, project)
 	if err != nil {
 		return BurndownStats{}, err
 	}
@@ -261,65 +266,63 @@ func (s *Service) Burndown(ctx context.Context) (BurndownStats, error) {
 		pct = float64(done) / float64(raw.TotalTasks) * 100
 	}
 	return BurndownStats{
-		ByStatus:    raw.ByStatus,
-		ByRole:      raw.ByRole,
-		Total:       raw.TotalTasks,
-		DoneCount:   done,
-		PercentDone: pct,
+		ByStatus:      raw.ByStatus,
+		ByRole:        raw.ByRole,
+		ExpiredLeases: raw.ExpiredLeases,
+		Total:         raw.TotalTasks,
+		DoneCount:     done,
+		PercentDone:   pct,
 	}, nil
 }
 
-func (s *Service) Stats(ctx context.Context) (TaskStats, error) {
+func (s *Service) Stats(ctx context.Context, project string) (TaskStats, error) {
 	stats := TaskStats{
 		ByStatus:   make(map[string]int),
 		ByRole:     make(map[string]int),
 		TotalTasks: 0,
 	}
 
-	rows, err := s.db.QueryContext(ctx, "SELECT status, COUNT(*) FROM tasks GROUP BY status")
+	query := "SELECT status, role_boundary, COUNT(*) FROM tasks"
+	var args []any
+	if project != "" {
+		query += " WHERE project = ?"
+		args = append(args, project)
+	}
+	query += " GROUP BY status, role_boundary"
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return stats, fmt.Errorf("stats by status: %w", err)
+		return stats, fmt.Errorf("stats query: %w", err)
 	}
 	for rows.Next() {
-		var status string
+		var status, role string
 		var count int
-		if err := rows.Scan(&status, &count); err != nil {
+		if err := rows.Scan(&status, &role, &count); err != nil {
 			rows.Close()
-			return stats, fmt.Errorf("scan status count: %w", err)
+			return stats, fmt.Errorf("scan stat row: %w", err)
 		}
-		stats.ByStatus[status] = count
+		stats.ByStatus[status] += count
+		stats.ByRole[role] += count
 		stats.TotalTasks += count
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return stats, fmt.Errorf("status count: %w", err)
+		return stats, fmt.Errorf("stat rows: %w", err)
 	}
 	rows.Close()
 
-	rows, err = s.db.QueryContext(ctx, "SELECT role_boundary, COUNT(*) FROM tasks GROUP BY role_boundary")
-	if err != nil {
-		return stats, fmt.Errorf("stats by role: %w", err)
-	}
-	for rows.Next() {
-		var role string
-		var count int
-		if err := rows.Scan(&role, &count); err != nil {
-			rows.Close()
-			return stats, fmt.Errorf("scan role count: %w", err)
+	expQuery := "SELECT COUNT(*) FROM tasks WHERE status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP"
+	if project != "" {
+		expQuery += " AND project = ?"
+		row := s.db.QueryRowContext(ctx, expQuery, project)
+		if err := row.Scan(&stats.ExpiredLeases); err != nil {
+			return stats, fmt.Errorf("stats expired leases: %w", err)
 		}
-		stats.ByRole[role] = count
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return stats, fmt.Errorf("role count: %w", err)
-	}
-	rows.Close()
-
-	row := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM tasks WHERE status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP",
-	)
-	if err := row.Scan(&stats.ExpiredLeases); err != nil {
-		return stats, fmt.Errorf("stats expired leases: %w", err)
+	} else {
+		row := s.db.QueryRowContext(ctx, expQuery)
+		if err := row.Scan(&stats.ExpiredLeases); err != nil {
+			return stats, fmt.Errorf("stats expired leases: %w", err)
+		}
 	}
 
 	return stats, nil

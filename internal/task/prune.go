@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -11,6 +12,22 @@ type PruneResult struct {
 	HistoryDeleted int64 `json:"history_deleted"`
 	NotesDeleted   int64 `json:"notes_deleted"`
 	DryRun         bool  `json:"dry_run"`
+}
+
+func (s *Service) PruneEvents(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM events
+		  WHERE ttl_seconds IS NOT NULL
+		    AND created_at < datetime('now', '-' || ttl_seconds || ' seconds')`,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("prune expired events: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("prune expired events rows: %w", err)
+	}
+	return n, nil
 }
 
 func (s *Service) Prune(ctx context.Context, before time.Time, dryRun bool) (PruneResult, error) {
@@ -79,23 +96,11 @@ func (s *Service) PruneClearTTL(ctx context.Context, ids []string) (int64, error
 		args[i] = id
 	}
 	res, err := s.db.ExecContext(ctx,
-		fmt.Sprintf("UPDATE events SET ttl_seconds = NULL WHERE id IN (%s)", joinStrings(placeholders, ",")),
+		fmt.Sprintf("UPDATE events SET ttl_seconds = NULL WHERE id IN (%s)", strings.Join(placeholders, ",")),
 		args...,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("clear ttl: %w", err)
 	}
 	return res.RowsAffected()
-}
-
-// joinStrings joins string slices (replacement for strings.Join to avoid import).
-func joinStrings(elems []string, sep string) string {
-	if len(elems) == 0 {
-		return ""
-	}
-	result := elems[0]
-	for _, e := range elems[1:] {
-		result += sep + e
-	}
-	return result
 }

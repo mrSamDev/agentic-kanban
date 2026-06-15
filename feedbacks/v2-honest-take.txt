@@ -1,0 +1,47 @@
+Honest Take: Kanban v0.1.11
+
+ Ran same eval as your prior session. Here's what I see:
+
+ ### Fixed (good)
+
+ - /approve-plan --all works now — skipped checkbox hell
+ - kanban events exists — you can tail live stream
+ - kanban task view --notes/--history — context persistence works
+ - kanban re-init — wipes agents without nuking DB
+ - kanban upgrade --check — version check exists
+ - kanban plan lint — catches cycles + unknown deps
+
+ ### Not Fixed (still hurts)
+
+ ┌─────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ Pain                        │ Still true                                                                                    │
+ ├─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No batch claim/complete     │ 33 manual round-trips for 11 tasks. Absurd.                                                   │
+ ├─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No dep enforcement          │ depends_on column exists. CLI ignores it entirely.                                            │
+ ├─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No reviewer gate            │ Manager self-approves. Claim-review skill exists but nothing enforces it.                     │
+ ├─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ CLI UX                      │ Same ASCII box, no colors, no progress, no spinners.                                          │
+ ├─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ No parallelism in board ops │ Subagents ran backend+frontend in parallel (nice). But board bookkeeping serial.              │
+ ├─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ Lease renewal               │ 15-min trap still there for long subagent work.                                               │
+ ├─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────┤
+ │ Status confusion            │ kanban status showed N totals while DB had 11 TODO tasks. Needed review_backlog to see truth. │
+ └─────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ ### Root Issue
+
+ Kanban has the right data model (SQLite + leases + history) but wrong interface surface. CLI is a debugging tool pretending to be an agent protocol. The real coordination should happen through the DB reads/writes
+ + a lightweight batch API.
+
+ Your prior review said it best: "solo-agent serial queue masquerading as multi-agent coordination engine." Still true at v0.1.11.
+
+ ### What I'd Ship Next
+
+ 1. kanban task batch claim + kanban task batch complete — single SQL write, not 33 round-trips
+ 2. claim-next --respect-deps — skip tasks whose depends_on isn't DONE
+ 3. kanban status --json — so agents read progress programmatically, not squint at ASCII
+
+ Your v2 session proved the subagent pattern can do real work. The board management just needs to catch up to what the subagents can actually deliver.

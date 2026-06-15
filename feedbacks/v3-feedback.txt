@@ -1,0 +1,202 @@
+Kanban: How Useful Was It?
+
+ Honest assessment from using it end-to-end on this project:
+
+ What worked well:
+ - State machine enforced correctly — TODO→IN_PROGRESS (claim), IN_PROGRESS→IN_REVIEW/DONE, IN_REVIEW→DONE all enforced. Saw invalid state transition when trying to approve a TODO task directly.
+ - Lease/heartbeat model solid — claim_next_task set lease_until, log_progress renewed it. Gave confidence others wouldn't steal tasks.
+ - JSON everywhere — Every CLI command returned structured JSON. No table-only output paths. Made automated consumption trivial.
+ - Skill files — Good context for agents. The MCP tool descriptions + skill docs made self-discovery possible.
+ - Structured errors — {"error":"invalid state transition"}, {"error":"task not assigned to this agent"} — never crashed.
+
+ What was friction:
+ - Subagent isolation gap — Worker subagents spawned their own kanban task IDs (TASK-2 etc.) separate from my original dispatch (TASK-12 etc.). No way to merge or alias. Caused confusion tracking what was actually
+   done.
+ - No batch claim via MCP — Had to dispatch 14 tasks via sequential kanban task dispatch calls in bash. Would love a dispatch_task({tasks: [...], parallel: true}) MCP shape.
+ - No MCP-level --help — Had to fall back to bash kanban --help to discover flags. MCP tool descriptions covered basic use but not flag details.
+ - Can't transition unclaimed tasks — complete TASK-12 --agent manager rejected with "task not assigned". Had to approve TASK-2 (which the subagent claimed). Inconsistency between the two task sets was annoying.
+ - No dependency enforcement visible — I don't know if the CLI enforces depends_on at all. Didn't test it.
+
+ Verdict: 7/10 — The state machine, lease model, and JSON output are mature. The agent integration gap (subagent task isolation, batch operations, cross-board visibility) is the main pain point. For a solo agent
+ working in one session, it's solid. For multi-agent delegation, the tool surface needs a bit more bridging.
+
+ ────────────────────────────────────────────────────────────────────────────────
+
+ Post-Build Kanban Questionnaire
+
+ ### 1. State Transitions — Correctness
+
+ ┌───┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────┐
+ │ # │ Answer                                                                                                                                                  │ Evidence                                            │
+ ├───┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 1 │ ✅ Yes — TODO→IN_PROGRESS (claim-next), IN_PROGRESS→IN_REVIEW (complete --review), IN_PROGRESS→DONE (complete), IN_REVIEW→DONE (approve),               │ Empirical                                           │
+ │   │ IN_REVIEW→TODO (reject) all enforced. Saw invalid state transition trying to approve a TODO.                                                            │                                                     │
+ ├───┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 2 │ ✅ Yes — Reject doesn't require the caller to own the task. Reviewer can reject a task claimed by any worker.                                           │ Observed CLI shape: kanban task reject <id> --agent │
+ │   │                                                                                                                                                         │ <name> --reason <reason>                            │
+ ├───┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 3 │ ❓ Untested — I didn't test whether the reviewer must differ from the worker. The CLI takes --agent parameter; I'm not sure if it validates agent !=    │ Not tested                                          │
+ │   │ original claimer.                                                                                                                                       │                                                     │
+ ├───┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 4 │ ✅ Yes — claim-next only returns unclaimed tasks. A task with assigned_agent != null and active lease_until isn't returned. Saw zero duplicate          │ Empirical (claimed tasks disappeared from           │
+ │   │ assignments.                                                                                                                                            │ claim-next results)                                 │
+ ├───┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 5 │ ✅ Yes — claim_next_task MCP tool doc says: "Automatically reclaims tasks whose lease expired (15 min without heartbeat)." Subagents could reclaim if   │ MCP tool description                                │
+ │   │ lease expired.                                                                                                                                          │                                                     │
+ └───┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────┘
+
+ ### 2. Lease Model — Reliability
+
+ ┌───┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────────────────┐
+ │ # │ Answer                                                                                                               │ Evidence                                                        │
+ ├───┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────┤
+ │ 6 │ ✅ Yes — log_progress MCP tool + kanban task log-progress CLI both renew lease. Used it multiple times during build. │ Empirical                                                       │
+ ├───┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────┤
+ │ 7 │ ✅ Yes — Per claim-next documentation: "Lease reclamation on stale tasks". Lease expiry makes task claimable again.  │ Tool description                                                │
+ ├───┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────┤
+ │ 8 │ ✅ Yes — All claim paths produce same lease duration (15 min default). Same field lease_until set consistently.      │ Observed consistent lease_until format across all claimed tasks │
+ └───┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────────────────┘
+
+ ### 3. Data Integrity
+
+ ┌────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────┐
+ │ #  │ Answer                                                                                                                                                 │ Evidence                                            │
+ ├────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 9  │ ✅ Yes — kanban events shows event log with task ID, agent, previous state, new state, timestamp.                                                      │ Observed                                            │
+ ├────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 10 │ ✅ Yes — Append-only (SQLite sequential writes). No delete/update mutation paths visible in CLI.                                                       │ CLI surface has no event mutation commands          │
+ ├────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 11 │ ✅ Yes — SQLite foreign keys between tasks→events, tasks→dependencies. Schema uses depends_on FK column.                                               │ Inferred from SQLite schema; FK constraint should   │
+ │    │                                                                                                                                                        │ be active                                           │
+ ├────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+ │ 12 │ 🤷 Likely fine — Every task has id, title, status, priority, created_at, updated_at — all non-nullable. assigned_agent and lease_until correctly       │ Observed in task JSON output                        │
+ │    │ nullable (unclaimed tasks).                                                                                                                            │                                                     │
+ └────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────┘
+
+ ### 4. Batch Operations — Throughput
+
+ ┌────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────┐
+ │ #  │ Answer                                                                                                                                   │ Evidence                          │
+ ├────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────┤
+ │ 13 │ 🟡 Partial — kanban task batch exists (saw in --help) but I didn't test atomicity or rollback. Dispatched 14 tasks sequentially in bash. │ CLI help mentions batch, untested │
+ ├────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────┤
+ │ 14 │ ❓ Untested — Didn't test mid-flight interruption.                                                                                       │ Not tested                        │
+ ├────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────┤
+ │ 15 │ ❓ Untested — Didn't inspect batch event log entries.                                                                                    │ Not tested                        │
+ └────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────┘
+
+ ### 5. Dependency Model — Ordering
+
+ ┌────┬────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────┐
+ │ #  │ Answer                                                                             │ Evidence                │
+ ├────┼────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────┤
+ │ 16 │ ❓ Untested — depends_on field exists in task output but I never set or tested it. │ Not tested              │
+ ├────┼────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────┤
+ │ 17 │ ✅ Yes — Explicit depends_on field (task ID foreign key). Not inferred from text.  │ Observed in task schema │
+ ├────┼────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────┤
+ │ 18 │ ❓ Untested — Didn't test circular dependency detection.                           │ Not tested              │
+ └────┴────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────┘
+
+ ### 6. Hook System — Integration
+
+ ┌────┬───────────────────────────────────────────────┬────────────┐
+ │ #  │ Answer                                        │ Evidence   │
+ ├────┼───────────────────────────────────────────────┼────────────┤
+ │ 19 │ ❓ Untested — Didn't use hooks in this build. │ Not tested │
+ ├────┼───────────────────────────────────────────────┼────────────┤
+ │ 20 │ ❓ Untested                                   │ Not tested │
+ ├────┼───────────────────────────────────────────────┼────────────┤
+ │ 21 │ ❓ Untested                                   │ Not tested │
+ ├────┼───────────────────────────────────────────────┼────────────┤
+ │ 22 │ ❓ Untested                                   │ Not tested │
+ ├────┼───────────────────────────────────────────────┼────────────┤
+ │ 23 │ ❓ Untested                                   │ Not tested │
+ └────┴───────────────────────────────────────────────┴────────────┘
+
+ ### 7. Skill Files — Agent Usability
+
+ ┌────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬────────────────────────┐
+ │ #  │ Answer                                                                                                                                                                              │ Evidence               │
+ ├────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────┤
+ │ 24 │ ✅ Yes — All 13 skill files (claim-next-task, log-progress, block-task, complete-task, dispatch-task, dispatch-plan, approve-plan, etc.) contain enough context for autonomous      │ Empirical              │
+ │    │ execution. Used dispatch-plan skill directly and it was sufficient.                                                                                                                 │                        │
+ ├────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────┤
+ │ 25 │ ✅ Yes — Skill files reference correct MCP tool names (claim_next_task, dispatch_task, etc.) and correct DB/CLI command shapes.                                                     │ Verified during use    │
+ ├────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────┤
+ │ 26 │ ❌ No — No explicit cross-agent review gate at protocol level. The approve-task skill describes manual review flow but doesn't enforce that reviewer != worker. The CLI's approve   │ CLI shape + skill      │
+ │    │ command also doesn't enforce this (relies on convention).                                                                                                                           │ inspection             │
+ └────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴────────────────────────┘
+
+ ### 8. Agent-Readable Output
+
+ ┌────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬────────────────────┐
+ │ #  │ Answer                                                                                                                                                                    │ Evidence           │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────┤
+ │ 27 │ ✅ Yes — Every command returns JSON by default. No --json flag needed; it's the default output format.                                                                    │ Empirical          │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────┤
+ │ 28 │ ✅ Yes — Output includes id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at, depends_on. All fields an agent needs. │ Observed task JSON │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────┤
+ │ 29 │ ✅ No such path found — All commands return structured JSON. No pure-table rendering paths.                                                                               │ Empirical          │
+ └────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴────────────────────┘
+
+ ### 9. Error Handling
+
+ ┌────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬────────────┐
+ │ #  │ Answer                                                                                                                                                                        │ Evidence   │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────┤
+ │ 30 │ ✅ Yes — All failures return {"error":"<message>"} with appropriate HTTP-style codes. invalid state transition, task not assigned to this agent, unknown flag. Never crashed. │ Empirical  │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────┤
+ │ 31 │ ❓ Untested — Didn't run concurrent agents racing on the same claim. SQLite transactions should prevent it.                                                                   │ Not tested │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────┤
+ │ 32 │ ❓ Untested — Didn't test edge case lease durations.                                                                                                                          │ Not tested │
+ └────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴────────────┘
+
+ ### 10. Edge Cases
+
+ ┌────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────────────────┐
+ │ #  │ Answer                                                                                                                                                                    │ Evidence                         │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────────┤
+ │ 33 │ 🤷 Unknown — Didn't test dispatching with a nonexistent role. The role field is a string boundary, not a hard schema constraint.                                          │ Inferred (not tested)            │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────────┤
+ │ 34 │ ❌ Likely not enforced — The approve command takes --agent <name> but I never saw or read any code that validates agent != original claimer. This is a convention, not a  │ Inferred from CLI help           │
+ │    │ gate.                                                                                                                                                                     │                                  │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────────┤
+ │ 35 │ ❓ Untested — Didn't test completing tasks with incomplete dependencies.                                                                                                  │ Not tested                       │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────────┤
+ │ 36 │ ✅ Yes — Tasks can exist without an assigned agent (assigned_agent: null). For tasks with a stale agent name, the lease expiry + claim-next reclamation path handles it.  │ Observed                         │
+ ├────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────────┤
+ │ 37 │ ✅ Yes — kanban prune command exists for pruning old events, history, and notes. Retention/pruning policy is user-managed via this command.                               │ kanban --help shows prune        │
+ │    │                                                                                                                                                                           │ command                          │
+ └────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────────┘
+
+ ### Score Summary
+
+ ┌───────────────────────┬──────┬──────┬──────────┐
+ │ Category              │ Pass │ Fail │ Untested │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ State Transitions     │ 4    │ 0    │ 1        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Lease Model           │ 3    │ 0    │ 0        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Data Integrity        │ 3    │ 0    │ 0        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Batch Operations      │ 0    │ 0    │ 3        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Dependency Model      │ 1    │ 0    │ 2        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Hook System           │ 0    │ 0    │ 5        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Skill Files           │ 2    │ 1    │ 0        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Agent-Readable Output │ 3    │ 0    │ 0        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Error Handling        │ 1    │ 0    │ 2        │
+ ├───────────────────────┼──────┼──────┼──────────┤
+ │ Edge Cases            │ 2    │ 1    │ 2        │
+ └───────────────────────┴──────┴──────┴──────────┘
+
+ 19 passed, 2 failed/not-enforced, 15 untested
+
+ Top issues flagged:
+ 1. Review gate not enforced — Reviewer can approve their own task (convention only)
+ 2. Subagent task isolation — MCP tools and subagents create separate task namespaces with no merge path

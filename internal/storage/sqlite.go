@@ -66,6 +66,24 @@ func Open(path string, debug bool) (*DB, error) {
 		return nil, fmt.Errorf("enable foreign_keys: %w", err)
 	}
 
+	// --- task_seq migration (must run before schema apply) ---
+	// Old task_seq had no id column and no PK, producing duplicate rows.
+	// Drop it now so the new CREATE TABLE takes effect.
+	// We detect old schema by checking if the id column is missing.
+	var hasSeqID bool
+	if err := db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('task_seq') WHERE name = 'id'`).Scan(&hasSeqID); err != nil {
+		// Table may not exist yet on fresh DB; ignore.
+	}
+	if !hasSeqID {
+		if _, err := db.Exec(`DROP TABLE IF EXISTS task_seq`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("drop old task_seq: %w", err)
+		}
+		if debug {
+			slog.Info("old task_seq dropped, recreating with single-row PK")
+		}
+	}
+
 	// Idempotent — all CREATE IF NOT EXISTS.
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
@@ -78,6 +96,22 @@ func Open(path string, debug bool) (*DB, error) {
 	}
 	if debug {
 		slog.Info("db schema applied")
+	}
+
+	// Always seed task_seq from existing tasks on every open.
+	// Without this, a DB opened by a version that didn't migrate old task_seq
+	// keeps next_id = 0 and nextID() could generate IDs that collide with
+	// pre-existing tasks from prior sessions.
+	if _, err := db.Exec(`
+		UPDATE task_seq SET next_id = (
+			SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
+		) WHERE id = 1
+	`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("seed task_seq: %w", err)
+	}
+	if debug {
+		slog.Info("task_seq seeded from existing tasks")
 	}
 
 	var hasProject bool
@@ -117,6 +151,47 @@ func Open(path string, debug bool) (*DB, error) {
 		}
 	}
 
+	var hasClaimedBy bool
+	db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'claimed_by'`).Scan(&hasClaimedBy)
+	if !hasClaimedBy {
+		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN claimed_by TEXT"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("add claimed_by column: %w", err)
+		}
+		if debug {
+			slog.Info("db claimed_by column migration applied")
+		}
+	}
+
+	// idx_tasks_claim migration: add lease_until for IN_PROGRESS+lease expiry filter
+	// Old index: role_boundary, status, priority, created_at
+	// New index: role_boundary, status, priority, created_at, lease_until
+	// Old index definition has 4 columns; new has 5. Check via index_info count.
+	var oldClaimCols int
+	db.QueryRow(`SELECT COUNT(*) FROM pragma_index_info('idx_tasks_claim')`).Scan(&oldClaimCols)
+	if oldClaimCols > 0 && oldClaimCols < 5 {
+		if _, err := db.Exec("DROP INDEX IF EXISTS idx_tasks_claim"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("drop old idx_tasks_claim: %w", err)
+		}
+		if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_claim
+		    ON tasks(role_boundary, status, priority, created_at, lease_until)`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("recreate idx_tasks_claim: %w", err)
+		}
+		if debug {
+			slog.Info("idx_tasks_claim migrated: added lease_until column")
+		}
+	}
+	// idx_tasks_claim_project: new index for project-filtered claim queries
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_claim_project
+	    ON tasks(role_boundary, project, status, priority, created_at, lease_until)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create idx_tasks_claim_project: %w", err)
+	}
+	if debug {
+		slog.Info("idx_tasks_claim_project index created")
+	}
 	return &DB{db, debug}, nil
 }
 

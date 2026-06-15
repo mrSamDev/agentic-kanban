@@ -1,8 +1,11 @@
+-- Single-row sequence table. The rowid acts as primary key so INSERT OR IGNORE
+-- on an explicit rowid prevents duplicate rows across init calls.
 CREATE TABLE IF NOT EXISTS task_seq (
-    next_id INTEGER NOT NULL DEFAULT 1
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    next_id INTEGER NOT NULL DEFAULT 0
 );
 
-INSERT OR IGNORE INTO task_seq (next_id) VALUES (0);
+INSERT OR IGNORE INTO task_seq (id, next_id) VALUES (1, 0);
 
 CREATE TABLE IF NOT EXISTS tasks (
     id            TEXT PRIMARY KEY,                  -- e.g. 'TASK-101'
@@ -14,12 +17,17 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority      INTEGER NOT NULL DEFAULT 100,      -- lower = more urgent
     assigned_agent TEXT,                             -- current lease holder, nullable
     lease_until   DATETIME,                          -- nullable when unclaimed
+    claimed_by    TEXT,                               -- immutable snapshot of who claimed it (for self-review check)
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_claim
-    ON tasks(role_boundary, status, priority, created_at);
+    ON tasks(role_boundary, status, priority, created_at, lease_until);
+CREATE INDEX IF NOT EXISTS idx_tasks_claim_project
+    ON tasks(role_boundary, project, status, priority, created_at, lease_until);
+CREATE INDEX IF NOT EXISTS idx_tasks_lease
+    ON tasks(status, lease_until);
 CREATE INDEX IF NOT EXISTS idx_tasks_project
     ON tasks(project, status, priority);
 
@@ -42,6 +50,11 @@ CREATE TABLE IF NOT EXISTS history (
     FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_notes_task
+    ON notes(task_id, id);
+CREATE INDEX IF NOT EXISTS idx_history_task
+    ON history(task_id, id);
+
 CREATE TABLE IF NOT EXISTS events (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -51,4 +64,4 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_ttl
-    ON events(ttl_seconds, created_at);
+    ON events(created_at, ttl_seconds);

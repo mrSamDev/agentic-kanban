@@ -160,7 +160,7 @@ func TestInitWithPlanDispatchesTasks(t *testing.T) {
 	}
 	defer db.Close()
 
-	svc := task.NewService(db.DB, 0)
+	svc := task.NewService(db.DB, 0, "")
 	tasks, err := svc.Search(t.Context(), task.SearchParams{})
 	if err != nil {
 		t.Fatal(err)
@@ -170,5 +170,59 @@ func TestInitWithPlanDispatchesTasks(t *testing.T) {
 	}
 	if tasks[0].Title != "Test task" {
 		t.Fatalf("expected 'Test task', got %q", tasks[0].Title)
+	}
+}
+
+func TestReInitScaffoldsSkills(t *testing.T) {
+	tmp := t.TempDir()
+
+	err := Init(InitOptions{
+		Dir:     tmp,
+		DBPath:  filepath.Join(tmp, ".kanban", "kanban.db"),
+		Harness: HarnessGeneric,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// DB created by init.
+	if _, err := os.Stat(filepath.Join(tmp, ".kanban", "kanban.db")); os.IsNotExist(err) {
+		t.Fatal("DB not created by init")
+	}
+
+	skillsDir := filepath.Join(tmp, ".agents", "skills")
+
+	// Remove one skill to simulate stale scaffold.
+	err = os.Remove(filepath.Join(skillsDir, "setup-hooks.md"))
+	if err != nil {
+		t.Fatalf("remove setup-hooks.md: %v", err)
+	}
+
+	// Re-init.
+	err = ReInit(InitOptions{
+		Dir:     tmp,
+		DBPath:  filepath.Join(tmp, ".kanban", "kanban.db"),
+		Harness: HarnessGeneric,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Deleted skill restored.
+	if _, err := os.Stat(filepath.Join(skillsDir, "setup-hooks.md")); os.IsNotExist(err) {
+		t.Fatal("setup-hooks.md not restored by re-init")
+	}
+
+	// DB still intact.
+	if _, err := os.Stat(filepath.Join(tmp, ".kanban", "kanban.db")); os.IsNotExist(err) {
+		t.Fatal("DB missing after re-init")
+	}
+
+	// Agent files still present.
+	agentsDir := filepath.Join(tmp, ".agents")
+	for _, agent := range []string{"manager.md", "worker.md", "reviewer.md"} {
+		if _, err := os.Stat(filepath.Join(agentsDir, agent)); os.IsNotExist(err) {
+			t.Fatalf("agent missing after re-init: %s", agent)
+		}
 	}
 }

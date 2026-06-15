@@ -43,9 +43,12 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 		}
 		if n == 0 {
 			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			err := tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
 			}
 			return ErrInvalidState
 		}
@@ -116,9 +119,12 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		}
 		if n == 0 {
 			var exists bool
-			tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
-			if !exists {
+			err := tx.QueryRow(`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&exists)
+			if err == sql.ErrNoRows {
 				return ErrNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("check task: %w", err)
 			}
 			return ErrInvalidState
 		}
@@ -159,22 +165,24 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 }
 
 // checkSelfReview verifies the reviewing agent is not the same agent who claimed the task.
-// Returns nil (allows review) when there is no CLAIM history (task created directly in IN_REVIEW).
+// Uses the claimed_by column (immutable snapshot set on first claim, preserved across lease
+// reclamations) rather than the prunable history table.
+// Returns nil (allows review) when there is no claiming agent (task created directly in IN_REVIEW).
 // Disabled by setting KANBAN_ALLOW_SELF_REVIEW=true.
 func checkSelfReview(tx *sql.Tx, id, agent string) error {
-	var claimingAgent sql.NullString
+	var claimedBy sql.NullString
 	err := tx.QueryRow(
-		`SELECT agent FROM history WHERE task_id=? AND action='CLAIM' ORDER BY id DESC LIMIT 1`,
+		`SELECT claimed_by FROM tasks WHERE id = ?`,
 		id,
-	).Scan(&claimingAgent)
+	).Scan(&claimedBy)
 
 	if err == sql.ErrNoRows {
-		return nil // no CLAIM history — task was created directly in review, allow
+		return nil // task doesn't exist, caller will handle
 	}
 	if err != nil {
 		return fmt.Errorf("check self-review: %w", err)
 	}
-	if claimingAgent.Valid && claimingAgent.String == agent {
+	if claimedBy.Valid && claimedBy.String == agent {
 		return ErrSelfReview
 	}
 	return nil

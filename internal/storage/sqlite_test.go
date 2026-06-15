@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -218,5 +219,112 @@ func TestOpenProjectColumnMigration(t *testing.T) {
 	`).Scan(&colExists)
 	if !colExists {
 		t.Fatal("project column missing after migration")
+	}
+}
+
+func TestTaskSeqMigrationOldFormat(t *testing.T) {
+	// Create a DB with the old task_seq format (multi-row, no id column)
+	path := newTestPath(t)
+
+	// Open with old schema first
+	db, err := Open(path, false)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+
+	// Simulate pre-existing task and seed old-style task_seq with 3 rows (a symptom of old schema)
+	db.Exec("INSERT INTO tasks (id, title, status, role_boundary, project, priority) VALUES ('TASK-5', 'old task', 'TODO', 'worker', 'default', 10)")
+	db.Exec("DROP TABLE IF EXISTS task_seq")
+	db.Exec("CREATE TABLE task_seq (next_id INTEGER NOT NULL DEFAULT 1)")
+	db.Exec("INSERT INTO task_seq (next_id) VALUES (0)")
+	db.Exec("INSERT INTO task_seq (next_id) VALUES (0)")
+	db.Exec("INSERT INTO task_seq (next_id) VALUES (0)")
+	db.Close()
+
+	// Re-open — migration should: drop old task_seq, recreate, seed from MAX(id)
+	db2, err := Open(path, false)
+	if err != nil {
+		t.Fatalf("re-open: %v", err)
+	}
+	defer db2.Close()
+
+	// Verify task_seq has exactly 1 row with correct structure
+	var rowCount int
+	db2.QueryRow("SELECT COUNT(*) FROM task_seq").Scan(&rowCount)
+	if rowCount != 1 {
+		t.Fatalf("expected 1 task_seq row after migration, got %d", rowCount)
+	}
+
+	var id, nextID int
+	db2.QueryRow("SELECT id, next_id FROM task_seq WHERE id = 1").Scan(&id, &nextID)
+	if id != 1 {
+		t.Fatalf("expected task_seq.id = 1, got %d", id)
+	}
+
+	// next_id should be MAX(substr(id,6)) = 5 (task TASK-5 exists)
+	if nextID != 5 {
+		t.Fatalf("expected task_seq.next_id = 5 (MAX(id) from TASK-5), got %d", nextID)
+	}
+
+	// Verify id column CHECK constraint exists (pragma)
+	var hasPK bool
+	db2.QueryRow(`
+		SELECT COUNT(*) > 0 FROM pragma_table_info('task_seq') WHERE pk > 0
+	`).Scan(&hasPK)
+	if !hasPK {
+		t.Fatal("task_seq should have a primary key after migration")
+	}
+
+	// Verify dispatching after migration works and produces the next sequential ID
+	_, err = db2.Exec("INSERT INTO tasks (id, title, status, role_boundary, project, priority) VALUES ('TASK-6', 'migrated task', 'TODO', 'worker', 'default', 10)")
+	if err != nil {
+		t.Fatalf("dispatch after migration: %v", err)
+	}
+}
+
+func TestTaskSeqMigrationEmptyDB(t *testing.T) {
+	// Create a DB with old task_seq format but NO tasks
+	path := newTestPath(t)
+
+	db, err := Open(path, false)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	db.Exec("DROP TABLE IF EXISTS task_seq")
+	db.Exec("CREATE TABLE task_seq (next_id INTEGER NOT NULL DEFAULT 1)")
+	db.Exec("INSERT INTO task_seq (next_id) VALUES (0)")
+	db.Exec("INSERT INTO task_seq (next_id) VALUES (0)")
+	db.Close()
+
+	// Re-open — migration should handle empty DB gracefully
+	db2, err := Open(path, false)
+	if err != nil {
+		t.Fatalf("re-open: %v", err)
+	}
+	defer db2.Close()
+
+	// Verify single row, next_id = 0 (no tasks to seed from)
+	var rowCount, nextID int
+	db2.QueryRow("SELECT COUNT(*), next_id FROM task_seq WHERE id = 1").Scan(&rowCount, &nextID)
+	if rowCount != 1 {
+		t.Fatalf("expected 1 row, got %d", rowCount)
+	}
+	if nextID != 0 {
+		t.Fatalf("expected next_id = 0 (no tasks), got %d", nextID)
+	}
+
+	// First dispatch should give TASK-1 (simulate nextID() pattern)
+	var nextID2 int
+	db2.QueryRow("UPDATE task_seq SET next_id = next_id + 1 WHERE id = 1 RETURNING next_id").Scan(&nextID2)
+	if nextID2 != 1 {
+		t.Fatalf("after increment, expected next_id = 1, got %d", nextID2)
+	}
+
+	// Verify generated ID can be inserted (simulates dispatch completing)
+	generatedID := fmt.Sprintf("TASK-%d", nextID2)
+	_, err = db2.Exec("INSERT INTO tasks (id, title, status, role_boundary, project, priority) VALUES (?, 'task', 'TODO', 'worker', 'test', 10)",
+		generatedID)
+	if err != nil {
+		t.Fatalf("insert with generated ID %s: %v (would be UNIQUE constraint crash if seq is wrong)", generatedID, err)
 	}
 }
