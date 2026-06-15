@@ -93,7 +93,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; s
 .github-link svg { width: 17px; height: 17px; fill: currentColor; stroke: none; }
 .theme-toggle:hover, .github-link:hover { border-color: var(--ink); }
 
-.hero { min-height: calc(100vh - 72px); display: grid; grid-template-columns: minmax(0, .88fr) minmax(520px, 1.12fr); align-items: start; gap: clamp(48px, 7vw, 112px); padding-block: clamp(24px, 3vw, 48px); }
+.hero { min-height: calc(100vh - 72px); display: grid; grid-template-columns: minmax(0, .88fr) minmax(520px, 1.12fr); align-items: start; gap: clamp(48px, 7vw, 112px); padding-block: clamp(16px, 3vw, 48px); }
 .eyebrow, .section-index { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .eyebrow { margin-bottom: 16px; color: var(--muted); }
 .eyebrow span { color: var(--accent); }
