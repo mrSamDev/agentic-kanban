@@ -1,0 +1,311 @@
+# agentic-kanban — Expanded Reference
+
+> Agent coordination engine — shared task state for cooperating agents. One SQLite file. Zero infrastructure.
+
+## Primitives
+
+### Task states
+
+```
+TODO → IN_PROGRESS → IN_REVIEW → DONE
+                   → BLOCKED
+IN_REVIEW → TODO (rejected)
+```
+
+### Lease system
+
+- Each claimed task gets a 15-minute lease
+- `log-progress` renews the lease (heartbeat)
+- `extend-lease` extends without logging
+- Expired leases are reclaimed lazily on next `claim-next`
+- Crash recovery: agent dies → lease expires → work becomes claimable
+
+### Dependencies
+
+- Tasks support `depends_on` (comma-separated task IDs)
+- `claim-next --respect-deps` (default: true) skips tasks with unmet deps
+- `plan lint` detects cycles and missing deps
+
+### Events / Hooks
+
+10 events fire on state transitions. Place executables in `.kanban/hooks/`:
+
+- `task.created` — task dispatched
+- `task.claimed` — agent claims a task
+- `task.progress` — progress logged
+- `task.completed` — task finished
+- `task.submitted_for_review` — submitted for review
+- `task.blocked` — blocked
+- `review.approved` — approved
+- `review.rejected` — rejected
+- `task.priority_updated` — batch priority update
+- `task.project_updated` — batch project update
+
+Hooks receive JSON on stdin, 30s timeout, `.d/` dir for concurrency.
+
+---
+
+## CLI Commands
+
+### Setup
+
+```
+kanban init [--harness generic] [--plan plan.md] [--dir]
+  Scaffold database, agent files, and skill files
+
+kanban re-init
+  Re-scaffold agent files without touching the database
+```
+
+### Task Operations
+
+```
+kanban task dispatch --title --role [--project] [--priority] [--depends-on]
+  Create a task. Priority lower=more urgent, default 100.
+
+kanban task claim <id> --agent
+  Claim a specific task by ID (hierarchical delegation)
+
+kanban task claim-next --agent --role [--count N] [--project] [--respect-deps]
+  Atomically claim highest-priority task. --count N for batch.
+
+kanban task log-progress <id> --agent --note [--type]
+  Log progress and renew 15-minute lease. Types: PROGRESS, ERROR, DECISION
+
+kanban task extend-lease <id> --agent [--minutes]
+  Extend lease without logging progress (heartbeat)
+
+kanban task block <id> --agent --reason
+  Mark blocked and clear lease
+
+kanban task complete <id> --agent [--review]
+  Mark done or submit for review (--review → IN_REVIEW)
+
+kanban task view <id>
+  View task detail, notes, and history
+
+kanban task search [--status] [--role] [--agent] [--project]
+  Filter task list
+
+kanban task approve <id> --agent
+  Move IN_REVIEW to DONE
+
+kanban task reject <id> --agent --reason
+  Return IN_REVIEW to TODO with reason
+
+kanban task stats [--status] [--role]
+  Aggregate task statistics
+```
+
+### Batch Operations
+
+```
+kanban task batch claim --ids --agent
+  Claim multiple tasks atomically
+
+kanban task batch complete --ids --agent [--review]
+  Complete multiple tasks in one transaction
+
+kanban task batch set-priority --ids --priority
+  Set priority for multiple tasks
+
+kanban task batch set-project --ids --project
+  Set project label for multiple tasks
+```
+
+### Plan Management
+
+```
+kanban plan lint
+  Check for structural problems: cycles, missing deps, unknown refs
+```
+
+### Other
+
+```
+kanban events [--task TASK-1]
+  View event log, optionally filtered by task
+
+kanban skill list
+  List embedded skill definitions
+
+kanban skill view <name>
+  View an embedded skill definition
+
+kanban status
+  Show board status and progress
+
+kanban prune
+  Prune old events, history, and notes
+
+kanban version
+  Print version
+```
+
+---
+
+## Skill Definitions (Protocol)
+
+### manager: dispatch-task
+
+Create a new task in the kanban board. Tasks start as TODO and are picked up by workers via claim-next.
+
+```
+kanban task dispatch \
+  --title "Brief task description" \
+  --role worker \
+  --priority 50
+```
+
+Flags: --title (req), --role (req), --priority (no, default 100), --depends-on (no), --project (no)
+
+Exit codes: 0 = task created, JSON on stdout. 2 = error, JSON on stderr.
+
+### manager: create-plan
+
+3-pass extraction from a plan file. Extract surface tasks, implied work, then integration sequencing. Writes proposal for user approval. Does NOT dispatch.
+
+Pass 1 (Surface Scan): Extract every explicitly described deliverable. Be exhaustive — every file, component, endpoint, config value, page gets a task. Do not collapse related items.
+
+Pass 2 (Implied Work): For every surface task, extract work the plan does not explicitly name but implementation requires. UI: loading/empty/error states, hover/focus/disabled, keyboard nav, screen readers, responsive layout. API: error responses, input validation, auth, rate limiting. Data: migrations, validation schemas, shared types.
+
+Pass 3 (Integration + Sequencing): Dependency graph, phases, cross-cutting concerns, risk, gaps.
+
+Output: `.kanban/tasks-proposal.md`. Stop after writing. Do NOT dispatch.
+
+### manager: approve-plan
+
+Read `.kanban/tasks-proposal.md`, find checked `[x]` items, dispatch each to the board.
+
+```
+kanban task dispatch --title "Implement user login" --priority 10 --role worker
+```
+
+Proposal format: numbered items with `[x]` or `[ ]`, (pN) priority, role: name markers. `--all` flag dispatches regardless of checkboxes.
+
+### manager: review-backlog
+
+List all tasks. Apply optional filters:
+
+```
+kanban task search                 # all tasks
+kanban task search --status BLOCKED
+kanban task search --role worker --status TODO
+kanban task search --agent alice
+```
+
+Flags: --status (TODO/IN_PROGRESS/BLOCKED/IN_REVIEW/DONE), --role, --agent, --limit
+
+### manager: view-task
+
+Get full task details including all notes and history events.
+
+```
+kanban task view TASK-101
+```
+
+Returns: task object with id, title, status, role_boundary, priority, assigned_agent, lease_until, plus notes array and history array.
+
+### manager: setup-hooks
+
+Set up event hooks in `.kanban/hooks/`. Hook must be executable. Receives JSON on stdin. 30s timeout. `.d/` dir for concurrent hooks.
+
+Events: task.created, task.claimed, task.progress, task.completed, task.submitted_for_review, task.blocked, review.approved, review.rejected, task.priority_updated, task.project_updated.
+
+### worker: claim-next-task
+
+Claim the highest-priority unclaimed task for your role. Also reclaims tasks with expired leases (15 min without heartbeat). Leases are lazy-reclaimed.
+
+```
+kanban task claim-next --agent my-agent --role worker
+```
+
+Only tasks matching role_boundary. Selects lowest priority, then oldest created_at. Claim is atomic.
+
+Batch: `--count 3` returns JSON array of up to 3 tasks.
+
+### worker: claim-task
+
+Claim a specific task by ID. Task must be TODO (or IN_PROGRESS with expired lease). Unmet dependencies block the claim.
+
+```
+kanban task claim TASK-12 --agent worker-1
+```
+
+### worker: log-progress
+
+Report progress on current task. Appends a note and renews the 15-minute lease.
+
+```
+kanban task log-progress TASK-101 --agent my-agent --note "Found root cause" --type PROGRESS
+```
+
+Note types: PROGRESS, ERROR, DECISION.
+
+### worker: block-task
+
+Mark current task as BLOCKED. Clears lease. Task held in BLOCKED state for manager review.
+
+```
+kanban task block TASK-101 --agent my-agent --reason "Waiting for upstream API"
+```
+
+### worker: complete-task
+
+Mark current task as DONE. Use --review to submit for approval instead.
+
+```
+kanban task complete TASK-101 --agent my-agent          # → DONE
+kanban task complete TASK-101 --agent my-agent --review  # → IN_REVIEW
+```
+
+For long-running tasks (>15 min): `kanban task extend-lease TASK-101 --agent my-agent --minutes 30`
+
+### reviewer: claim-review
+
+Claim the next unclaimed reviewer task (TODO tasks tagged role_boundary: reviewer). For IN_REVIEW work, use approve/reject directly.
+
+```
+kanban task claim-next --agent reviewer-agent --role reviewer
+```
+
+### reviewer: approve-task
+
+Approve a task in IN_REVIEW state, marking it DONE.
+
+```
+kanban task approve TASK-101 --agent reviewer-agent
+```
+
+### reviewer: reject-task
+
+Reject a task in IN_REVIEW state, sending it back to TODO for rework.
+
+```
+kanban task reject TASK-101 --agent reviewer-agent --reason "Missing test coverage"
+```
+
+---
+
+## Role Workflows
+
+### Manager
+
+1. `kanban plan create plan.md` — 3-pass extraction, writes proposal
+2. `kanban plan approve` — dispatch checked tasks to board
+3. `kanban task dispatch` — create individual tasks
+4. `kanban task search` / `kanban task view` — review backlog
+5. `setup-hooks` — wire up Slack/Discord/metrics
+
+### Worker
+
+1. `kanban task claim-next --agent alice --role worker` — grab work
+2. `kanban task log-progress TASK-1 --agent alice --note "..."` — heartbeat
+3. `kanban task complete TASK-1 --agent alice` or `--review`
+4. `kanban task block TASK-1 --agent alice --reason "..."` — when stuck
+
+### Reviewer
+
+1. `kanban task claim-next --agent bob --role reviewer` — find work
+2. `kanban task approve TASK-5 --agent bob` — approve
+3. `kanban task reject TASK-5 --agent bob --reason "..."` — reject

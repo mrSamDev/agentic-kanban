@@ -1,0 +1,314 @@
+{
+  "communities": {
+    "0": [
+      "internal_task_service_test_go",
+      "task_service_test_newtestdb",
+      "task_service_test_newtestservice",
+      "task_service_test_testblock",
+      "task_service_test_testclaimnext",
+      "task_service_test_testclaimnextatomic",
+      "task_service_test_testclaimnextnowork",
+      "task_service_test_testclaimnextonlyforrole",
+      "task_service_test_testcomplete",
+      "task_service_test_testcompleteunassigned",
+      "task_service_test_testcompletewrongagent",
+      "task_service_test_testdispatch",
+      "task_service_test_testdispatchsequentialids",
+      "task_service_test_testerrinvalidstate",
+      "task_service_test_testerrnotfound",
+      "task_service_test_testleasereclaim",
+      "task_service_test_testlogprogress",
+      "task_service_test_testreviewapprove",
+      "task_service_test_testreviewercannotclaiminreview",
+      "task_service_test_testreviewreject",
+      "task_service_test_testsearch",
+      "task_service_test_testviewdetail"
+    ],
+    "1": [
+      "bootstrap_bootstrap_dispatchplan",
+      "bootstrap_bootstrap_harnessbase",
+      "bootstrap_bootstrap_init",
+      "bootstrap_bootstrap_promptharness",
+      "bootstrap_bootstrap_scaffoldharness",
+      "bootstrap_bootstrap_test_testinitwithplandispatchestasks",
+      "bootstrap_harness",
+      "bootstrap_initoptions",
+      "internal_bootstrap_bootstrap_go",
+      "internal_storage_sqlite_go",
+      "internal_task_helpers_go",
+      "internal_task_helpers_go_task_service",
+      "storage_db",
+      "storage_db_close",
+      "storage_sqlite_open",
+      "task_exiterror",
+      "task_exiterror_error",
+      "task_helpers_newservice"
+    ],
+    "2": [
+      "agents_manager_skills_dispatch_task_md",
+      "agents_manager_skills_review_backlog_md",
+      "agents_manager_skills_view_task_md",
+      "agents_reviewer_skills_approve_task_md",
+      "agents_reviewer_skills_claim_review_md",
+      "agents_reviewer_skills_reject_task_md",
+      "agents_worker_skills_block_task_md",
+      "agents_worker_skills_claim_next_task_md",
+      "agents_worker_skills_complete_task_md",
+      "goreleaser_yml_goreleaser",
+      "readme_agentic_kanban",
+      "task_service_logprogress"
+    ],
+    "3": [
+      "bootstrap_bootstrap_test_testinitcreatesdbandskills",
+      "bootstrap_bootstrap_test_testparseplanemptyfile",
+      "bootstrap_bootstrap_test_testparseplanjson",
+      "bootstrap_bootstrap_test_testparseplanmarkdownheadings",
+      "bootstrap_plan_extractpriority",
+      "bootstrap_plan_parsejsonplan",
+      "bootstrap_plan_parsemarkdownplan",
+      "bootstrap_plan_parseplan",
+      "bootstrap_plantask",
+      "internal_bootstrap_bootstrap_test_go",
+      "internal_bootstrap_plan_go"
+    ],
+    "4": [
+      "examples_pi_subagents_md",
+      "pi_agents_manager_skills_dispatch_task_md",
+      "pi_agents_manager_skills_review_backlog_md",
+      "pi_agents_manager_skills_view_task_md",
+      "pi_agents_reviewer_skills_approve_task_md",
+      "pi_agents_reviewer_skills_claim_review_md",
+      "pi_agents_reviewer_skills_reject_task_md",
+      "pi_agents_worker_skills_block_task_md",
+      "pi_agents_worker_skills_claim_next_task_md",
+      "pi_agents_worker_skills_complete_task_md",
+      "pi_agents_worker_skills_log_progress_md"
+    ],
+    "5": [
+      "examples_claude_code_subagents_md",
+      "skills_manager_dispatch_task_md",
+      "skills_manager_review_backlog_md",
+      "skills_manager_view_task_md",
+      "skills_reviewer_approve_task_md",
+      "skills_reviewer_claim_review_md",
+      "skills_reviewer_reject_task_md",
+      "skills_worker_block_task_md",
+      "skills_worker_claim_next_task_md",
+      "skills_worker_complete_task_md",
+      "skills_worker_log_progress_md"
+    ],
+    "6": [
+      "extensions_code_review_buildfilereviewmessage",
+      "extensions_code_review_buildscopereviewmessage",
+      "extensions_code_review_dirscopes",
+      "extensions_code_review_filescopes",
+      "extensions_code_review_filtered",
+      "extensions_code_review_message",
+      "extensions_code_review_parts",
+      "extensions_code_review_scopes",
+      "extensions_code_review_trimmed",
+      "pi_extensions_code_review_ts"
+    ],
+    "7": [
+      "internal_task_queries_go_task_service",
+      "task_helpers_scantask",
+      "task_model_nullablestringfromdb",
+      "task_service_claimnext",
+      "task_service_listhistory",
+      "task_service_listnotes",
+      "task_service_search",
+      "task_service_stats",
+      "task_service_view",
+      "task_service_viewdetail"
+    ],
+    "8": [
+      "internal_task_service_go_task_service",
+      "task_helpers_nextid",
+      "task_service_block",
+      "task_service_complete",
+      "task_service_dispatch",
+      "task_service_reviewapprove",
+      "task_service_reviewreject"
+    ],
+    "9": [
+      "internal_task_model_go",
+      "task_historyentry",
+      "task_model_nullabletimefromdb",
+      "task_note",
+      "task_task",
+      "task_taskdetail",
+      "task_taskstatus"
+    ],
+    "10": [
+      "agent_kanban_install_add_to_gitignore",
+      "agent_kanban_install_build_from_source",
+      "agent_kanban_install_download_binary",
+      "agent_kanban_install_say",
+      "install_sh",
+      "users_samdev_desktop_apps_self_projects_agent_kanban_install_sh__entry"
+    ],
+    "11": [
+      "internal_task_queries_go",
+      "task_searchparams",
+      "task_taskstats"
+    ],
+    "12": [
+      "internal_bootstrap_skills_go"
+    ],
+    "13": [
+      "internal_task_service_go"
+    ]
+  },
+  "cohesion": {
+    "0": 0.1774891774891775,
+    "1": 0.16339869281045752,
+    "2": 0.30303030303030304,
+    "3": 0.2727272727272727,
+    "4": 0.18181818181818182,
+    "5": 0.18181818181818182,
+    "6": 0.2,
+    "7": 0.3111111111111111,
+    "8": 0.2857142857142857,
+    "9": 0.2857142857142857,
+    "10": 0.8,
+    "11": 0.6666666666666666,
+    "12": 1.0,
+    "13": 1.0
+  },
+  "gods": [
+    {
+      "id": "task_service_test_newtestservice",
+      "label": "newTestService()",
+      "degree": 22
+    },
+    {
+      "id": "readme_agentic_kanban",
+      "label": "agentic-kanban",
+      "degree": 10
+    },
+    {
+      "id": "goreleaser_yml_goreleaser",
+      "label": "goreleaser",
+      "degree": 10
+    },
+    {
+      "id": "examples_pi_subagents_md",
+      "label": "pi-subagents",
+      "degree": 10
+    },
+    {
+      "id": "examples_claude_code_subagents_md",
+      "label": "claude-code-subagents",
+      "degree": 10
+    },
+    {
+      "id": "bootstrap_plan_parseplan",
+      "label": "ParsePlan()",
+      "degree": 7
+    },
+    {
+      "id": "bootstrap_bootstrap_init",
+      "label": "Init()",
+      "degree": 7
+    },
+    {
+      "id": "internal_task_service_go_task_service",
+      "label": "Service",
+      "degree": 7
+    },
+    {
+      "id": "internal_task_queries_go_task_service",
+      "label": "Service",
+      "degree": 6
+    },
+    {
+      "id": "users_samdev_desktop_apps_self_projects_agent_kanban_install_sh__entry",
+      "label": "install.sh script",
+      "degree": 5
+    }
+  ],
+  "surprises": [
+    {
+      "source": "TestInitCreatesDBAndSkills()",
+      "target": "Init()",
+      "source_files": [
+        "internal/bootstrap/bootstrap_test.go",
+        "internal/bootstrap/bootstrap.go"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities; peripheral node `TestInitCreatesDBAndSkills()` unexpectedly reaches hub `Init()`"
+    },
+    {
+      "source": "dispatchPlan()",
+      "target": "ParsePlan()",
+      "source_files": [
+        "internal/bootstrap/bootstrap.go",
+        "internal/bootstrap/plan.go"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "TestParsePlanEmptyFile()",
+      "target": "ParsePlan()",
+      "source_files": [
+        "internal/bootstrap/bootstrap_test.go",
+        "internal/bootstrap/plan.go"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; peripheral node `TestParsePlanEmptyFile()` unexpectedly reaches hub `ParsePlan()`"
+    },
+    {
+      "source": "TestParsePlanJSON()",
+      "target": "ParsePlan()",
+      "source_files": [
+        "internal/bootstrap/bootstrap_test.go",
+        "internal/bootstrap/plan.go"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; peripheral node `TestParsePlanJSON()` unexpectedly reaches hub `ParsePlan()`"
+    },
+    {
+      "source": "TestParsePlanMarkdownHeadings()",
+      "target": "ParsePlan()",
+      "source_files": [
+        "internal/bootstrap/bootstrap_test.go",
+        "internal/bootstrap/plan.go"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; peripheral node `TestParsePlanMarkdownHeadings()` unexpectedly reaches hub `ParsePlan()`"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `NewService()` connect `Community 1` to `Community 0`?",
+      "why": "High betweenness centrality (0.269) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `scanTask()` connect `Community 7` to `Community 1`?",
+      "why": "High betweenness centrality (0.190) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `newTestService()` connect `Community 0` to `Community 1`?",
+      "why": "High betweenness centrality (0.166) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 10 inferred relationships involving `goreleaser` (e.g. with `dispatch-task` and `review-backlog`) actually correct?",
+      "why": "`goreleaser` has 10 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `PlanTask`, `InitOptions`, `SearchParams` to the rest of the system?",
+      "why": "37 weakly-connected nodes found - possible documentation gaps or missing edges."
+    }
+  ]
+}

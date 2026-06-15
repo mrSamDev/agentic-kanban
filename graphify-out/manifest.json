@@ -1,0 +1,252 @@
+{
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/install.sh": {
+    "mtime": 1780735321.7925398,
+    "ast_hash": "7ca6eb646706388a60801567af125f0c",
+    "semantic_hash": "7ca6eb646706388a60801567af125f0c"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/bootstrap/skills.go": {
+    "mtime": 1780737295.6521058,
+    "ast_hash": "5d2e6e496bdaec15e33680d423aa48b2",
+    "semantic_hash": "5d2e6e496bdaec15e33680d423aa48b2"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/bootstrap/plan.go": {
+    "mtime": 1780738289.2429423,
+    "ast_hash": "7ee311e2c119bc204baf1c12205aae0c",
+    "semantic_hash": "7ee311e2c119bc204baf1c12205aae0c"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/bootstrap/bootstrap.go": {
+    "mtime": 1780740033.2285836,
+    "ast_hash": "0104a17e9e8b032e9db15ed2bd7a1295",
+    "semantic_hash": "0104a17e9e8b032e9db15ed2bd7a1295"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/bootstrap/bootstrap_test.go": {
+    "mtime": 1780740069.7961748,
+    "ast_hash": "913d85781b9958e9353ad6bea396bfba",
+    "semantic_hash": "913d85781b9958e9353ad6bea396bfba"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/storage/schema.sql": {
+    "mtime": 1780731840.045023,
+    "ast_hash": "9d290baf343397d1b5fb1aa080d07526",
+    "semantic_hash": "9d290baf343397d1b5fb1aa080d07526"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/storage/sqlite.go": {
+    "mtime": 1780739975.4785438,
+    "ast_hash": "8018fa179530fed849cbae2757499876",
+    "semantic_hash": "8018fa179530fed849cbae2757499876"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/task/service.go": {
+    "mtime": 1780739862.717239,
+    "ast_hash": "e35588fc441bf40847a5d7394f54db3d",
+    "semantic_hash": "e35588fc441bf40847a5d7394f54db3d"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/task/service_test.go": {
+    "mtime": 1780740060.2515814,
+    "ast_hash": "5085a172394feabd9326c879b423f679",
+    "semantic_hash": "5085a172394feabd9326c879b423f679"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/task/queries.go": {
+    "mtime": 1780739789.5204704,
+    "ast_hash": "3c1aacfe1864864178bcf8835c52469e",
+    "semantic_hash": "3c1aacfe1864864178bcf8835c52469e"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/task/model.go": {
+    "mtime": 1780733799.0607376,
+    "ast_hash": "15c3c824bec3daf220faf466f3331c59",
+    "semantic_hash": "15c3c824bec3daf220faf466f3331c59"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/internal/task/helpers.go": {
+    "mtime": 1780738350.1588507,
+    "ast_hash": "f9294cd7f5bb8d9ed96dedffbd51e2f9",
+    "semantic_hash": "f9294cd7f5bb8d9ed96dedffbd51e2f9"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/extensions/code-review.ts": {
+    "mtime": 1780737712.2380524,
+    "ast_hash": "05e3596405aa87a31ee840eb4a05c27d",
+    "semantic_hash": "05e3596405aa87a31ee840eb4a05c27d"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/README.md": {
+    "mtime": 1780740450.5901196,
+    "ast_hash": "010be3bdd0a1ee1cbaf69f96ee9aadac",
+    "semantic_hash": "010be3bdd0a1ee1cbaf69f96ee9aadac"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.goreleaser.yml": {
+    "mtime": 1780733715.0490248,
+    "ast_hash": "7770d7397246946293fe3698d8178b82",
+    "semantic_hash": "7770d7397246946293fe3698d8178b82"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/AGENTS.md": {
+    "mtime": 1780733456.5358562,
+    "ast_hash": "81cc9d406063840063f22ed4b677f023",
+    "semantic_hash": "81cc9d406063840063f22ed4b677f023"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/reviewer/skills/reject-task.md": {
+    "mtime": 1780738483.4061968,
+    "ast_hash": "8d09d5ad9c927442f9796455f6ebb738",
+    "semantic_hash": "8d09d5ad9c927442f9796455f6ebb738"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/reviewer/skills/claim-review.md": {
+    "mtime": 1780738483.40607,
+    "ast_hash": "6da68e8d1e7aa1d11ee537ad87c50286",
+    "semantic_hash": "6da68e8d1e7aa1d11ee537ad87c50286"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/reviewer/skills/approve-task.md": {
+    "mtime": 1780738483.4061315,
+    "ast_hash": "9c0e2dfbc52885b91ec5c481b7e9c5a4",
+    "semantic_hash": "9c0e2dfbc52885b91ec5c481b7e9c5a4"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/manager/skills/view-task.md": {
+    "mtime": 1780738483.4054942,
+    "ast_hash": "7a778ecb0582b70e68347bcc3d555a10",
+    "semantic_hash": "7a778ecb0582b70e68347bcc3d555a10"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/manager/skills/dispatch-task.md": {
+    "mtime": 1780738483.4056525,
+    "ast_hash": "bd74a3d06289d4ac965b1b1861038314",
+    "semantic_hash": "bd74a3d06289d4ac965b1b1861038314"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/manager/skills/review-backlog.md": {
+    "mtime": 1780738483.405739,
+    "ast_hash": "1ebb95d6793c596869fea812a19cd0c2",
+    "semantic_hash": "1ebb95d6793c596869fea812a19cd0c2"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/worker/skills/claim-next-task.md": {
+    "mtime": 1780738483.4058125,
+    "ast_hash": "918a1850883bd89656c3f3dbfe7d0264",
+    "semantic_hash": "918a1850883bd89656c3f3dbfe7d0264"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/worker/skills/complete-task.md": {
+    "mtime": 1780738483.406001,
+    "ast_hash": "f38164383d545c576e90b1f28281c879",
+    "semantic_hash": "f38164383d545c576e90b1f28281c879"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/worker/skills/block-task.md": {
+    "mtime": 1780738483.4059389,
+    "ast_hash": "6531e7371fccee4f4c99afe827dacb7a",
+    "semantic_hash": "6531e7371fccee4f4c99afe827dacb7a"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/agents/worker/skills/log-progress.md": {
+    "mtime": 1780738483.405877,
+    "ast_hash": "11cc227c746b7cadff34a423c7abd2b1",
+    "semantic_hash": "11cc227c746b7cadff34a423c7abd2b1"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/examples/pi-subagents.md": {
+    "mtime": 1780737353.6193318,
+    "ast_hash": "3c4e9fdd13b6e8a24423d1dff2b1beaf",
+    "semantic_hash": "3c4e9fdd13b6e8a24423d1dff2b1beaf"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/examples/claude-code-subagents.md": {
+    "mtime": 1780737360.811186,
+    "ast_hash": "149e24df9721d5cf315ddaf3a64bff3c",
+    "semantic_hash": "149e24df9721d5cf315ddaf3a64bff3c"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.github/workflows/release.yml": {
+    "mtime": 1780733709.791251,
+    "ast_hash": "33968cc49028222c495984e53d460de8",
+    "semantic_hash": "33968cc49028222c495984e53d460de8"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/reviewer/reject-task.md": {
+    "mtime": 1780735254.7482164,
+    "ast_hash": "2565787e5ad523246a174748490c166d",
+    "semantic_hash": "2565787e5ad523246a174748490c166d"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/reviewer/claim-review.md": {
+    "mtime": 1780737242.5197265,
+    "ast_hash": "35004f690180082fd0ad473bb8b1c795",
+    "semantic_hash": "35004f690180082fd0ad473bb8b1c795"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/reviewer/approve-task.md": {
+    "mtime": 1780735254.7496135,
+    "ast_hash": "cd66eabf12e80066f72bbee744124a9a",
+    "semantic_hash": "cd66eabf12e80066f72bbee744124a9a"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/manager/view-task.md": {
+    "mtime": 1780735254.7501345,
+    "ast_hash": "77a06f6fa06058003ea3f4b44608f0b5",
+    "semantic_hash": "77a06f6fa06058003ea3f4b44608f0b5"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/manager/dispatch-task.md": {
+    "mtime": 1780735254.7506123,
+    "ast_hash": "cd9aa8dd28b39637d2d8d041f56a3391",
+    "semantic_hash": "cd9aa8dd28b39637d2d8d041f56a3391"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/manager/review-backlog.md": {
+    "mtime": 1780735254.7510803,
+    "ast_hash": "d4d7756b2c0e9d5f1953d51936fc2eb1",
+    "semantic_hash": "d4d7756b2c0e9d5f1953d51936fc2eb1"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/worker/claim-next-task.md": {
+    "mtime": 1780735254.751398,
+    "ast_hash": "3cc19276de37c27c2ad71d4cc83f46a8",
+    "semantic_hash": "3cc19276de37c27c2ad71d4cc83f46a8"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/worker/complete-task.md": {
+    "mtime": 1780735254.7520251,
+    "ast_hash": "151bf1444aacde379e630f46de81885c",
+    "semantic_hash": "151bf1444aacde379e630f46de81885c"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/worker/block-task.md": {
+    "mtime": 1780735254.7525902,
+    "ast_hash": "9109c811b29429eaec7457e1ad2be476",
+    "semantic_hash": "9109c811b29429eaec7457e1ad2be476"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/skills/worker/log-progress.md": {
+    "mtime": 1780735254.753107,
+    "ast_hash": "b3ba216bfbdff655d38484c57ba404a6",
+    "semantic_hash": "b3ba216bfbdff655d38484c57ba404a6"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/reviewer/skills/reject-task.md": {
+    "mtime": 1780738463.5461202,
+    "ast_hash": "8d09d5ad9c927442f9796455f6ebb738",
+    "semantic_hash": "8d09d5ad9c927442f9796455f6ebb738"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/reviewer/skills/claim-review.md": {
+    "mtime": 1780738463.5462122,
+    "ast_hash": "6da68e8d1e7aa1d11ee537ad87c50286",
+    "semantic_hash": "6da68e8d1e7aa1d11ee537ad87c50286"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/reviewer/skills/approve-task.md": {
+    "mtime": 1780738463.5462856,
+    "ast_hash": "9c0e2dfbc52885b91ec5c481b7e9c5a4",
+    "semantic_hash": "9c0e2dfbc52885b91ec5c481b7e9c5a4"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/manager/skills/view-task.md": {
+    "mtime": 1780738463.5455184,
+    "ast_hash": "7a778ecb0582b70e68347bcc3d555a10",
+    "semantic_hash": "7a778ecb0582b70e68347bcc3d555a10"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/manager/skills/dispatch-task.md": {
+    "mtime": 1780738463.545318,
+    "ast_hash": "bd74a3d06289d4ac965b1b1861038314",
+    "semantic_hash": "bd74a3d06289d4ac965b1b1861038314"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/manager/skills/review-backlog.md": {
+    "mtime": 1780738463.5454283,
+    "ast_hash": "1ebb95d6793c596869fea812a19cd0c2",
+    "semantic_hash": "1ebb95d6793c596869fea812a19cd0c2"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/worker/skills/claim-next-task.md": {
+    "mtime": 1780738463.5457087,
+    "ast_hash": "918a1850883bd89656c3f3dbfe7d0264",
+    "semantic_hash": "918a1850883bd89656c3f3dbfe7d0264"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/worker/skills/complete-task.md": {
+    "mtime": 1780738463.545947,
+    "ast_hash": "f38164383d545c576e90b1f28281c879",
+    "semantic_hash": "f38164383d545c576e90b1f28281c879"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/worker/skills/block-task.md": {
+    "mtime": 1780738463.5458682,
+    "ast_hash": "6531e7371fccee4f4c99afe827dacb7a",
+    "semantic_hash": "6531e7371fccee4f4c99afe827dacb7a"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/agents/worker/skills/log-progress.md": {
+    "mtime": 1780738463.5457888,
+    "ast_hash": "11cc227c746b7cadff34a423c7abd2b1",
+    "semantic_hash": "11cc227c746b7cadff34a423c7abd2b1"
+  },
+  "/Users/samdev/Desktop/apps/self/projects/agent-kanban/.pi/skills/subagent-creator/SKILL.md": {
+    "mtime": 1780736034.8381326,
+    "ast_hash": "3887af4d1d1e30c88696fd4b7f51b3f3",
+    "semantic_hash": "3887af4d1d1e30c88696fd4b7f51b3f3"
+  }
+}
