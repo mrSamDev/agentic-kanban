@@ -92,6 +92,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; s
 .nav-children a { display: block; padding: 8px 18px; color: var(--muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .nav-children a:hover { color: var(--accent); background: var(--surface-strong); }
 .nav-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.theme-toggle, .github-link { min-height: 40px; border: 1px solid var(--line); background: var(--surface); }
 .hamburger { display: none; width: 40px; height: 40px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; align-items: center; justify-content: center; padding: 0; }
 .hamburger svg { width: 18px; height: 18px; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
 .hamburger:hover { border-color: var(--ink); }
@@ -308,7 +309,7 @@ footer p:last-child { justify-self: end; }
 /* ================================
    Doc page layout (install, commands, protocol, etc.)
    ================================ */
-main.docs-layout { max-width: 840px; width: min(calc(100% - 48px), 840px); padding-block: clamp(48px, 6vw, 80px); }
+main.docs-layout { max-width: 840px; width: min(calc(100% - 48px), 840px); margin-inline: auto; padding-block: clamp(48px, 6vw, 80px); }
 main.docs-layout h1 { font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 650; letter-spacing: -.055em; line-height: 1.05; margin-bottom: 12px; }
 .docs-lede { max-width: 620px; color: var(--muted); font-size: clamp(16px, 1.6vw, 19px); line-height: 1.55; margin-bottom: 48px; }
 
