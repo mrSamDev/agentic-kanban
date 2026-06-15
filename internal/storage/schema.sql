@@ -17,12 +17,15 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority      INTEGER NOT NULL DEFAULT 100,      -- lower = more urgent
     assigned_agent TEXT,                             -- current lease holder, nullable
     lease_until   DATETIME,                          -- nullable when unclaimed
+    claimed_by    TEXT,                               -- immutable snapshot of who claimed it (for self-review check)
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_claim
-    ON tasks(role_boundary, status, priority, created_at);
+    ON tasks(role_boundary, status, priority, created_at, lease_until);
+CREATE INDEX IF NOT EXISTS idx_tasks_claim_project
+    ON tasks(role_boundary, project, status, priority, created_at, lease_until);
 CREATE INDEX IF NOT EXISTS idx_tasks_lease
     ON tasks(status, lease_until);
 CREATE INDEX IF NOT EXISTS idx_tasks_project

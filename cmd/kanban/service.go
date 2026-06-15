@@ -12,7 +12,7 @@ func openService(cfg Config) (*task.Service, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	s := task.NewService(db.DB, 0)
-	s.SetHooksDir(filepath.Join(filepath.Dir(cfg.DBPath), "hooks"))
+	hooksDir := filepath.Join(filepath.Dir(cfg.DBPath), "hooks")
+	s := task.NewService(db.DB, 0, hooksDir)
 	return s, func() { db.Close() }, nil
 }

@@ -17,7 +17,7 @@ type LintIssue struct {
 // Returns errors first, then warnings, each sorted by task ID within severity.
 func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, error) {
 	query := `SELECT id, title, status, role_boundary, project, priority,
-	                 assigned_agent, lease_until, created_at, updated_at, depends_on
+	                 assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
 	            FROM tasks`
 	var args []any
 	if project != "" {
@@ -50,10 +50,12 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 
 	// adjacency list for cycle detection (only known tasks)
 	deps := make(map[string][]string, len(tasks))
+	var nodeIDs []string
 
 	var errors, warns []LintIssue
 
 	for _, t := range tasks {
+		nodeIDs = append(nodeIDs, t.ID)
 		// Missing role_boundary (schema enforces NOT NULL, so this catches empty string "")
 		if strings.TrimSpace(t.RoleBoundary) == "" {
 			warns = append(warns, LintIssue{TaskID: t.ID, Severity: "warn", Message: "no role_boundary set"})
@@ -79,7 +81,7 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 		}
 	}
 
-	for _, cycle := range detectCycles(deps) {
+	for _, cycle := range detectCycles(deps, nodeIDs) {
 		errors = append(errors, LintIssue{
 			TaskID:   cycle[0],
 			Severity: "error",
@@ -92,7 +94,12 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 
 // detectCycles finds all cycles in the dependency graph using iterative DFS.
 // Each returned slice is the cycle path with the start node repeated at the end.
-func detectCycles(deps map[string][]string) [][]string {
+// detectCycles finds all cycles in the dependency graph using iterative DFS.
+// Each returned slice is the cycle path with the start node repeated at the end.
+// nodes must contain every task ID in the graph; detectCycles iterates over it
+// rather than map keys so nodes that are only targets (no outgoing edges) are
+// still visited as starting points.
+func detectCycles(deps map[string][]string, nodes []string) [][]string {
 	const (
 		unvisited = 0
 		inStack   = 1
@@ -102,7 +109,7 @@ func detectCycles(deps map[string][]string) [][]string {
 	seen := make(map[string]bool) // deduplicate reported cycles
 	var cycles [][]string
 
-	for start := range deps {
+	for _, start := range nodes {
 		if state[start] != 0 {
 			continue
 		}

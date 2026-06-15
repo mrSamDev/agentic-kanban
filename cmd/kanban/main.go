@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	version   = "0.1.13"
+	version   = "0.1.13-alpha"
 	checkOnce sync.Once
 )
 

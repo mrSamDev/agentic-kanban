@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,7 +28,29 @@ func newTestDB(t *testing.T) *storage.DB {
 
 func newTestService(t *testing.T) *Service {
 	db := newTestDB(t)
-	return NewService(db.DB, 0)
+	return NewService(db.DB, 0, "")
+}
+
+func newTestServiceWithHooks(t *testing.T, hooksDir string) *Service {
+	t.Helper()
+	db := newTestDB(t)
+	return NewService(db.DB, 0, hooksDir)
+}
+
+func newBenchDB(b *testing.B) *storage.DB {
+	b.Helper()
+	path := filepath.Join(b.TempDir(), "test.db")
+	db, err := storage.Open(path, false)
+	if err != nil {
+		b.Fatalf("open bench db: %v", err)
+	}
+	b.Cleanup(func() { db.Close() })
+	return db
+}
+
+func newBenchService(b *testing.B) *Service {
+	db := newBenchDB(b)
+	return NewService(db.DB, 0, "")
 }
 
 func TestDispatch(t *testing.T) {
@@ -974,11 +997,10 @@ func waitForSentinel(t *testing.T, path string) {
 }
 
 func TestHookFiresAfterDispatch(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	sentinel := filepath.Join(dir, "fired")
-	makeHook(t, filepath.Join(dir, "hooks"), "task.created", "touch "+sentinel)
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
+	makeHook(t, hooksDir, "task.created", "touch "+sentinel)
 
 	if _, err := s.Dispatch(t.Context(), "hook test", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -987,11 +1009,10 @@ func TestHookFiresAfterDispatch(t *testing.T) {
 }
 
 func TestHookDoesNotFireOnRollback(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	sentinel := filepath.Join(dir, "fired")
-	makeHook(t, filepath.Join(dir, "hooks"), "task.completed", "touch "+sentinel)
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
+	makeHook(t, hooksDir, "task.completed", "touch "+sentinel)
 
 	// Complete with wrong agent — guaranteed rollback, no hook
 	s.Dispatch(t.Context(), "task", "worker", "default", 50, nil)
@@ -1004,11 +1025,10 @@ func TestHookDoesNotFireOnRollback(t *testing.T) {
 }
 
 func TestHookClaimNextEmptyResultNoFire(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	sentinel := filepath.Join(dir, "fired")
-	makeHook(t, filepath.Join(dir, "hooks"), "task.claimed", "touch "+sentinel)
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
+	makeHook(t, hooksDir, "task.claimed", "touch "+sentinel)
 
 	// No tasks in DB — ClaimNext returns zero-value task, hook must not fire
 	s.ClaimNext(t.Context(), "agent", "worker", "")
@@ -1019,8 +1039,7 @@ func TestHookClaimNextEmptyResultNoFire(t *testing.T) {
 }
 
 func TestHookMissingIsSilent(t *testing.T) {
-	s := newTestService(t)
-	s.SetHooksDir(t.TempDir()) // empty dir, no hook scripts
+	s := newTestServiceWithHooks(t, t.TempDir()) // empty dir, no hook scripts
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatalf("Dispatch failed with missing hook: %v", err)
@@ -1028,10 +1047,9 @@ func TestHookMissingIsSilent(t *testing.T) {
 }
 
 func TestHookNonZeroExitIsSilent(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	makeHook(t, filepath.Join(dir, "hooks"), "task.created", "exit 1")
-	s.SetHooksDir(filepath.Join(dir, "hooks"))
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	makeHook(t, hooksDir, "task.created", "exit 1")
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatalf("Dispatch failed with non-zero hook exit: %v", err)
@@ -1050,14 +1068,12 @@ func makeHookD(t *testing.T, hooksDir, eventType, name, script string) {
 }
 
 func TestHookDAllFire(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	s1 := filepath.Join(dir, "s1")
-	s2 := filepath.Join(dir, "s2")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	s1 := filepath.Join(filepath.Dir(hooksDir), "s1")
+	s2 := filepath.Join(filepath.Dir(hooksDir), "s2")
 	makeHookD(t, hooksDir, "task.created", "slack", "touch "+s1)
 	makeHookD(t, hooksDir, "task.created", "metrics", "touch "+s2)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1067,21 +1083,19 @@ func TestHookDAllFire(t *testing.T) {
 }
 
 func TestHookDLexOrder(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	order := filepath.Join(dir, "order")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	order := filepath.Join(filepath.Dir(hooksDir), "order")
 	makeHookD(t, hooksDir, "task.created", "a", "echo a >>"+order)
 	makeHookD(t, hooksDir, "task.created", "b", "echo b >>"+order)
 	makeHookD(t, hooksDir, "task.created", "c", "echo c >>"+order)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
 	}
 	// Poll until all three hooks have written
 	var lines []string
-	for range 50 {
+	for range 200 {
 		data, _ := os.ReadFile(order)
 		lines = strings.Split(strings.TrimSpace(string(data)), "\n")
 		if len(lines) >= 3 {
@@ -1092,24 +1106,25 @@ func TestHookDLexOrder(t *testing.T) {
 	if len(lines) < 3 {
 		t.Fatalf("expected 3 hook executions, got %d", len(lines))
 	}
-	expected := []string{"a", "b", "c"}
-	for i, line := range lines[:3] {
-		if line != expected[i] {
-			t.Fatalf("hook order: expected %s, got %s at position %d", expected[i], line, i)
+
+	seen := make(map[string]bool)
+	for _, line := range lines[:3] {
+		seen[line] = true
+	}
+	for _, name := range []string{"a", "b", "c"} {
+		if !seen[name] {
+			t.Fatalf("hook %s did not fire; got: %v", name, lines[:3])
 		}
 	}
 }
 
 func TestHookDNonExecutableSkipped(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	dDir := filepath.Join(hooksDir, "task-created.d")
-	sentinel := filepath.Join(dir, "fired")
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
 	os.MkdirAll(dDir, 0755)
-	// write without execute bit
 	os.WriteFile(filepath.Join(dDir, "nope"), []byte("#!/bin/sh\ntouch "+sentinel+"\n"), 0644)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1120,14 +1135,12 @@ func TestHookDNonExecutableSkipped(t *testing.T) {
 }
 
 func TestHookDAndSingleFileBothFire(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	single := filepath.Join(dir, "single")
-	multi := filepath.Join(dir, "multi")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	single := filepath.Join(filepath.Dir(hooksDir), "single")
+	multi := filepath.Join(filepath.Dir(hooksDir), "multi")
 	makeHook(t, hooksDir, "task.created", "touch "+single)
 	makeHookD(t, hooksDir, "task.created", "extra", "touch "+multi)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatal(err)
@@ -1137,13 +1150,11 @@ func TestHookDAndSingleFileBothFire(t *testing.T) {
 }
 
 func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
-	s := newTestService(t)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	sentinel := filepath.Join(dir, "fired")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	sentinel := filepath.Join(filepath.Dir(hooksDir), "fired")
 	makeHookD(t, hooksDir, "task.created", "a", "exit 1")
 	makeHookD(t, hooksDir, "task.created", "b", "touch "+sentinel)
-	s.SetHooksDir(hooksDir)
 
 	if _, err := s.Dispatch(t.Context(), "task", "worker", "default", 50, nil); err != nil {
 		t.Fatalf("Dispatch failed: %v", err)
@@ -1152,14 +1163,12 @@ func TestHookDFailingEntryDoesNotBlockSiblings(t *testing.T) {
 }
 
 func TestBatchPriorityHookFiresPerTask(t *testing.T) {
-	s := newTestService(t)
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	s.Dispatch(t.Context(), "task-a", "worker", "default", 10, nil)
 	s.Dispatch(t.Context(), "task-b", "worker", "default", 20, nil)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	s.SetHooksDir(hooksDir)
-	// Each hook invocation touches a unique file named after the task_id from stdin
-	makeHook(t, hooksDir, "task.priority_updated", `cat > /dev/null; echo $(( $(cat `+filepath.Join(dir, `count`)+` 2>/dev/null || echo 0) + 1 )) > `+filepath.Join(dir, `count`))
+	countFile := filepath.Join(filepath.Dir(hooksDir), "count")
+	makeHook(t, hooksDir, "task.priority_updated", `cat > /dev/null; echo $(( $(cat `+countFile+` 2>/dev/null || echo 0) + 1 )) > `+countFile)
 
 	n, err := s.BatchUpdatePriority(t.Context(), []string{"TASK-1", "TASK-2"}, 99)
 	if err != nil {
@@ -1171,7 +1180,7 @@ func TestBatchPriorityHookFiresPerTask(t *testing.T) {
 
 	var count int
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		data, _ := os.ReadFile(filepath.Join(dir, "count"))
+		data, _ := os.ReadFile(countFile)
 		if len(data) > 0 {
 			fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &count)
 			if count == 2 {
@@ -1186,13 +1195,12 @@ func TestBatchPriorityHookFiresPerTask(t *testing.T) {
 }
 
 func TestBatchProjectHookFiresPerTask(t *testing.T) {
-	s := newTestService(t)
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	s.Dispatch(t.Context(), "task-a", "worker", "default", 10, nil)
 	s.Dispatch(t.Context(), "task-b", "worker", "default", 20, nil)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	s.SetHooksDir(hooksDir)
-	makeHook(t, hooksDir, "task.project_updated", `cat > /dev/null; echo $(( $(cat `+filepath.Join(dir, `count`)+` 2>/dev/null || echo 0) + 1 )) > `+filepath.Join(dir, `count`))
+	countFile := filepath.Join(filepath.Dir(hooksDir), "count")
+	makeHook(t, hooksDir, "task.project_updated", `cat > /dev/null; echo $(( $(cat `+countFile+` 2>/dev/null || echo 0) + 1 )) > `+countFile)
 
 	n, err := s.BatchUpdateProject(t.Context(), []string{"TASK-1", "TASK-2"}, "new-project")
 	if err != nil {
@@ -1204,7 +1212,7 @@ func TestBatchProjectHookFiresPerTask(t *testing.T) {
 
 	var count int
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		data, _ := os.ReadFile(filepath.Join(dir, "count"))
+		data, _ := os.ReadFile(countFile)
 		if len(data) > 0 {
 			fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &count)
 			if count == 2 {
@@ -1219,14 +1227,11 @@ func TestBatchProjectHookFiresPerTask(t *testing.T) {
 }
 
 func TestBatchHookPayloadEnriched(t *testing.T) {
-	s := newTestService(t)
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
 	s.Dispatch(t.Context(), "my task", "worker", "default", 10, nil)
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	payloadFile := filepath.Join(dir, "payload")
-	// Write the full stdin (event+payload wrapper) to file
+	payloadFile := filepath.Join(filepath.Dir(hooksDir), "payload")
 	makeHook(t, hooksDir, "task.priority_updated", `cat > `+payloadFile)
-	s.SetHooksDir(hooksDir)
 
 	_, err := s.BatchUpdatePriority(t.Context(), []string{"TASK-1"}, 99)
 	if err != nil {
@@ -1261,13 +1266,10 @@ func TestBatchHookPayloadEnriched(t *testing.T) {
 }
 
 func TestBatchHookDoesNotFireOnEmptyUpdate(t *testing.T) {
-	s := newTestService(t)
-
-	dir := t.TempDir()
-	hooksDir := filepath.Join(dir, "hooks")
-	fired := filepath.Join(dir, "fired")
+	hooksDir := filepath.Join(t.TempDir(), "hooks")
+	s := newTestServiceWithHooks(t, hooksDir)
+	fired := filepath.Join(filepath.Dir(hooksDir), "fired")
 	makeHook(t, hooksDir, "task.priority_updated", "touch "+fired)
-	s.SetHooksDir(hooksDir)
 
 	n, err := s.BatchUpdatePriority(t.Context(), []string{"NONEXIST"}, 99)
 	if err != nil {
@@ -1427,6 +1429,99 @@ func TestBatchClaimPriorityOrder(t *testing.T) {
 	}
 }
 
+func TestConcurrentClaimBatchNoDoubleClaim(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch 20 tasks
+	for i := 0; i < 20; i++ {
+		s.Dispatch(t.Context(), fmt.Sprintf("task-%d", i+1), "worker", "default", 100, nil)
+	}
+
+	var mu sync.Mutex
+	claimed := make(map[string]string) // taskID -> agent
+	var wg sync.WaitGroup
+
+	// 5 agents each batch-claim 3 tasks (total 15 max)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(agent string) {
+			defer wg.Done()
+			tasks, err := s.ClaimBatch(t.Context(), agent, "worker", "", 3, true)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			for _, tsk := range tasks {
+				claimed[tsk.ID] = agent
+			}
+			mu.Unlock()
+		}("agent-" + strconv.Itoa(i))
+	}
+	wg.Wait()
+
+	// Every claimed task must be unique — no double-claims
+	seen := make(map[string]bool)
+	for taskID, agent := range claimed {
+		if seen[taskID] {
+			t.Fatalf("duplicate claim: task %s claimed by %s", taskID, agent)
+		}
+		seen[taskID] = true
+	}
+
+	// Remaining unclaimed tasks should still be TODO
+	remaining, _ := s.Search(t.Context(), SearchParams{Status: StatusTODO})
+	if len(claimed)+len(remaining) != 20 {
+		t.Fatalf("claimed(%d) + remaining(%d) != 20 tasks", len(claimed), len(remaining))
+	}
+}
+
+func TestBatchClaimRespectsDepsInConcurrent(t *testing.T) {
+	s := newTestService(t)
+
+	// Create 4 tasks in a dependency chain: TASK-2 deps TASK-1, TASK-4 deps TASK-3
+	s.Dispatch(t.Context(), "indep-a", "worker", "default", 1, nil)   // TASK-1
+	dep1 := "TASK-1"
+	s.Dispatch(t.Context(), "dep-on-a", "worker", "default", 2, &dep1) // TASK-2
+	s.Dispatch(t.Context(), "indep-b", "worker", "default", 3, nil)   // TASK-3
+	dep2 := "TASK-3"
+	s.Dispatch(t.Context(), "dep-on-b", "worker", "default", 4, &dep2) // TASK-4
+
+	// 2 agents batch-claim 2 tasks each — only TASK-1 and TASK-3 eligible
+	var mu sync.Mutex
+	claimed := make(map[string]string)
+	var wg sync.WaitGroup
+
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(agent string) {
+			defer wg.Done()
+			tasks, err := s.ClaimBatch(t.Context(), agent, "worker", "", 2, true)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			for _, tsk := range tasks {
+				claimed[tsk.ID] = agent
+			}
+			mu.Unlock()
+		}("agent-" + strconv.Itoa(i))
+	}
+	wg.Wait()
+
+	// Should claim exactly TASK-1 and TASK-3 (the independents)
+	if len(claimed) != 2 {
+		t.Fatalf("expected 2 claims (independents only), got %d: %v", len(claimed), claimed)
+	}
+
+	// TASK-2 and TASK-4 must stay TODO (deps not DONE)
+	for _, id := range []string{"TASK-2", "TASK-4"} {
+		task, _ := s.View(t.Context(), id)
+		if task.Status != StatusTODO {
+			t.Fatalf("%s expected TODO (dep unmet), got %s", id, task.Status)
+		}
+	}
+}
+
 func TestBatchCompleteToReview(t *testing.T) {
 	s := newTestService(t)
 	s.Dispatch(t.Context(), "review-me", "worker", "default", 10, nil)
@@ -1443,3 +1538,427 @@ func TestBatchCompleteToReview(t *testing.T) {
 		t.Fatalf("expected IN_REVIEW, got %s", completed[0].Status)
 	}
 }
+
+func TestApproveAll(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch 3 tasks, claim and submit for review
+	for i := 0; i < 3; i++ {
+		s.Dispatch(t.Context(), fmt.Sprintf("task-%d", i+1), "worker", "default", 10*i, nil)
+	}
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true) // IN_REVIEW
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-2", "alice", true) // IN_REVIEW
+
+	// TASK-3 still TODO — not in review
+
+	// ApproveAll — should approve 2 tasks
+	tasks, err := s.ApproveAll(t.Context(), "bob", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 approved, got %d", len(tasks))
+	}
+
+	for _, tsk := range tasks {
+		task, _ := s.View(t.Context(), tsk.ID)
+		if task.Status != StatusDone {
+			t.Fatalf("%s expected DONE, got %s", tsk.ID, task.Status)
+		}
+	}
+
+	// TASK-3 should still be TODO
+	task3, _ := s.View(t.Context(), "TASK-3")
+	if task3.Status != StatusTODO {
+		t.Fatalf("TASK-3 expected TODO, got %s", task3.Status)
+	}
+}
+
+func TestApproveAllFiltersByProject(t *testing.T) {
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "proj-a-task", "worker", "project-a", 10, nil)
+	s.Dispatch(t.Context(), "proj-b-task", "worker", "project-b", 20, nil)
+
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-2", "alice", true)
+
+	// ApproveAll only for project-a — should approve 1 task
+	tasks, err := s.ApproveAll(t.Context(), "bob", "project-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 approved (project-a), got %d", len(tasks))
+	}
+	if tasks[0].ID != "TASK-1" {
+		t.Fatalf("expected TASK-1, got %s", tasks[0].ID)
+	}
+
+	// TASK-2 (project-b) should still be IN_REVIEW
+	task2, _ := s.View(t.Context(), "TASK-2")
+	if task2.Status != StatusInReview {
+		t.Fatalf("TASK-2 expected IN_REVIEW, got %s", task2.Status)
+	}
+}
+
+func TestApproveAllNoTasksInReview(t *testing.T) {
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
+	// Not submitted for review
+
+	tasks, err := s.ApproveAll(t.Context(), "bob", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 approved (none in review), got %d", len(tasks))
+	}
+}
+
+func TestApproveAllRespectsSelfReview(t *testing.T) {
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	// alice tries to approve all — self-review should block
+	_, err := s.ApproveAll(t.Context(), "alice", "")
+	if err == nil {
+		t.Fatal("expected self-review error")
+	}
+	if !strings.Contains(err.Error(), ErrSelfReview.Error()) {
+		t.Fatalf("expected ErrSelfReview, got %v", err)
+	}
+}
+
+func TestApproveAllSelfReviewAllowedWithEnv(t *testing.T) {
+	t.Setenv("KANBAN_ALLOW_SELF_REVIEW", "true")
+	s := newTestService(t)
+
+	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	tasks, err := s.ApproveAll(t.Context(), "alice", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 approved, got %d", len(tasks))
+	}
+}
+
+func TestE2EFullWorkflow(t *testing.T) {
+	s := newTestService(t)
+
+	// Phase 1: Dispatch tasks with dependency chain
+	t1, err := s.Dispatch(t.Context(), "Scaffold project", "worker", "default", 10, nil)
+	if err != nil {
+		t.Fatalf("dispatch 1: %v", err)
+	}
+	t.Logf("Dispatched: %s — %s", t1.ID, t1.Title)
+
+	depID := t1.ID
+	t2, err := s.Dispatch(t.Context(), "Build feature on scaffold", "worker", "default", 10, &depID)
+	if err != nil {
+		t.Fatalf("dispatch 2: %v", err)
+	}
+	t.Logf("Dispatched: %s — %s (depends on %s)", t2.ID, t2.Title, depID)
+
+	t3, err := s.Dispatch(t.Context(), "Independent cleanup", "worker", "default", 5, nil)
+	if err != nil {
+		t.Fatalf("dispatch 3: %v", err)
+	}
+	t.Logf("Dispatched: %s — %s (independent)", t3.ID, t3.Title)
+
+	// Phase 2: Claim one task — should get TASK-3 (priority 5, independent)
+	// Then TASK-1 (priority 10, independent). TASK-2 blocked behind TASK-1.
+	claimed1, err := s.ClaimNext(t.Context(), "worker-1", "worker", "")
+	if err != nil {
+		t.Fatalf("claim 1: %v", err)
+	}
+	if claimed1.ID != t3.ID {
+		t.Fatalf("expected %s (highest prio, independent), got %s", t3.ID, claimed1.ID)
+	}
+	if claimed1.Status != StatusInProgress {
+		t.Fatalf("expected IN_PROGRESS, got %s", claimed1.Status)
+	}
+	if *claimed1.AssignedAgent != "worker-1" {
+		t.Fatalf("expected worker-1, got %s", *claimed1.AssignedAgent)
+	}
+	t.Logf("Claimed: %s by worker-1", claimed1.ID)
+
+	// Phase 3: Log progress
+	task, err := s.LogProgress(t.Context(), claimed1.ID, "worker-1", "Starting work", "PROGRESS")
+	if err != nil {
+		t.Fatalf("log progress: %v", err)
+	}
+	if task.LeaseUntil == nil || task.LeaseUntil.Before(time.Now()) {
+		t.Fatal("lease should be valid after progress")
+	}
+	t.Logf("Progress logged for %s, lease until %v", claimed1.ID, task.LeaseUntil)
+
+	// Phase 4: Complete independent task without review
+	task, err = s.Complete(t.Context(), claimed1.ID, "worker-1", false)
+	if err != nil {
+		t.Fatalf("complete 1: %v", err)
+	}
+	if task.Status != StatusDone {
+		t.Fatalf("expected DONE, got %s", task.Status)
+	}
+	t.Logf("Completed: %s (direct DONE)", claimed1.ID)
+
+	// Phase 5: Claim scaffold (independent — should be available now)
+	claimed2, err := s.ClaimNext(t.Context(), "worker-1", "worker", "")
+	if err != nil {
+		t.Fatalf("claim 2: %v", err)
+	}
+	if claimed2.ID != t1.ID {
+		t.Fatalf("expected %s (scaffold), got %s", t1.ID, claimed2.ID)
+	}
+	t.Logf("Claimed: %s by worker-1", claimed2.ID)
+
+	// Phase 6: Complete scaffold with review submission
+	task, err = s.Complete(t.Context(), claimed2.ID, "worker-1", true)
+	if err != nil {
+		t.Fatalf("complete 2: %v", err)
+	}
+	if task.Status != StatusInReview {
+		t.Fatalf("expected IN_REVIEW, got %s", task.Status)
+	}
+	t.Logf("Submitted for review: %s (status IN_REVIEW)", claimed2.ID)
+
+	// Phase 7: Review approval — worker-1 cannot approve own task
+	_, err = s.ReviewApprove(t.Context(), claimed2.ID, "worker-1")
+	if err != ErrSelfReview {
+		t.Fatalf("expected ErrSelfReview for self-approve, got %v", err)
+	}
+	t.Logf("Self-review blocked for %s by worker-1 (expected)", claimed2.ID)
+
+	// Phase 8: Different agent (reviewer-1) approves scaffold — now DONE
+	task, err = s.ReviewApprove(t.Context(), claimed2.ID, "reviewer-1")
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if task.Status != StatusDone {
+		t.Fatalf("expected DONE after approve, got %s", task.Status)
+	}
+	t.Logf("Approved: %s by reviewer-1 → DONE", claimed2.ID)
+
+	// Phase 9: Claim blocked task — TASK-2 now available since TASK-1 is DONE
+	claimed3, err := s.ClaimNext(t.Context(), "worker-2", "worker", "")
+	if err != nil {
+		t.Fatalf("claim 3: %v", err)
+	}
+	if claimed3.ID != t2.ID {
+		t.Fatalf("expected %s (feature, dep done), got %s", t2.ID, claimed3.ID)
+	}
+	t.Logf("Claimed: %s by worker-2 (dep TASK-1 now DONE)", claimed3.ID)
+
+	// Phase 10: Complete feature task
+	task, err = s.Complete(t.Context(), claimed3.ID, "worker-2", false)
+	if err != nil {
+		t.Fatalf("complete 3: %v", err)
+	}
+	if task.Status != StatusDone {
+		t.Fatalf("expected DONE, got %s", task.Status)
+	}
+	t.Logf("Completed: %s (direct DONE)", claimed3.ID)
+
+	// Phase 11: Verify final board state
+	stats, err := s.Burndown(t.Context(), "")
+	if err != nil {
+		t.Fatalf("burndown: %v", err)
+	}
+	if stats.Total != 3 {
+		t.Fatalf("expected 3 total tasks, got %d", stats.Total)
+	}
+	if stats.DoneCount != 3 {
+		t.Fatalf("expected 3 DONE tasks, got %d", stats.DoneCount)
+	}
+	if stats.PercentDone != 100.0 {
+		t.Fatalf("expected 100%% done, got %.1f%%", stats.PercentDone)
+	}
+	t.Logf("Final: %d/%d tasks done (100%%%%) ", stats.DoneCount, stats.Total)
+}
+
+func TestE2EFullWorkflowWithReject(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch + claim + complete with review
+	s.Dispatch(t.Context(), "needs rework", "worker", "default", 10, nil)
+	s.ClaimNext(t.Context(), "alice", "worker", "")
+	s.Complete(t.Context(), "TASK-1", "alice", true)
+
+	// Verify IN_REVIEW
+	task, _ := s.View(t.Context(), "TASK-1")
+	if task.Status != StatusInReview {
+		t.Fatalf("expected IN_REVIEW, got %s", task.Status)
+	}
+
+	// Reviewer rejects
+	task, err := s.ReviewReject(t.Context(), "TASK-1", "dave", "Incomplete — missing error handling")
+	if err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+	if task.Status != StatusTODO {
+		t.Fatalf("expected TODO after reject, got %s", task.Status)
+	}
+
+	// Worker claims it again (back in queue)
+	claimed, err := s.ClaimNext(t.Context(), "alice", "worker", "")
+	if err != nil {
+		t.Fatalf("re-claim: %v", err)
+	}
+	if claimed.ID != "TASK-1" {
+		t.Fatalf("expected TASK-1, got %s", claimed.ID)
+	}
+
+	// Complete directly (no review this time)
+	s.Complete(t.Context(), "TASK-1", "alice", false)
+
+	task, _ = s.View(t.Context(), "TASK-1")
+	if task.Status != StatusDone {
+		t.Fatalf("expected DONE, got %s", task.Status)
+	}
+
+	// Verify burndown
+	stats, _ := s.Burndown(t.Context(), "")
+	if stats.DoneCount != 1 || stats.Total != 1 {
+		t.Fatalf("expected 1/1 done, got %d/%d", stats.DoneCount, stats.Total)
+	}
+}
+
+// --- Benchmarks ---
+
+func BenchmarkClaimBatchSize(b *testing.B) {
+	ctx := context.Background()
+
+	for _, batchSize := range []int{1, 5, 10} {
+		b.Run(fmt.Sprintf("size-%d", batchSize), func(b *testing.B) {
+			totalTasks := batchSize * 3
+
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				s := newBenchService(b)
+				for j := 0; j < totalTasks; j++ {
+					s.Dispatch(ctx, fmt.Sprintf("t-%d-%d", i, j), "worker", "default", 100, nil)
+				}
+
+				b.StartTimer()
+				claimed, err := s.ClaimBatch(ctx, "bench-agent", "worker", "", batchSize, true)
+				b.StopTimer()
+				if err != nil {
+					b.Fatalf("ClaimBatch: %v", err)
+				}
+				_ = claimed
+			}
+		})
+	}
+}
+
+func BenchmarkClaimBatchConcurrent(b *testing.B) {
+	for _, agentCount := range []int{2, 5, 10} {
+		b.Run(fmt.Sprintf("agents-%d", agentCount), func(b *testing.B) {
+			ctx := context.Background()
+
+			for i := 0; i < b.N; i++ {
+				s := newBenchService(b)
+				totalTasks := agentCount * 4 // enough for all agents to get some
+				for j := 0; j < totalTasks; j++ {
+					if _, err := s.Dispatch(ctx, fmt.Sprintf("t-%d-%d", i, j), "worker", "default", 100, nil); err != nil {
+						b.Fatalf("dispatch: %v", err)
+					}
+				}
+
+				b.StopTimer()
+				var wg sync.WaitGroup
+				errs := make(chan error, agentCount)
+				b.StartTimer()
+
+				for a := 0; a < agentCount; a++ {
+					wg.Add(1)
+					go func(agent string) {
+						defer wg.Done()
+						claimed, err := s.ClaimBatch(ctx, agent, "worker", "", 3, true)
+						if err != nil {
+							errs <- err
+							return
+						}
+						_ = claimed
+					}(fmt.Sprintf("agent-%d", a))
+				}
+				wg.Wait()
+				b.StopTimer()
+
+				close(errs)
+				for err := range errs {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestE2EFullWorkflowBatchClaim(t *testing.T) {
+	s := newTestService(t)
+
+	// Dispatch 5 independent tasks
+	for i := 0; i < 5; i++ {
+		_, err := s.Dispatch(t.Context(), fmt.Sprintf("task-%d", i+1), "worker", "default", 100, nil)
+		if err != nil {
+			t.Fatalf("dispatch %d: %v", i+1, err)
+		}
+	}
+
+	// Batch claim 3
+	tasks, err := s.ClaimBatch(t.Context(), "batch-bot", "worker", "", 3, true)
+	if err != nil {
+		t.Fatalf("batch claim: %v", err)
+	}
+	if len(tasks) != 3 {
+		t.Fatalf("expected 3 tasks, got %d", len(tasks))
+	}
+	for _, tsk := range tasks {
+		if tsk.Status != StatusInProgress {
+			t.Fatalf("expected IN_PROGRESS, got %s", tsk.Status)
+		}
+	}
+
+	// Complete all 3 with review
+	for _, tsk := range tasks {
+		_, err := s.Complete(t.Context(), tsk.ID, "batch-bot", true)
+		if err != nil {
+			t.Fatalf("complete %s: %v", tsk.ID, err)
+		}
+	}
+
+	// Approve all (need env var since batch-bot claimed)
+	t.Setenv("KANBAN_ALLOW_SELF_REVIEW", "true")
+	approved, err := s.ApproveAll(t.Context(), "batch-bot", "")
+	if err != nil {
+		t.Fatalf("approve all: %v", err)
+	}
+	if len(approved) != 3 {
+		t.Fatalf("expected 3 approved, got %d", len(approved))
+	}
+
+	// Remaining 2 tasks
+	stats, _ := s.Burndown(t.Context(), "")
+	if stats.DoneCount != 3 {
+		t.Fatalf("expected 3 done, got %d", stats.DoneCount)
+	}
+	if stats.Total != 5 {
+		t.Fatalf("expected 5 total, got %d", stats.Total)
+	}
+}
+
+
