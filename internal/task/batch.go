@@ -20,7 +20,7 @@ func (s *Service) batchUpdate(ctx context.Context, ids []string, column string, 
 		if err != nil {
 			return fmt.Errorf("batch %s begin tx: %w", column, err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		metas, err := preloadTaskMetas(tx, ids)
 		if err != nil {

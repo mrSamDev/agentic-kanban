@@ -1,0 +1,15 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - staticcheck
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters: [errcheck]
+    - linters: [errcheck]
+      text: rows.Close
+    - linters: [errcheck]
+      text: MarkFlagRequired

@@ -37,8 +37,8 @@ func dispatchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "project/scope label (default: default)")
 	cmd.Flags().IntVar(&priority, "priority", 100, "priority (lower = more urgent)")
 	cmd.Flags().StringVar(&dependsOn, "depends-on", "", "comma-separated dependency task IDs")
-	cmd.MarkFlagRequired("title")
-	cmd.MarkFlagRequired("role")
+	_ = cmd.MarkFlagRequired("title")
+	_ = cmd.MarkFlagRequired("role")
 	cmd.PreRunE = func(_ *cobra.Command, _ []string) error {
 		if err := nonEmpty(title, "title"); err != nil {
 			return err
@@ -96,7 +96,7 @@ Use --respect-deps to skip tasks with unmet dependencies.`,
 	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
 	cmd.Flags().IntVar(&count, "count", 1, "number of tasks to claim (returns JSON array when > 1)")
 	cmd.Flags().BoolVar(&respectDeps, "respect-deps", true, "skip tasks with unmet dependencies")
-	cmd.MarkFlagRequired("agent")
-	cmd.MarkFlagRequired("role")
+	_ = cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("role")
 	return cmd
 }

@@ -3,17 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
-	"sync"
+
 
 	"agent-kanban/internal/task"
 
 	"github.com/spf13/cobra"
 )
 
-var (
-	version   = "0.1.13-alpha"
-	checkOnce sync.Once
-)
+var version = "0.1.13-alpha"
 
 func main() {
 	var dbPath string
@@ -25,7 +22,6 @@ func main() {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := resolveConfig(dbPath, debug)
 			cmd.SetContext(contextWithConfig(cmd.Context(), cfg))
-			checkOnce.Do(autoVersionCheck)
 			return nil
 		},
 	}
@@ -58,17 +54,12 @@ func main() {
 }
 
 func versionCmd() *cobra.Command {
-	var check bool
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version",
 		Run: func(_ *cobra.Command, _ []string) {
 			fmt.Println("kanban " + version)
-			if check {
-				versionCheck()
-			}
 		},
 	}
-	cmd.Flags().BoolVar(&check, "check", false, "check for newer version")
 	return cmd
 }

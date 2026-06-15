@@ -32,7 +32,7 @@ func completeCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().BoolVar(&toReview, "review", false, "submit for review instead of completing")
-	cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("agent")
 	return cmd
 }
 
@@ -62,8 +62,8 @@ func logProgressCmd() *cobra.Command {
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().StringVar(&note, "note", "", "progress note (required)")
 	cmd.Flags().StringVar(&noteType, "type", "", "note type (PROGRESS|ERROR|DECISION)")
-	cmd.MarkFlagRequired("agent")
-	cmd.MarkFlagRequired("note")
+	_ = cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("note")
 	cmd.PreRunE = func(_ *cobra.Command, _ []string) error {
 		if noteType != "" && !validNoteTypes[noteType] {
 			return &task.ExitError{Code: 2, Message: "note type must be PROGRESS, ERROR, or DECISION"}
@@ -101,7 +101,7 @@ Defaults to 15 minutes if --minutes is omitted.`,
 	}
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().IntVar(&minutes, "minutes", 0, "lease duration in minutes (default: 15)")
-	cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("agent")
 	return cmd
 }
 
@@ -130,7 +130,7 @@ func blockCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().StringVar(&reason, "reason", "", "block reason (required)")
-	cmd.MarkFlagRequired("agent")
-	cmd.MarkFlagRequired("reason")
+	_ = cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("reason")
 	return cmd
 }

@@ -13,6 +13,6 @@ func openService(cfg Config) (*task.Service, func(), error) {
 		return nil, nil, err
 	}
 	hooksDir := filepath.Join(filepath.Dir(cfg.DBPath), "hooks")
-	s := task.NewService(db.DB, 0, hooksDir)
-	return s, func() { db.Close() }, nil
+	s := task.NewService(db.DB, db.Reader(), 0, hooksDir)
+	return s, func() { _ = db.Close() }, nil
 }

@@ -17,7 +17,7 @@ func TestDispatch_CycleDetected(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	s := NewService(db.DB, 0, "")
+	s := NewService(db.DB, db.Reader(), 0, "")
 
 	// Chain: 1→2→3
 	t1, _ := s.Dispatch(t.Context(), "one", "worker", "default", 10, nil)

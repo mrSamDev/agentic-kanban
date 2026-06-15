@@ -18,7 +18,7 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 		if err != nil {
 			return fmt.Errorf("review begin tx: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Check self-review gate (configurable via KANBAN_ALLOW_SELF_REVIEW env var)
 		if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
@@ -94,7 +94,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		if err != nil {
 			return fmt.Errorf("reject begin tx: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Check self-review gate (configurable via KANBAN_ALLOW_SELF_REVIEW env var)
 		if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {

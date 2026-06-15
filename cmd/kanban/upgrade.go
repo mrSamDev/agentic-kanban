@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -72,7 +70,7 @@ func latestRelease() (*ghRelease, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch release: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
@@ -111,24 +109,24 @@ func installUpgrade(release *ghRelease) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		f.Close()
-		os.Remove(tmpFile)
+		_ = f.Close()
+		_ = os.Remove(tmpFile)
 		return fmt.Errorf("download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		f.Close()
-		os.Remove(tmpFile)
+		_ = f.Close()
+		_ = os.Remove(tmpFile)
 		return fmt.Errorf("download returned %d (expected 200)", resp.StatusCode)
 	}
 
 	if _, err := f.ReadFrom(resp.Body); err != nil {
-		f.Close()
-		os.Remove(tmpFile)
+		_ = f.Close()
+		_ = os.Remove(tmpFile)
 		return fmt.Errorf("write binary: %w", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	if err := os.Rename(tmpFile, os.Args[0]); err != nil {
 		return fmt.Errorf("replace binary (try with sudo): %w", err)
@@ -144,48 +142,3 @@ func isNewerVersion(tag string) bool {
 	return current != latest
 }
 
-// autoVersionCheck pings GitHub once per 24h so users learn about new releases.
-// Why advisory-only: a transient network failure must not block CLI startup.
-func autoVersionCheck() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return
-	}
-	cacheDir := filepath.Join(home, ".kanban")
-	cacheFile := filepath.Join(cacheDir, ".last-version-check")
-
-	data, err := os.ReadFile(cacheFile)
-	if err == nil {
-		last, parseErr := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-		if parseErr == nil && time.Since(time.Unix(last, 0)) < 24*time.Hour {
-			return
-		}
-	}
-
-	// Fire goroutine so --help and other fast commands are never blocked.
-	// sync.Once prevents duplicate spawns, and the goroutine owns its lifecycle
-	// (no shared state with the caller).
-	go func() {
-		release, err := latestRelease()
-		if err != nil {
-			return
-		}
-		if isNewerVersion(release.TagName) {
-			fmt.Fprintf(os.Stderr, "kanban %s available (you have %s) — run 'kanban upgrade'\n", release.TagName, version)
-		}
-		// Write cache timestamp even on failure so transient errors don't retry every command.
-		os.MkdirAll(cacheDir, 0755)
-		os.WriteFile(cacheFile, []byte(fmt.Sprintf("%d", time.Now().Unix())), 0644)
-	}()
-}
-
-func versionCheck() {
-	release, err := latestRelease()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "version check failed: %v\n", err)
-		return
-	}
-	if isNewerVersion(release.TagName) {
-		fmt.Fprintf(os.Stderr, "kanban %s available (you have %s) — run 'kanban upgrade'\n", release.TagName, version)
-	}
-}

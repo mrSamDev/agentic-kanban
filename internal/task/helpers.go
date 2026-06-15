@@ -26,19 +26,21 @@ var ErrSelfReview = &ExitError{Code: 2, Message: "cannot review your own task \u
 
 type Service struct {
 	db          *sql.DB
+	reader      *sql.DB
 	timeout     time.Duration
 	maxRetries  int
 	retryBaseMs int
 	hooksDir    string
 }
 
-func NewService(db *sql.DB, timeout time.Duration, hooksDir string) *Service {
+func NewService(db *sql.DB, reader *sql.DB, timeout time.Duration, hooksDir string) *Service {
 	return &Service{
-		db:          db,
-		timeout:     timeout,
-		maxRetries:  3,
+		db:         db,
+		reader:     reader,
+		timeout:    timeout,
+		maxRetries: 3,
 		retryBaseMs: 100,
-		hooksDir:    hooksDir,
+		hooksDir:   hooksDir,
 	}
 }
 
@@ -52,7 +54,12 @@ func (s *Service) withTimeout(ctx context.Context) (context.Context, context.Can
 	return context.WithTimeout(ctx, t)
 }
 
-// sqliteError matches modernc.org/sqlite.Error without importing the driver.
+func (s *Service) readDB() *sql.DB {
+	if s.reader != nil {
+		return s.reader
+	}
+	return s.db
+}
 type sqliteError interface {
 	Code() int
 	error
@@ -61,7 +68,11 @@ type sqliteError interface {
 func isSQLiteBusy(err error) bool {
 	var se sqliteError
 	if errors.As(err, &se) {
-		return se.Code() == 5 || se.Code() == 6
+		// Mask extended error codes to primary code.
+		// SQLITE_BUSY (5) or SQLITE_LOCKED (6) at any extended level
+		// (e.g. SQLITE_BUSY_SNAPSHOT = 517) should be retried.
+		primary := se.Code() & 0xFF
+		return primary == 5 || primary == 6
 	}
 	return false
 }

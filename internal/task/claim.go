@@ -46,7 +46,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 		if err != nil {
 			return fmt.Errorf("batch claim begin tx: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Step 1: select eligible candidates (cap at maxCandidateFetch to avoid OOM)
 		maxFetch := count * 5
@@ -88,12 +88,12 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 		for rows.Next() {
 			t, err := scanTask(rows)
 			if err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("scan candidate: %w", err)
 			}
 			if filterDeps {
 				if depsBlocked, err := hasUnmetDeps(tx, t); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return fmt.Errorf("check deps for %s: %w", t.ID, err)
 				} else if depsBlocked {
 					continue
@@ -104,7 +104,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				break
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("iterate candidates: %w", err)
 		}
@@ -205,7 +205,7 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 		if err != nil {
 			return fmt.Errorf("claim-by-id begin tx: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Read current state
 		var currentStatus string
@@ -322,7 +322,7 @@ func (s *Service) TransferClaim(ctx context.Context, id, fromAgent, toAgent stri
 		if err != nil {
 			return fmt.Errorf("transfer begin tx: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Read current state
 		var currentStatus string

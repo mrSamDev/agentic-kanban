@@ -28,7 +28,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 	if err != nil {
 		return Task{}, fmt.Errorf("dispatch begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	id, err := nextID(tx)
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		newStatus := StatusDone
 		action := "COMPLETE"
@@ -229,7 +229,7 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		res, err := tx.Exec(
 			`UPDATE tasks
@@ -309,7 +309,7 @@ func (s *Service) ExtendLease(ctx context.Context, id, agent string, minutes int
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		res, err := tx.Exec(
 			`UPDATE tasks
@@ -374,7 +374,7 @@ func (s *Service) BatchComplete(ctx context.Context, ids []string, agent string,
 		if err != nil {
 			return fmt.Errorf("batch complete begin tx: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		for _, id := range ids {
 			res, err := tx.Exec(
@@ -471,7 +471,7 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		res, err := tx.Exec(
 			`UPDATE tasks
@@ -547,7 +547,7 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		if err != nil {
 			return fmt.Errorf("approve all begin tx: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		query := `SELECT id, title, status, role_boundary, project, priority,
 		        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by

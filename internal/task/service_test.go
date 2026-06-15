@@ -28,13 +28,13 @@ func newTestDB(t *testing.T) *storage.DB {
 
 func newTestService(t *testing.T) *Service {
 	db := newTestDB(t)
-	return NewService(db.DB, 0, "")
+	return NewService(db.DB, db.Reader(), 0, "")
 }
 
 func newTestServiceWithHooks(t *testing.T, hooksDir string) *Service {
 	t.Helper()
 	db := newTestDB(t)
-	return NewService(db.DB, 0, hooksDir)
+	return NewService(db.DB, db.Reader(), 0, hooksDir)
 }
 
 func newBenchDB(b *testing.B) *storage.DB {
@@ -50,7 +50,7 @@ func newBenchDB(b *testing.B) *storage.DB {
 
 func newBenchService(b *testing.B) *Service {
 	db := newBenchDB(b)
-	return NewService(db.DB, 0, "")
+	return NewService(db.DB, db.Reader(), 0, "")
 }
 
 func TestDispatch(t *testing.T) {

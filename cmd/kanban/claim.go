@@ -57,6 +57,6 @@ The receiving agent (--to) gets a fresh 15-minute lease.`,
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().BoolVar(&transfer, "transfer", false, "transfer claim to another agent")
 	cmd.Flags().StringVar(&toAgent, "to", "", "target agent for transfer")
-	cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("agent")
 	return cmd
 }

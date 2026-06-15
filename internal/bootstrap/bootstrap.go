@@ -48,7 +48,7 @@ func Init(opts InitOptions) error {
 	if err != nil {
 		return fmt.Errorf("create db: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	harness := opts.Harness
 	if harness == "" {
@@ -102,7 +102,7 @@ func ReInit(opts InitOptions) error {
 		if err != nil {
 			return fmt.Errorf("open db: %w", err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		if err := dispatchPlan(db.DB, opts.PlanPath); err != nil {
 			return fmt.Errorf("dispatch plan: %w", err)
 		}
@@ -134,7 +134,7 @@ func dispatchPlan(sqlDB *sql.DB, planPath string) error {
 		return err
 	}
 
-	svc := task.NewService(sqlDB, 0, "")
+	svc := task.NewService(sqlDB, nil, 0, "")
 	for _, pt := range tasks {
 		role := pt.Role
 		if role == "" {
@@ -183,15 +183,6 @@ func scaffoldClaude(dir string) error {
 }
 
 func scaffoldPi(dir string) error {
-	extDir := filepath.Join(dir, ".pi", "extensions")
-	if err := os.MkdirAll(extDir, 0755); err != nil {
-		return fmt.Errorf("create .pi/extensions dir: %w", err)
-	}
-	extPath := filepath.Join(extDir, KanbanExtensionName)
-	if err := os.WriteFile(extPath, []byte(KanbanExtension), 0644); err != nil {
-		return fmt.Errorf("write .pi/extensions/%s: %w", KanbanExtensionName, err)
-	}
-
 	agentsDir := filepath.Join(dir, ".pi", "agents")
 	if err := os.MkdirAll(agentsDir, 0755); err != nil {
 		return fmt.Errorf("create .pi/agents dir: %w", err)
@@ -266,7 +257,7 @@ func writeFlatSkills(skillsDir string) error {
 	sb.WriteString("system:kanban.md\n")
 	for role, names := range SkillNames {
 		for _, name := range names {
-			sb.WriteString(fmt.Sprintf("%s:%s.md\n", role, name))
+			fmt.Fprintf(&sb, "%s:%s.md\n", role, name)
 		}
 	}
 	indexPath := filepath.Join(skillsDir, "INDEX")

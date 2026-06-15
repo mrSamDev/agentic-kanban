@@ -50,7 +50,7 @@ func approveCmd() *cobra.Command {
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().BoolVar(&approveAll, "all", false, "approve all IN_REVIEW tasks")
 	cmd.Flags().StringVar(&project, "project", "", "limit --all to a specific project/scope")
-	cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("agent")
 	return cmd
 }
 
@@ -79,7 +79,7 @@ func rejectCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().StringVar(&reason, "reason", "", "rejection reason (required)")
-	cmd.MarkFlagRequired("agent")
-	cmd.MarkFlagRequired("reason")
+	_ = cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("reason")
 	return cmd
 }

@@ -32,9 +32,9 @@ func lintCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 
-			issues, err := task.LintPlan(cmd.Context(), db.DB, project)
+			issues, err := task.LintPlan(cmd.Context(), db.Reader(), project)
 			if err != nil {
 				return err
 			}
@@ -68,7 +68,7 @@ func printLintIssues(issues []task.LintIssue) {
 		} else {
 			warns++
 		}
-		fmt.Fprintf(os.Stdout, "%-5s %-10s %s\n", sev, iss.TaskID, iss.Message)
+		_, _ = fmt.Fprintf(os.Stdout, "%-5s %-10s %s\n", sev, iss.TaskID, iss.Message)
 	}
 
 	fmt.Printf("\n%d issue(s) found (%d error(s), %d warning(s))\n", len(issues), errors, warns)

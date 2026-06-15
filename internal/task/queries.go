@@ -58,7 +58,7 @@ func (s *Service) listNotes(ctx context.Context, taskID string, limit int) ([]No
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, taskID)
+	rows, err := s.readDB().QueryContext(ctx, query, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (s *Service) listHistory(ctx context.Context, taskID string, limit int) ([]
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, taskID)
+	rows, err := s.readDB().QueryContext(ctx, query, taskID)
 	if err != nil {
 		return nil, err
 	}

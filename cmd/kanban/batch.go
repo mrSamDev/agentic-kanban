@@ -53,8 +53,8 @@ func batchPriorityCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&ids, "ids", "", "comma-separated task IDs (required)")
 	cmd.Flags().IntVar(&priority, "priority", 100, "new priority (lower = more urgent)")
-	cmd.MarkFlagRequired("ids")
-	cmd.MarkFlagRequired("priority")
+	_ = cmd.MarkFlagRequired("ids")
+	_ = cmd.MarkFlagRequired("priority")
 	return cmd
 }
 
@@ -91,8 +91,8 @@ func batchProjectCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&ids, "ids", "", "comma-separated task IDs (required)")
 	cmd.Flags().StringVar(&project, "project", "", "project/scope label (required)")
-	cmd.MarkFlagRequired("ids")
-	cmd.MarkFlagRequired("project")
+	_ = cmd.MarkFlagRequired("ids")
+	_ = cmd.MarkFlagRequired("project")
 	return cmd
 }
 
@@ -125,8 +125,8 @@ func batchClaimCmd() *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
 	cmd.Flags().IntVar(&count, "count", 1, "number of tasks to claim")
 	cmd.Flags().BoolVar(&respectDeps, "respect-deps", true, "skip tasks with unmet dependencies")
-	cmd.MarkFlagRequired("agent")
-	cmd.MarkFlagRequired("role")
+	_ = cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("role")
 	return cmd
 }
 
@@ -168,7 +168,7 @@ func batchCompleteCmd() *cobra.Command {
 	cmd.Flags().StringVar(&ids, "ids", "", "comma-separated task IDs (required)")
 	cmd.Flags().StringVar(&agent, "agent", "", "agent name (required)")
 	cmd.Flags().BoolVar(&toReview, "to-review", false, "submit for review instead of completing")
-	cmd.MarkFlagRequired("ids")
-	cmd.MarkFlagRequired("agent")
+	_ = cmd.MarkFlagRequired("ids")
+	_ = cmd.MarkFlagRequired("agent")
 	return cmd
 }
