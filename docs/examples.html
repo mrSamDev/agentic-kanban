@@ -146,12 +146,15 @@ kanban task dispatch --title "Write tests" --role worker --priority 20 --depends
 <span class="cli-comment"># Claim and work</span>
 kanban task claim-next --agent my-agent --role worker
 kanban task log-progress TASK-1 --agent my-agent --note "Extracted middleware" --type PROGRESS
-kanban task complete TASK-1 --agent my-agent
+kanban task complete TASK-1 --agent my-agent --review
 
 <span class="cli-comment"># Review</span>
 kanban task search --status IN_REVIEW
 kanban task view TASK-1
 kanban task approve TASK-1 --agent reviewer-1
+
+<span class="cli-comment"># Or: complete without review (directly to DONE)</span>
+kanban task complete TASK-2 --agent my-agent
 
 <span class="cli-comment"># Check board</span>
 kanban task search --project default

@@ -60,7 +60,7 @@
         <div class="command-row"><code>task log-progress &lt;id&gt; --agent --note [--type]</code><span>worker</span><p>Log progress and renew the 15-minute lease. <code>--type</code> can be PROGRESS, ERROR, DECISION, REVIEW, or SYSTEM.</p></div>
         <div class="command-row"><code>task extend-lease &lt;id&gt; --agent [--minutes]</code><span>worker</span><p>Renew lease without logging progress. For long tasks &gt;15m.</p></div>
         <div class="command-row"><code>task block &lt;id&gt; --agent --reason</code><span>worker</span><p>Mark blocked and clear the current lease.</p></div>
-        <div class="command-row"><code>task complete &lt;id&gt; --agent</code><span>worker</span><p>Submit task for review (always goes to IN_REVIEW). Review is mandatory.</p></div>
+        <div class="command-row"><code>task complete &lt;id&gt; --agent [--review]</code><span>worker</span><p>Mark task as done (default) or submit for review with <code>--review</code> flag.</p></div>
         <div class="command-row"><code>task view &lt;id&gt; [--notes] [--history]</code><span>all</span><p>Full task detail with timestamps, notes, and audit trail.</p></div>
         <div class="command-row"><code>task search [--status] [--role] [--agent] [--project]</code><span>manager</span><p>Filter task list. Shows <code>lease_until</code> for IN_PROGRESS tasks.</p></div>
         <div class="command-row"><code>task stats [--status] [--role]</code><span>manager</span><p>Aggregate task statistics by status or role.</p></div>
@@ -73,8 +73,8 @@
       <p>Atomic multi-task operations. All changes within one command happen in a single transaction.</p>
       <div class="command-list" style="margin-bottom:48px">
         <div class="command-head"><span>Command</span><span>Who</span><span>What it does</span></div>
-        <div class="command-row"><code>batch claim --agent --role [--count N] [--project]</code><span>worker</span><p>Claim <code>N</code> tasks atomically.</p></div>
-        <div class="command-row"><code>batch complete --ids &lt;id1,id2&gt; --agent</code><span>worker</span><p>Complete multiple tasks in one transaction (all go to IN_REVIEW).</p></div>
+        <div class="command-row"><code>batch claim --agent --role [--count N] [--project] [--respect-deps]</code><span>worker</span><p>Claim <code>N</code> tasks atomically in one transaction.</p></div>
+        <div class="command-row"><code>batch complete --ids &lt;id1,id2&gt; --agent [--to-review]</code><span>worker</span><p>Complete multiple tasks in one transaction. Use <code>--to-review</code> to submit for review.</p></div>
         <div class="command-row"><code>batch set-priority --ids &lt;id1,id2&gt; --priority</code><span>manager</span><p>Bulk priority update.</p></div>
         <div class="command-row"><code>batch set-project --ids &lt;id1,id2&gt; --project</code><span>manager</span><p>Bulk project label update.</p></div>
       </div>

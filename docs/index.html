@@ -274,10 +274,10 @@
         <div class="command-row"><code>task search [--status] [--role] [--agent] [--project]</code><span>manager</span><p>Filter the task list.</p></div>
         <div class="command-row"><code>task approve &lt;id&gt; --agent</code><span>reviewer</span><p>Move IN_REVIEW to DONE.</p></div>
         <div class="command-row"><code>task reject &lt;id&gt; --agent --reason</code><span>reviewer</span><p>Return IN_REVIEW to TODO with context.</p></div>
-        <div class="command-row"><code>task batch claim --ids --agent</code><span>worker</span><p>Claim multiple tasks atomically.</p></div>
-        <div class="command-row"><code>task batch complete --ids --agent [--review]</code><span>worker</span><p>Complete multiple tasks in one transaction.</p></div>
-        <div class="command-row"><code>task batch set-priority --ids --priority</code><span>manager</span><p>Set priority for multiple tasks.</p></div>
-        <div class="command-row"><code>task batch set-project --ids --project</code><span>manager</span><p>Set a project label for multiple tasks.</p></div>
+        <div class="command-row"><code>batch claim --agent --role [--count N] [--project]</code><span>worker</span><p>Claim multiple tasks atomically.</p></div>
+        <div class="command-row"><code>batch complete --ids --agent [--to-review]</code><span>worker</span><p>Complete multiple tasks in one transaction.</p></div>
+        <div class="command-row"><code>batch set-priority --ids --priority</code><span>manager</span><p>Set priority for multiple tasks.</p></div>
+        <div class="command-row"><code>batch set-project --ids --project</code><span>manager</span><p>Set a project label for multiple tasks.</p></div>
         <div class="command-row"><code>task stats [--status] [--role]</code><span>manager</span><p>Aggregate task statistics by status or role.</p></div>
         <div class="command-row"><code>plan lint</code><span>manager</span><p>Check for structural problems (cycles, missing deps).</p></div>
         <div class="command-row"><code>init [--harness generic] [--plan plan.md] [--dir]</code><span>setup</span><p>Scaffold database, agent .md files, skill files.</p></div>
@@ -406,10 +406,10 @@ instructions for bash fallback.</code></pre>
 <span class="cli-output">→ kanban CLI ready</span>
 <span class="cli-output">→ 14 skills available</span>
 
-<span class="comment">3. Run an agent</span>
-<span class="prompt">$</span> kanban run manager
-<span class="prompt">$</span> kanban run worker
-<span class="prompt">$</span> kanban run reviewer
+<span class="comment">3. Run agents (harness-specific, e.g. pi run worker)</span>
+<span class="cli-output">pi run manager</span>
+<span class="cli-output">pi run worker</span>
+<span class="cli-output">pi run reviewer</span>
 <span class="cli-output">→ Agent reads its .md file</span>
 <span class="cli-output">→ Uses CLI commands + skill docs</span></code></pre>
       </div>

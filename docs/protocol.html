@@ -58,7 +58,8 @@
         </thead>
         <tbody>
           <tr><td>TODO → IN_PROGRESS</td><td><code>claim</code> or <code>claim-next</code></td><td>Agent acquires lease, task is locked for 15 minutes</td></tr>
-          <tr><td>IN_PROGRESS → IN_REVIEW</td><td><code>complete</code></td><td>Mandatory. Task cannot go TODO→DONE. Lease released.</td></tr>
+          <tr><td>IN_PROGRESS → DONE</td><td><code>complete</code> (default)</td><td>Direct complete without review gate</td></tr>
+          <tr><td>IN_PROGRESS → IN_REVIEW</td><td><code>complete --review</code></td><td>Submit for review. Lease released.</td></tr>
           <tr><td>IN_REVIEW → DONE</td><td><code>approve</code></td><td>Reviewer confirms work. Final state.</td></tr>
           <tr><td>IN_REVIEW → TODO</td><td><code>reject</code></td><td>Reviewer sends back with reason. No lease assigned.</td></tr>
           <tr><td>IN_PROGRESS → BLOCKED</td><td><code>block</code></td><td>Agent drops the lease, marks with reason.</td></tr>
@@ -69,10 +70,10 @@
 
       <h3>Invalid transitions (enforced)</h3>
       <ul>
-        <li><strong>TODO → DONE</strong> — Must pass through IN_REVIEW. <code>complete</code> always goes to IN_REVIEW.</li>
         <li><strong>IN_REVIEW → IN_PROGRESS</strong> — Must reject first (→ TODO), then claim again.</li>
         <li><strong>DONE → anything</strong> — Terminal state. No transitions from DONE.</li>
         <li><strong>BLOCKED → IN_PROGRESS or IN_REVIEW</strong> — Another agent must claim it from TODO (lazy reclaim on <code>claim-next</code>).</li>
+        <li><strong>IN_REVIEW → DONE without approve</strong> — Only <code>approve</code> can move IN_REVIEW → DONE.</li>
       </ul>
 
       <h2>Lease model</h2>
