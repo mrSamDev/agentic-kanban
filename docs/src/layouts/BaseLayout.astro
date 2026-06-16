@@ -19,6 +19,13 @@ const t = useTranslations(pageLang);
 const canonicalUrl = canonical || `https://mrsamdev.github.io${Astro.url.pathname}`;
 const ogImage = image || 'https://mrsamdev.github.io/agentic-kanban/og-image.png';
 const siteName = 'agentic-kanban';
+
+// hreflang alternates for i18n SEO
+const baseUrl = 'https://mrsamdev.github.io/agentic-kanban';
+const path = Astro.url.pathname.replace('/agentic-kanban', '') || '/';
+const isEnHome = pageLang === 'en' && (path === '/' || path === '');
+const isZhHome = pageLang === 'zh';
+const showHreflang = isEnHome || isZhHome;
 ---
 
 <!DOCTYPE html>
@@ -36,6 +43,16 @@ const siteName = 'agentic-kanban';
   <link rel="manifest" href="/agentic-kanban/site.webmanifest">
   <title>{title}</title>
   <link rel="canonical" href={canonicalUrl}>
+
+  {
+    showHreflang && (
+      <>
+        <link rel="alternate" hreflang="en" href={baseUrl + '/'} />
+        <link rel="alternate" hreflang="zh" href={baseUrl + '/zh/'} />
+        <link rel="alternate" hreflang="x-default" href={baseUrl + '/'} />
+      </>
+    )
+  }
 
   <!-- Open Graph / Social -->
   <meta property="og:type" content="website">
