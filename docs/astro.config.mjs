@@ -18,11 +18,11 @@ export default defineConfig({
         if (!page.url.startsWith('https://mrsamdev.github.io/agentic-kanban/')) {
           return undefined;
         }
-        return {
+        return /** @type {import('@astrojs/sitemap').SitemapItem} */ ({
           url: page.url,
           changefreq: 'weekly',
           priority: page.url === 'https://mrsamdev.github.io/agentic-kanban/' ? 1.0 : 0.8,
-        };
+        });
       },
     }),
   ],

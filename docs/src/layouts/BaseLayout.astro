@@ -1,19 +1,28 @@
 ---
+import PostHog from '../components/posthog.astro';
+import { ClientRouter } from 'astro:transitions';
+import LanguagePicker from '../components/LanguagePicker.astro';
+import { getLangFromUrl, useTranslations } from '../i18n/utils';
+import type { Lang } from '../i18n/ui';
+
 export interface Props {
   title: string;
   description: string;
   canonical?: string;
   image?: string;
+  lang?: Lang;
 }
 
-const { title, description, canonical, image } = Astro.props;
+const { title, description, canonical, image, lang } = Astro.props;
+const pageLang: Lang = lang ?? getLangFromUrl(Astro.url);
+const t = useTranslations(pageLang);
 const canonicalUrl = canonical || `https://mrsamdev.github.io${Astro.url.pathname}`;
 const ogImage = image || 'https://mrsamdev.github.io/agentic-kanban/og-image.png';
 const siteName = 'agentic-kanban';
 ---
 
 <!DOCTYPE html>
-<html lang="en" data-theme="">
+<html lang={pageLang} data-theme="" transition:animate="fade">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -47,35 +56,30 @@ const siteName = 'agentic-kanban';
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></noscript>
 
-  <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-XXXXXXXXXX');
-  </script>
+  <ClientRouter />
+  <PostHog />
   <link rel="stylesheet" href="/agentic-kanban/style.css">
-  <script is:inline>(function(){var t=localStorage.getItem("theme")||(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"");if(t)document.documentElement.setAttribute("data-theme",t)})()</script>
+  <script is:inline>(function(){var d=document.documentElement;function s(t){t=t||'';d.setAttribute("data-theme",t);var b=document.getElementById("themeToggle");if(b)b.setAttribute("aria-label","Switch to "+(t==="dark"?"light":"dark")+" mode");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="dark"?"#121511":"#f4f5f0")}var saved=localStorage.getItem("theme");s(saved||(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":""));document.addEventListener("astro:after-swap",function(){var t=localStorage.getItem("theme");s(t||(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":""))});document.addEventListener("click",function(e){var t=e.target;while(t&&t!==document){if(t.id==="themeToggle"){var n=d.getAttribute("data-theme")==="dark"?"light":"dark";s(n);localStorage.setItem("theme",n);t.blur();return}t=t.parentNode}})})()</script>
 </head>
 <body>
   <header class="site-header">
     <nav class="nav-shell" aria-label="Primary navigation">
-      <a class="brand" href="/agentic-kanban/">agentic-kanban</a>
+      <a class="brand" href="/agentic-kanban/">{t('nav.brand')}</a>
       <div class="nav-links">
-        <a href="/agentic-kanban/install/">Install</a>
-        <a href="/agentic-kanban/commands/">Commands</a>
-        <a href="/agentic-kanban/examples/">Examples</a>
+        <a href="/agentic-kanban/install/">{t('nav.install')}</a>
+        <a href="/agentic-kanban/commands/">{t('nav.commands')}</a>
+        <a href="/agentic-kanban/examples/">{t('nav.examples')}</a>
       </div>
       <div class="nav-actions">
         <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch theme">
           <svg class="moon-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"/></svg>
           <svg class="sun-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
         </button>
-        <a href="https://github.com/mrSamDev/agentic-kanban" class="github-link">
+        <a target="_blank" rel="noopener noreferrer" href="https://github.com/mrSamDev/agentic-kanban" class="github-link">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.6 1.1 1.6 1.1.9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.7-1.3-2.3-.3-4.7-1.1-4.7-5A3.9 3.9 0 0 1 6.7 8.8c-.1-.3-.5-1.3.1-2.7 0 0 .9-.3 2.8 1a9.7 9.7 0 0 1 5.1 0c2-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.7 5 .4.3.7 1 .7 2V21c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg>
           <span>GitHub</span>
         </a>
+        <LanguagePicker />
       </div>
     </nav>
   </header>
@@ -85,47 +89,22 @@ const siteName = 'agentic-kanban';
   <footer>
     <div class="footer-inner">
       <div class="footer-brand">
-        <a class="brand" href="/agentic-kanban/">agentic-kanban</a>
-        <p>SQLite-backed task coordination for AI agents.</p>
-        <p>MIT License · <a href="https://github.com/mrSamDev">mrSamDev</a></p>
+        <a class="brand" href="/agentic-kanban/">{t('nav.brand')}</a>
+        <p>{t('footer.tagline')}</p>
+        <p>{t('footer.license')} · <a href="https://github.com/mrSamDev">mrSamDev</a></p>
       </div>
       <nav class="footer-nav" aria-label="Documentation">
-        <a href="/agentic-kanban/install/">Install</a>
-        <a href="/agentic-kanban/commands/">Commands</a>
-        <a href="/agentic-kanban/protocol/">Protocol</a>
-        <a href="/agentic-kanban/skills/">Skills</a>
-        <a href="/agentic-kanban/hooks/">Hooks</a>
-        <a href="/agentic-kanban/architecture/">Architecture</a>
-        <a href="/agentic-kanban/examples/">Examples</a>
+        <a href="/agentic-kanban/install/">{t('nav.install')}</a>
+        <a href="/agentic-kanban/commands/">{t('nav.commands')}</a>
+        <a href="/agentic-kanban/protocol/">{t('nav.protocol')}</a>
+        <a href="/agentic-kanban/skills/">{t('nav.skills')}</a>
+        <a href="/agentic-kanban/hooks/">{t('nav.hooks')}</a>
+        <a href="/agentic-kanban/architecture/">{t('nav.architecture')}</a>
+        <a href="/agentic-kanban/examples/">{t('nav.examples')}</a>
       </nav>
     </div>
   </footer>
 
-  <script>
-    (function () {
-      var html = document.documentElement;
-      var themeToggle = document.getElementById("themeToggle");
-      var themeColor = document.querySelector('meta[name="theme-color"]');
-      var savedTheme = localStorage.getItem("theme");
-      var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-      function setTheme(theme) {
-        html.setAttribute("data-theme", theme);
-        if (themeToggle) themeToggle.setAttribute("aria-label", "Switch to " + (theme === "dark" ? "light" : "dark") + " mode");
-        if (themeColor) themeColor.setAttribute("content", theme === "dark" ? "#121511" : "#f4f5f0");
-      }
-
-      setTheme(savedTheme || (systemDark ? "dark" : "light"));
-
-      if (themeToggle) {
-        themeToggle.addEventListener("click", function () {
-          var nextTheme = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
-          setTheme(nextTheme);
-          localStorage.setItem("theme", nextTheme);
-          themeToggle.blur();
-        });
-      }
-    })();
-  </script>
 </body>
 </html>
