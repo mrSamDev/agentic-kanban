@@ -1,0 +1,120 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+  title="Hooks — agentic-kanban"
+  description="agentic-kanban hooks — react to every event with executable hooks"
+>
+  <h1 slot="header">Hooks</h1>
+  <p class="docs-lede" slot="header">React to every state transition. Drop executable scripts in <code>.kanban/hooks/</code> and extend the workflow without touching the binary.</p>
+
+  <h2>How it works</h2>
+  <p>Each event type maps to an executable file named after the event (dots replaced by dashes). When the event fires, the hook receives JSON on stdin with a 30-second timeout. If the hook exits non-zero, the error is logged to stderr but the kanban operation continues. Missing hooks are silently ignored.</p>
+
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>hook lifecycle</b></div>
+    <pre><code><span class="cli-comment"># 1. An agent completes a task</span>
+$ kanban task complete TASK-1 --agent alice
+
+<span class="cli-comment"># 2. Kanban fires task-completed hook with stdin:</span>
+<span class="cli-output">&lbrace;
+  "event": "task.completed",
+  "payload": &lbrace;
+    "task_id": "TASK-1",
+    "agent": "alice",
+    "title": "Set up auth middleware",
+    "project": "default"
+  }
+}</span>
+
+<span class="cli-comment"># 3. Hook runs (30s timeout). Non-zero exits logged, not fatal.</span>
+<span class="cli-comment"># 4. Missing hooks = silent skip. No error.</span></code></pre>
+  </div>
+
+  <h2>Hook placement</h2>
+  <div class="terminal" style="margin-bottom:28px">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/</b></div>
+    <pre><code><span class="cli-comment"># Single hook per event:</span>
+.kanban/hooks/
+├── task-created
+├── task-claimed
+├── task-progress
+├── task-completed
+├── task-submitted-for-review
+├── task-transferred
+├── task-blocked
+├── review-approved
+├── review-rejected
+├── task-priority-updated
+└── task-project-updated
+
+<span class="cli-comment"># Multiple hooks per event (concurrent execution):</span>
+.kanban/hooks/
+├── task-completed
+└── task-completed.d/
+    ├── slack        ← notifies Slack channel
+    ├── metrics      ← records metrics
+    └── dashboard    ← updates live dashboard</code></pre>
+  </div>
+
+  <h3>Chaining with .d/ directories</h3>
+  <p>The single file runs synchronously before the operation returns. The <code>.d/</code> hooks run concurrently in goroutines, so a slow Slack notifier won't delay the caller. Entries run in lexicographic order within each <code>.d/</code> directory; each has its own 30-second timeout independent of the others.</p>
+
+  <h2>Event reference</h2>
+  <table class="transition-table">
+    <thead><tr><th>Event</th><th>Executable</th><th>When</th><th>Payload fields</th></tr></thead>
+    <tbody>
+      <tr><td><code>task.created</code></td><td><code>task-created</code></td><td>Task dispatched</td><td>task_id, title, role, priority, project</td></tr>
+      <tr><td><code>task.claimed</code></td><td><code>task-claimed</code></td><td>Agent claims a task</td><td>task_id, agent, title, project, priority, role_boundary</td></tr>
+      <tr><td><code>task.progress</code></td><td><code>task-progress</code></td><td>Progress logged</td><td>task_id, agent, note, note_type</td></tr>
+      <tr><td><code>task.completed</code></td><td><code>task-completed</code></td><td>Task finished</td><td>task_id, agent, title</td></tr>
+      <tr><td><code>task.submitted_for_review</code></td><td><code>task-submitted-for-review</code></td><td>Submitted for review</td><td>task_id, agent, title</td></tr>
+      <tr><td><code>task.transferred</code></td><td><code>task-transferred</code></td><td>Claim transferred</td><td>task_id, agent (to), from_agent, title</td></tr>
+      <tr><td><code>task.blocked</code></td><td><code>task-blocked</code></td><td>Task blocked</td><td>task_id, agent, reason</td></tr>
+      <tr><td><code>review.approved</code></td><td><code>review-approved</code></td><td>Approved</td><td>task_id, reviewer, note</td></tr>
+      <tr><td><code>review.rejected</code></td><td><code>review-rejected</code></td><td>Rejected</td><td>task_id, reviewer, reason</td></tr>
+      <tr><td><code>task.priority_updated</code></td><td><code>task-priority-updated</code></td><td>Batch priority</td><td>task_ids, priority</td></tr>
+      <tr><td><code>task.project_updated</code></td><td><code>task-project-updated</code></td><td>Batch project</td><td>task_ids, project</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Writing hooks</h2>
+  <p>Hooks must be executable (<code>chmod +x</code>). Any language works — bash, Python, Go, Node.js — as long as it reads stdin and completes within 30 seconds.</p>
+
+  <h3>Example: Slack notification</h3>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/task-completed.d/slack</b></div>
+    <pre><code><span class="cli-comment">#!/usr/bin/env bash</span>
+<span class="cli-comment"># Notify Slack when a task is completed</span>
+set -euo pipefail
+
+read -r payload
+
+curl -s -X POST "$SLACK_WEBHOOK_URL" \
+  -H "Content-Type: application/json" \
+  -d "$(echo "$payload" | jq -c '&lbrace;"text": "✅ *\(.payload.title)* completed by \(.payload.agent)"&rbrace;')"</code></pre>
+  </div>
+
+  <h3>Example: Metrics counter</h3>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/task-completed.d/metrics</b></div>
+    <pre><code><span class="cli-comment">#!/usr/bin/env bash</span>
+set -euo pipefail
+
+read -r payload
+task_id=$(echo "$payload" | jq -r '.payload.task_id')
+agent=$(echo "$payload" | jq -r '.payload.agent')
+
+<span class="cli-comment"># Append to local metrics log (rotated externally)</span>
+echo "$(date -Iseconds) completed $task_id by $agent" >> .kanban/metrics.log</code></pre>
+  </div>
+
+  <h2>Hook contract</h2>
+  <ul>
+    <li><strong>Timeout:</strong> 30 seconds per hook. Hooks in <code>.d/</code> directories each get their own 30s timeout (concurrent, not cumulative).</li>
+    <li><strong>Errors:</strong> Non-zero exit is logged to stderr but does not fail the operation. The kanban command returns success regardless of hook failures.</li>
+    <li><strong>Missing:</strong> If the hook file or directory doesn't exist, it's silently skipped. No error, no warning.</li>
+    <li><strong>Permissions:</strong> Files must be executable (<code>chmod +x</code>). Non-executable files in <code>.d/</code> are skipped.</li>
+  </ul>
+</DocsLayout>

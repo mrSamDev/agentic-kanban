@@ -1,29 +1,13 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Agentic Kanban — a lightweight coordination protocol for autonomous AI agents. SQLite-backed task coordination with no servers, no daemons. One binary, one database.">
-  <meta name="theme-color" content="#f4f5f0">
-  <meta name="keywords" content="kanban, AI agents, task coordination, SQLite, agent workflow, task management, agent collaboration, open source">
-  <meta name="author" content="mrSamDev">
-  <meta name="robots" content="index, follow">
-  <!-- Open Graph -->
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://mrsamdev.github.io/agentic-kanban/">
-  <meta property="og:title" content="agentic-kanban — Task coordination for AI agents">
-  <meta property="og:description" content="One SQLite file. Zero infrastructure. Durable task coordination for agent teams.">
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="agentic-kanban — Task coordination for AI agents">
-  <meta name="twitter:description" content="One SQLite file. Zero infrastructure. Durable task coordination for agent teams.">
-  <!-- Canonical -->
-  <link rel="canonical" href="https://mrsamdev.github.io/agentic-kanban/">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <title>agentic-kanban — Task coordination for AI agents</title>
-  <!-- JSON-LD structured data -->
-  <script type="application/ld+json">
-  {
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="agentic-kanban — Task coordination for AI agents"
+  description="Agentic Kanban — a lightweight coordination protocol for autonomous AI agents. SQLite-backed task coordination with no servers, no daemons. One binary, one database."
+  canonical="https://mrsamdev.github.io/agentic-kanban/"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "agentic-kanban",
@@ -31,45 +15,9 @@
     "url": "https://mrsamdev.github.io/agentic-kanban/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Linux, Windows",
-    "author": {
-      "@type": "Person",
-      "name": "mrSamDev"
-    },
+    "author": { "@type": "Person", "name": "mrSamDev" },
     "license": "MIT"
-  }
-  </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <header class="site-header">
-    <nav class="nav-shell" aria-label="Primary navigation">
-      <a class="brand" href="#top" aria-label="agentic-kanban home">
-        <span>agentic-kanban</span>
-      </a>
-      <div class="nav-links">
-        <a href="#problem">Problem</a>
-        <a href="#why">Why</a>
-        <a href="#workflow">Workflow</a>
-        <a href="#commands">Commands</a>
-        <a href="#skills">Skills</a>
-        <a href="#hooks">Hooks</a>
-      </div>
-      <div class="nav-actions">
-        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch theme">
-          <svg class="moon-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"/></svg>
-          <svg class="sun-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-        </button>
-        <a href="https://github.com/mrSamDev/agentic-kanban" class="github-link">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.6 1.1 1.6 1.1.9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.7-1.3-2.3-.3-4.7-1.1-4.7-5A3.9 3.9 0 0 1 6.7 8.8c-.1-.3-.5-1.3.1-2.7 0 0 .9-.3 2.8 1a9.7 9.7 0 0 1 5.1 0c2-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.7 5 .4.3.7 1 .7 2V21c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg>
-          <span>GitHub</span>
-        </a>
-      </div>
-    </nav>
-  </header>
-
+  })} />
   <main id="top">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
@@ -77,8 +25,8 @@
         <h1 id="hero-title">Give every agent<br>a clear next task.</h1>
         <p class="hero-lede">Agentic Kanban — a lightweight coordination protocol for autonomous AI agents. No servers. No daemons. No queues. Durable task coordination through one SQLite file. Agents claim work atomically, report progress, survive crashes, and hand off reviews without anything in the middle.</p>
         <div class="hero-actions">
-          <a href="#install" class="button button-primary">Get started <span aria-hidden="true">→</span></a>
-          <a href="#workflow" class="button button-secondary">See the workflow</a>
+          <a href="/agentic-kanban/install/" class="button button-primary">Get started <span aria-hidden="true">→</span></a>
+          <a href="/agentic-kanban/#workflow" class="button button-secondary">See the workflow</a>
         </div>
         <ul class="hero-facts" aria-label="Key facts">
           <li><strong>1</strong><span>Go binary</span></li>
@@ -147,9 +95,28 @@
       </div>
     </section>
 
+    <section id="motivation" class="section motivation-section" aria-labelledby="motivation-title">
+      <div class="section-heading">
+        <p class="section-index">03 / Motivation</p>
+        <h2 id="motivation-title">It started with a markdown file.</h2>
+        <p>Sprint 1, task 1.1, task 1.2. Agents kept overwriting each other's updates, forgetting to mark things done, or picking up work already claimed. The file became noise fast.</p>
+      </div>
+      <div class="motivation-content">
+        <div class="motivation-narrative">
+          <p>The answer was a <strong>database</strong>. Every state change is a transaction, so two agents can't claim the same task. If one crashes, its lease expires and another picks it up — same as Rust's ownership model: one owner at a time, released when the owner disappears.</p>
+          <p>The <code>.db</code> file is the <strong>only coordination point</strong>. No server. No daemon. No message queue. Just a shared file on the filesystem you already share.</p>
+        </div>
+        <div class="motivation-quote">
+          <blockquote>
+            <p>"The simplest coordination is the one you don't have to run."</p>
+          </blockquote>
+        </div>
+      </div>
+    </section>
+
     <section id="why" class="section why-section" aria-labelledby="why-title">
       <div class="section-heading">
-        <p class="section-index">03 / Why</p>
+        <p class="section-index">04 / Why</p>
         <h2 id="why-title">Coordination that stays out of the way.</h2>
         <p>Use the filesystem you already share. Keep task ownership explicit and recoverable.</p>
       </div>
@@ -183,7 +150,7 @@
 
     <section id="workflow" class="section workflow-section" aria-labelledby="workflow-title">
       <div class="section-heading">
-        <p class="section-index">04 / Workflow</p>
+        <p class="section-index">05 / Workflow</p>
         <h2 id="workflow-title">A small protocol with clear ownership.</h2>
         <p>Three roles. Three plans. One lifecycle.</p>
       </div>
@@ -257,7 +224,7 @@
 
     <section id="commands" class="section commands-section" aria-labelledby="commands-title">
       <div class="section-heading">
-        <p class="section-index">05 / Reference</p>
+        <p class="section-index">06 / Reference</p>
         <h2 id="commands-title">The complete command surface.</h2>
         <p>Small enough to learn, explicit enough to debug.</p>
       </div>
@@ -289,7 +256,7 @@
 
     <section id="skills" class="section" aria-labelledby="skills-title">
       <div class="section-heading">
-        <p class="section-index">06 / Skills</p>
+        <p class="section-index">07 / Skills</p>
         <h2 id="skills-title">The agent runtime.</h2>
         <p>Skills teach agents the coordination protocol. Skills are embedded in the binary and scaffolded by <code>kanban init</code>.</p>
       </div>
@@ -397,7 +364,7 @@ instructions for bash fallback.</code></pre>
         <pre><code><span class="comment">1. Scaffold</span>
 <span class="prompt">$</span> kanban init --plan plan.md
 <span class="cli-output">→ .kanban/kanban.db created</span>
-<span class="cli-output">→ .kanban/agents/{manager,worker,reviewer}.md</span>
+<span class="cli-output">→ .kanban/agents/&lbrace;manager,worker,reviewer&rbrace;.md</span>
 <span class="cli-output">→ .kanban/skills/ (14 skill files + INDEX)</span>
 <span class="cli-output">→ plan.md parsed → tasks dispatched</span>
 
@@ -417,7 +384,7 @@ instructions for bash fallback.</code></pre>
 
     <section id="hooks" class="section" aria-labelledby="hooks-title">
       <div class="section-heading">
-        <p class="section-index">07 / Hooks</p>
+        <p class="section-index">08 / Hooks</p>
         <h2 id="hooks-title">React to every event.</h2>
         <p>Drop an executable in <code>.kanban/hooks/</code> and extend the workflow without touching the core.</p>
       </div>
@@ -450,7 +417,7 @@ task-completed.d/
 
     <section class="section fit-section" aria-labelledby="fit-title">
       <div class="section-heading">
-        <p class="section-index">08 / Fit</p>
+        <p class="section-index">09 / Fit</p>
         <h2 id="fit-title">Built for local agent teams.</h2>
       </div>
       <div class="no-framework">
@@ -477,52 +444,55 @@ task-completed.d/
       </div>
     </section>
 
+    <section class="section reference-section" aria-labelledby="reference-title">
+      <div class="section-heading">
+        <p class="section-index">Reference</p>
+        <h2 id="reference-title">Everything you need.</h2>
+        <p>Install, configure, and extend agentic-kanban.</p>
+      </div>
+      <div class="ref-grid">
+        <a href="/agentic-kanban/install/" class="ref-card">
+          <span class="ref-icon">01</span>
+          <h3>Install</h3>
+          <p>One command setup. Binary releases, build from source, or curl pipe.</p>
+        </a>
+        <a href="/agentic-kanban/commands/" class="ref-card">
+          <span class="ref-icon">02</span>
+          <h3>Commands</h3>
+          <p>Complete CLI reference. Every command, flag, and output format.</p>
+        </a>
+        <a href="/agentic-kanban/protocol/" class="ref-card">
+          <span class="ref-icon">03</span>
+          <h3>Protocol</h3>
+          <p>State machine, lease model, dependency resolution, event system.</p>
+        </a>
+        <a href="/agentic-kanban/examples/" class="ref-card">
+          <span class="ref-icon">04</span>
+          <h3>Examples</h3>
+          <p>Pi subagents, Claude Code, raw CLI, batch workflows, crash recovery.</p>
+        </a>
+      </div>
+    </section>
+
     <section class="closing">
       <p class="section-index">Ready to coordinate?</p>
       <p class="closing-analogy">Git became the shared source of truth for code.<br>Agentic Kanban becomes the shared source of truth for <em>work</em>.</p>
       <h2>One database.<br>Every agent aligned.</h2>
       <div class="hero-actions">
-        <a href="#install" class="button button-primary">Install agentic-kanban <span aria-hidden="true">→</span></a>
+        <a href="/agentic-kanban/install/" class="button button-primary">Install agentic-kanban <span aria-hidden="true">→</span></a>
         <a href="https://github.com/mrSamDev/agentic-kanban" class="button button-secondary">View on GitHub</a>
       </div>
     </section>
   </main>
 
-  <footer>
-    <a class="brand" href="#top">agentic-kanban</a>
-    <p>SQLite-backed task coordination for AI agents.</p>
-    <p>MIT License · <a href="https://github.com/mrSamDev">mrSamDev</a></p>
-  </footer>
-
   <script>
     (function () {
-      var html = document.documentElement;
-      var themeToggle = document.getElementById("themeToggle");
-      var themeColor = document.querySelector('meta[name="theme-color"]');
-      var savedTheme = localStorage.getItem("theme");
-      var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-      function setTheme(theme) {
-        html.setAttribute("data-theme", theme);
-        themeToggle.setAttribute("aria-label", "Switch to " + (theme === "dark" ? "light" : "dark") + " mode");
-        themeColor.setAttribute("content", theme === "dark" ? "#121511" : "#f4f5f0");
-      }
-
-      setTheme(savedTheme || (systemDark ? "dark" : "light"));
-
-      themeToggle.addEventListener("click", function () {
-        var nextTheme = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
-        setTheme(nextTheme);
-        localStorage.setItem("theme", nextTheme);
-      });
-
       function copyText(text) {
         if (navigator.clipboard && window.isSecureContext) {
           return navigator.clipboard.writeText(text).catch(function () {
             return copyWithSelection(text);
           });
         }
-
         return copyWithSelection(text);
       }
 
@@ -549,5 +519,4 @@ task-completed.d/
       });
     })();
   </script>
-</body>
-</html>
+</BaseLayout>
