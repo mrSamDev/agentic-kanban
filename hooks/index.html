@@ -1,0 +1,52 @@
+<!DOCTYPE html><html lang="en" data-theme=""> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="description" content="agentic-kanban hooks — react to every event with executable hooks"><meta name="theme-color" content="#f4f5f0"><link rel="icon" type="image/svg+xml" href="/agentic-kanban/favicon.svg"><title>Hooks — agentic-kanban</title><link rel="canonical" href="https://mrsamdev.github.io/agentic-kanban/hooks/"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/agentic-kanban/style.css"><script>(function(){var t=localStorage.getItem("theme")||(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"");if(t)document.documentElement.setAttribute("data-theme",t)})()</script></head> <body> <header class="site-header"> <nav class="nav-shell" aria-label="Primary navigation"> <a class="brand" href="/agentic-kanban/">agentic-kanban</a> <div class="nav-links"> <a href="/agentic-kanban/install/">Install</a> <a href="/agentic-kanban/commands/">Commands</a> <a href="/agentic-kanban/examples/">Examples</a> </div> <div class="nav-actions"> <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch theme"> <svg class="moon-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"></path></svg> <svg class="sun-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg> </button> <a href="https://github.com/mrSamDev/agentic-kanban" class="github-link"> <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.6 1.1 1.6 1.1.9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.7-1.3-2.3-.3-4.7-1.1-4.7-5A3.9 3.9 0 0 1 6.7 8.8c-.1-.3-.5-1.3.1-2.7 0 0 .9-.3 2.8 1a9.7 9.7 0 0 1 5.1 0c2-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.7 5 .4.3.7 1 .7 2V21c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"></path></svg> <span>GitHub</span> </a> </div> </nav> </header>  <main class="docs-layout"> <h1>Hooks</h1><p class="docs-lede">React to every state transition. Drop executable scripts in <code>.kanban/hooks/</code> and extend the workflow without touching the binary.</p> <div class="prose">    <h2>How it works</h2> <p>Each event type maps to an executable file named after the event (dots replaced by dashes). When the event fires, the hook receives JSON on stdin with a 30-second timeout. If the hook exits non-zero, the error is logged to stderr but the kanban operation continues. Missing hooks are silently ignored.</p> <div class="terminal"> <div class="terminal-bar"><span></span><span></span><span></span><b>hook lifecycle</b></div> <pre><code><span class="cli-comment"># 1. An agent completes a task</span>
+$ kanban task complete TASK-1 --agent alice
+
+<span class="cli-comment"># 2. Kanban fires task-completed hook with stdin:</span>
+<span class="cli-output">&lbrace;
+  "event": "task.completed",
+  "payload": &lbrace;
+    "task_id": "TASK-1",
+    "agent": "alice",
+    "title": "Set up auth middleware",
+    "project": "default"
+  }
+}</span>
+
+<span class="cli-comment"># 3. Hook runs (30s timeout). Non-zero exits logged, not fatal.</span>
+<span class="cli-comment"># 4. Missing hooks = silent skip. No error.</span></code></pre> </div> <h2>Hook placement</h2> <div class="terminal" style="margin-bottom:28px"> <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/</b></div> <pre><code><span class="cli-comment"># Single hook per event:</span>
+.kanban/hooks/
+├── task-created
+├── task-claimed
+├── task-progress
+├── task-completed
+├── task-submitted-for-review
+├── task-transferred
+├── task-blocked
+├── review-approved
+├── review-rejected
+├── task-priority-updated
+└── task-project-updated
+
+<span class="cli-comment"># Multiple hooks per event (concurrent execution):</span>
+.kanban/hooks/
+├── task-completed
+└── task-completed.d/
+    ├── slack        ← notifies Slack channel
+    ├── metrics      ← records metrics
+    └── dashboard    ← updates live dashboard</code></pre> </div> <h3>Chaining with .d/ directories</h3> <p>The single file runs synchronously before the operation returns. The <code>.d/</code> hooks run concurrently in goroutines, so a slow Slack notifier won't delay the caller. Entries run in lexicographic order within each <code>.d/</code> directory; each has its own 30-second timeout independent of the others.</p> <h2>Event reference</h2> <table class="transition-table"> <thead><tr><th>Event</th><th>Executable</th><th>When</th><th>Payload fields</th></tr></thead> <tbody> <tr><td><code>task.created</code></td><td><code>task-created</code></td><td>Task dispatched</td><td>task_id, title, role, priority, project</td></tr> <tr><td><code>task.claimed</code></td><td><code>task-claimed</code></td><td>Agent claims a task</td><td>task_id, agent, title, project, priority, role_boundary</td></tr> <tr><td><code>task.progress</code></td><td><code>task-progress</code></td><td>Progress logged</td><td>task_id, agent, note, note_type</td></tr> <tr><td><code>task.completed</code></td><td><code>task-completed</code></td><td>Task finished</td><td>task_id, agent, title</td></tr> <tr><td><code>task.submitted_for_review</code></td><td><code>task-submitted-for-review</code></td><td>Submitted for review</td><td>task_id, agent, title</td></tr> <tr><td><code>task.transferred</code></td><td><code>task-transferred</code></td><td>Claim transferred</td><td>task_id, agent (to), from_agent, title</td></tr> <tr><td><code>task.blocked</code></td><td><code>task-blocked</code></td><td>Task blocked</td><td>task_id, agent, reason</td></tr> <tr><td><code>review.approved</code></td><td><code>review-approved</code></td><td>Approved</td><td>task_id, reviewer, note</td></tr> <tr><td><code>review.rejected</code></td><td><code>review-rejected</code></td><td>Rejected</td><td>task_id, reviewer, reason</td></tr> <tr><td><code>task.priority_updated</code></td><td><code>task-priority-updated</code></td><td>Batch priority</td><td>task_ids, priority</td></tr> <tr><td><code>task.project_updated</code></td><td><code>task-project-updated</code></td><td>Batch project</td><td>task_ids, project</td></tr> </tbody> </table> <h2>Writing hooks</h2> <p>Hooks must be executable (<code>chmod +x</code>). Any language works — bash, Python, Go, Node.js — as long as it reads stdin and completes within 30 seconds.</p> <h3>Example: Slack notification</h3> <div class="terminal"> <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/task-completed.d/slack</b></div> <pre><code><span class="cli-comment">#!/usr/bin/env bash</span>
+<span class="cli-comment"># Notify Slack when a task is completed</span>
+set -euo pipefail
+
+read -r payload
+
+curl -s -X POST "$SLACK_WEBHOOK_URL" \
+  -H "Content-Type: application/json" \
+  -d "$(echo "$payload" | jq -c '&lbrace;"text": "✅ *\(.payload.title)* completed by \(.payload.agent)"&rbrace;')"</code></pre> </div> <h3>Example: Metrics counter</h3> <div class="terminal"> <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/task-completed.d/metrics</b></div> <pre><code><span class="cli-comment">#!/usr/bin/env bash</span>
+set -euo pipefail
+
+read -r payload
+task_id=$(echo "$payload" | jq -r '.payload.task_id')
+agent=$(echo "$payload" | jq -r '.payload.agent')
+
+<span class="cli-comment"># Append to local metrics log (rotated externally)</span>
+echo "$(date -Iseconds) completed $task_id by $agent" >> .kanban/metrics.log</code></pre> </div> <h2>Hook contract</h2> <ul> <li><strong>Timeout:</strong> 30 seconds per hook. Hooks in <code>.d/</code> directories each get their own 30s timeout (concurrent, not cumulative).</li> <li><strong>Errors:</strong> Non-zero exit is logged to stderr but does not fail the operation. The kanban command returns success regardless of hook failures.</li> <li><strong>Missing:</strong> If the hook file or directory doesn't exist, it's silently skipped. No error, no warning.</li> <li><strong>Permissions:</strong> Files must be executable (<code>chmod +x</code>). Non-executable files in <code>.d/</code> are skipped.</li> </ul>  </div> </main>  <footer> <div class="footer-inner"> <div class="footer-brand"> <a class="brand" href="/agentic-kanban/">agentic-kanban</a> <p>SQLite-backed task coordination for AI agents.</p> <p>MIT License · <a href="https://github.com/mrSamDev">mrSamDev</a></p> </div> <nav class="footer-nav" aria-label="Documentation"> <a href="/agentic-kanban/install/">Install</a> <a href="/agentic-kanban/commands/">Commands</a> <a href="/agentic-kanban/protocol/">Protocol</a> <a href="/agentic-kanban/skills/">Skills</a> <a href="/agentic-kanban/hooks/">Hooks</a> <a href="/agentic-kanban/architecture/">Architecture</a> <a href="/agentic-kanban/examples/">Examples</a> </nav> </div> </footer> <script type="module">(function(){var a=document.documentElement,t=document.getElementById("themeToggle"),r=document.querySelector('meta[name="theme-color"]'),o=localStorage.getItem("theme"),d=window.matchMedia("(prefers-color-scheme: dark)").matches;function m(e){a.setAttribute("data-theme",e),t&&t.setAttribute("aria-label","Switch to "+(e==="dark"?"light":"dark")+" mode"),r&&r.setAttribute("content",e==="dark"?"#121511":"#f4f5f0")}m(o||(d?"dark":"light")),t&&t.addEventListener("click",function(){var e=a.getAttribute("data-theme")==="dark"?"light":"dark";m(e),localStorage.setItem("theme",e),t.blur()})})();</script> </body> </html>
