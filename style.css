@@ -55,6 +55,38 @@ body {
   transition: background-color 240ms var(--ease), color 240ms var(--ease);
 }
 
+/* ── Chinese text spacing (wider chars need room) ── */
+html[lang="zh"] body {
+  line-height: 1.8;
+}
+html[lang="zh"] h1,
+html[lang="zh"] h2,
+html[lang="zh"] h3,
+html[lang="zh"] .hero h1,
+html[lang="zh"] .section-heading h2,
+html[lang="zh"] .closing h2,
+html[lang="zh"] .docs-layout h1,
+html[lang="zh"] .prose h2,
+html[lang="zh"] .prose h3 {
+  letter-spacing: .02em;
+  word-spacing: .05em;
+}
+html[lang="zh"] .hero-lede,
+html[lang="zh"] .section-heading > p:last-child,
+html[lang="zh"] .docs-lede,
+html[lang="zh"] .prose p,
+html[lang="zh"] .prose li {
+  letter-spacing: .015em;
+  line-height: 1.85;
+}
+html[lang="zh"] .button {
+  letter-spacing: .03em;
+}
+html[lang="zh"] code,
+html[lang="zh"] pre {
+  letter-spacing: normal;
+}
+
 /* ── Sub-page layout (shared across all sub-pages) ── */
 .docs-layout {
   width: min(calc(100% - 48px), 900px);
