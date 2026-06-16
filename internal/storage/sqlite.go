@@ -113,82 +113,14 @@ func Open(path string, debug bool) (*DB, error) {
 		slog.Info("task_seq seeded from existing tasks")
 	}
 
-	var hasProject bool
-	_ = db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'project'`).Scan(&hasProject)
-	if !hasProject {
-		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN project TEXT NOT NULL DEFAULT 'default'"); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("add project column: %w", err)
-		}
-		if debug {
-			slog.Info("db project column migration applied")
-		}
-	}
-
-	var hasTTL bool
-	_ = db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('events') WHERE name = 'ttl_seconds'`).Scan(&hasTTL)
-	if !hasTTL {
-		if _, err := db.Exec("ALTER TABLE events ADD COLUMN ttl_seconds INTEGER DEFAULT 259200"); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("add ttl_seconds column: %w", err)
-		}
-		if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_events_ttl ON events(ttl_seconds, created_at)"); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("create events ttl index: %w", err)
-		}
-	}
-
-	var hasDependsOn bool
-	_ = db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'depends_on'`).Scan(&hasDependsOn)
-	if !hasDependsOn {
-		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN depends_on TEXT"); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("add depends_on column: %w", err)
-		}
-		if debug {
-			slog.Info("db depends_on column migration applied")
-		}
-	}
-
-	var hasClaimedBy bool
-	_ = db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'claimed_by'`).Scan(&hasClaimedBy)
-	if !hasClaimedBy {
-		if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN claimed_by TEXT"); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("add claimed_by column: %w", err)
-		}
-		if debug {
-			slog.Info("db claimed_by column migration applied")
-		}
-	}
-
-	// idx_tasks_claim migration: add lease_until for IN_PROGRESS+lease expiry filter
-	// Old index: role_boundary, status, priority, created_at — 4 cols → new: 5 cols with lease_until
-	var oldClaimCols int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM pragma_index_info('idx_tasks_claim')`).Scan(&oldClaimCols)
-	if oldClaimCols > 0 && oldClaimCols < 5 {
-		if _, err := db.Exec("DROP INDEX IF EXISTS idx_tasks_claim"); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("drop old idx_tasks_claim: %w", err)
-		}
-		if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_claim
-		    ON tasks(role_boundary, status, priority, created_at, lease_until)`); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("recreate idx_tasks_claim: %w", err)
-		}
-		if debug {
-			slog.Info("idx_tasks_claim migrated: added lease_until column")
-		}
-	}
-	// idx_tasks_claim_project: new index for project-filtered claim queries
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_claim_project
-	    ON tasks(role_boundary, project, status, priority, created_at, lease_until)`); err != nil {
+	// Apply numbered migrations (replaces ad-hoc pragma_table_info checks).
+	// task_seq PK fix (migration 1) is handled pre-schema above.
+	// Migrations 2+ handle column additions, index rebuilds, etc.
+	if err := runMigrations(db, debug); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("create idx_tasks_claim_project: %w", err)
+		return nil, fmt.Errorf("run migrations: %w", err)
 	}
-	if debug {
-		slog.Info("idx_tasks_claim_project index created")
-	}
+
 	// Open read-replica connection for non-mutating queries.
 	// Uses query_only pragma so writes are rejected at the driver level.
 	rdb, err := sql.Open("sqlite", path)

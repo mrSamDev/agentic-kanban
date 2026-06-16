@@ -74,7 +74,7 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "review.approved", payload)
+		runHook(s.HookRunner, s.hooksDir, "review.approved", payload)
 	}
 	return task, err
 }
@@ -159,7 +159,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "review.rejected", payload)
+		runHook(s.HookRunner, s.hooksDir, "review.rejected", payload)
 	}
 	return task, err
 }

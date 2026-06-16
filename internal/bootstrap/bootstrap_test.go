@@ -160,7 +160,7 @@ func TestInitWithPlanDispatchesTasks(t *testing.T) {
 	}
 	defer db.Close()
 
-	svc := task.NewService(db.DB, db.Reader(), 0, "")
+	svc := task.NewService(db.DB, db.Reader(), 0, "", nil)
 	tasks, err := svc.Search(t.Context(), task.SearchParams{})
 	if err != nil {
 		t.Fatal(err)

@@ -6,7 +6,7 @@ import (
 
 func TestLintCleanBoard(t *testing.T) {
 	db := newTestDB(t)
-	s := NewService(db.DB, db.Reader(), 0, "")
+	s := NewService(db.DB, db.Reader(), 0, "", nil)
 	s.Dispatch(t.Context(), "task a", "worker", "default", 10, nil)
 	s.Dispatch(t.Context(), "task b", "worker", "default", 20, nil)
 
@@ -21,35 +21,27 @@ func TestLintCleanBoard(t *testing.T) {
 
 func TestLintUnknownDep(t *testing.T) {
 	db := newTestDB(t)
-	s := NewService(db.DB, db.Reader(), 0, "")
+	s := NewService(db.DB, db.Reader(), 0, "", nil)
+	// FK constraint on task_dependencies prevents non-existent deps.
+	// Previously this test used the TEXT depends_on column which had no FK.
+	// Now Dispatch rejects ghost deps at creation time — verify that.
 	ghost := "TASK-99"
-	s.Dispatch(t.Context(), "deploy", "worker", "default", 10, &ghost)
-
-	issues, err := LintPlan(t.Context(), db.DB, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(issues) != 1 {
-		t.Fatalf("expected 1 issue, got %d: %v", len(issues), issues)
-	}
-	if issues[0].Severity != "warn" {
-		t.Fatalf("expected warn, got %s", issues[0].Severity)
-	}
-	if issues[0].TaskID != "TASK-1" {
-		t.Fatalf("expected TASK-1, got %s", issues[0].TaskID)
+	_, err := s.Dispatch(t.Context(), "deploy", "worker", "default", 10, &ghost)
+	if err == nil {
+		t.Fatal("expected Dispatch to reject ghost dependency due to FK constraint")
 	}
 }
 
 func TestLintCycleDetected(t *testing.T) {
 	db := newTestDB(t)
-	s := NewService(db.DB, db.Reader(), 0, "")
+	s := NewService(db.DB, db.Reader(), 0, "", nil)
 
 	// TASK-1 and TASK-2 will be created; we then manually set depends_on to form a cycle
 	s.Dispatch(t.Context(), "a", "worker", "default", 10, nil)
 	s.Dispatch(t.Context(), "b", "worker", "default", 20, nil)
 	// TASK-1 -> TASK-2 -> TASK-1
-	db.DB.Exec("UPDATE tasks SET depends_on = 'TASK-2' WHERE id = 'TASK-1'")
-	db.DB.Exec("UPDATE tasks SET depends_on = 'TASK-1' WHERE id = 'TASK-2'")
+	db.DB.Exec("INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES('TASK-1', 'TASK-2')")
+	db.DB.Exec("INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES('TASK-2', 'TASK-1')")
 
 	issues, err := LintPlan(t.Context(), db.DB, "")
 	if err != nil {
@@ -69,7 +61,7 @@ func TestLintCycleDetected(t *testing.T) {
 
 func TestLintMissingRole(t *testing.T) {
 	db := newTestDB(t)
-	s := NewService(db.DB, db.Reader(), 0, "")
+	s := NewService(db.DB, db.Reader(), 0, "", nil)
 	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
 	db.DB.Exec("UPDATE tasks SET role_boundary = '' WHERE id = 'TASK-1'")
 
@@ -84,16 +76,14 @@ func TestLintMissingRole(t *testing.T) {
 
 func TestLintErrorsBeforeWarns(t *testing.T) {
 	db := newTestDB(t)
-	s := NewService(db.DB, db.Reader(), 0, "")
+	s := NewService(db.DB, db.Reader(), 0, "", nil)
 
-	// Create a cycle (error) and a missing-dep (warn)
+	// Create a cycle (error) and a missing role (warn)
 	s.Dispatch(t.Context(), "a", "worker", "default", 10, nil)
 	s.Dispatch(t.Context(), "b", "worker", "default", 20, nil)
-	db.DB.Exec("UPDATE tasks SET depends_on = 'TASK-2' WHERE id = 'TASK-1'")
-	db.DB.Exec("UPDATE tasks SET depends_on = 'TASK-1' WHERE id = 'TASK-2'")
-
-	ghost := "TASK-99"
-	s.Dispatch(t.Context(), "c", "worker", "default", 30, &ghost)
+	db.DB.Exec("INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES('TASK-1', 'TASK-2')")
+	db.DB.Exec("INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES('TASK-2', 'TASK-1')")
+	db.DB.Exec("UPDATE tasks SET role_boundary = '' WHERE id = 'TASK-2'")
 
 	issues, err := LintPlan(t.Context(), db.DB, "")
 	if err != nil {

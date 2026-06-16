@@ -23,12 +23,15 @@ func approveCmd() *cobra.Command {
 			defer close()
 
 			if approveAll {
-				tasks, err := s.ApproveAll(cmd.Context(), agent, project)
-				if err != nil {
-					return err
+				tasks, errs := s.ApproveAll(cmd.Context(), agent, project)
+				if errs != nil && len(errs) > 0 {
+					// Log per-task errors but still report successfully approved tasks
+					for _, e := range errs {
+						writeStderr(e.Error())
+					}
 				}
 				if len(tasks) == 0 {
-					writeJSON(map[string]string{"message": "no tasks in review"})
+					writeJSON(map[string]string{"message": "no tasks approved"})
 					return nil
 				}
 				writeJSON(tasks)

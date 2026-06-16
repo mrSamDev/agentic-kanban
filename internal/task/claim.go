@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -92,7 +91,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				return fmt.Errorf("scan candidate: %w", err)
 			}
 			if filterDeps {
-				if depsBlocked, err := hasUnmetDeps(tx, t); err != nil {
+				if depsBlocked, err := hasUnmetDeps(tx, t.ID); err != nil {
 					_ = rows.Close()
 					return fmt.Errorf("check deps for %s: %w", t.ID, err)
 				} else if depsBlocked {
@@ -179,7 +178,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 
 	// Fire hooks outside tx
 	for _, t := range claimed {
-		runHook(s.hooksDir, "task.claimed", EventPayload{
+		runHook(s.HookRunner, s.hooksDir, "task.claimed", EventPayload{
 			TaskID:       t.ID,
 			Agent:        agent,
 			Title:        t.Title,
@@ -210,10 +209,9 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 		// Read current state
 		var currentStatus string
 		var assignedAgent sql.NullString
-		var dependsOn sql.NullString
 		err = tx.QueryRow(
-			`SELECT status, assigned_agent, depends_on FROM tasks WHERE id = ?`, id,
-		).Scan(&currentStatus, &assignedAgent, &dependsOn)
+			`SELECT status, assigned_agent FROM tasks WHERE id = ?`, id,
+		).Scan(&currentStatus, &assignedAgent)
 		if err == sql.ErrNoRows {
 			return ErrNotFound
 		}
@@ -244,8 +242,7 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 		}
 
 		// Check unmet dependencies
-		t := Task{ID: id, DependsOn: NullableStringFromDB(dependsOn)}
-		if blocked, err := hasUnmetDeps(tx, t); err != nil {
+		if blocked, err := hasUnmetDeps(tx, id); err != nil {
 			return fmt.Errorf("claim-by-id check deps %s: %w", id, err)
 		} else if blocked {
 			return &ExitError{Code: 2, Message: fmt.Sprintf("task %s has unmet dependencies", id)}
@@ -304,7 +301,7 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 	if err != nil {
 		return Task{}, err
 	}
-	runHook(s.hooksDir, "task.claimed", payload)
+	runHook(s.HookRunner, s.hooksDir, "task.claimed", payload)
 	return task, nil
 }
 
@@ -407,40 +404,21 @@ func (s *Service) TransferClaim(ctx context.Context, id, fromAgent, toAgent stri
 	if err != nil {
 		return Task{}, err
 	}
-	runHook(s.hooksDir, "task.transferred", payload)
+	runHook(s.HookRunner, s.hooksDir, "task.transferred", payload)
 	return task, nil
 }
 
 // Propagates error so the caller can fail safely rather than silently claiming a dep-blocked task.
-func hasUnmetDeps(tx *sql.Tx, t Task) (bool, error) {
-	if t.DependsOn == nil || *t.DependsOn == "" {
-		return false, nil
-	}
-	parts := strings.Split(*t.DependsOn, ",")
-	var ids []string
-	for _, p := range parts {
-		id := strings.TrimSpace(p)
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
-		return false, nil
-	}
-
-	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-
+func hasUnmetDeps(tx *sql.Tx, taskID string) (bool, error) {
 	var count int
-	if err := tx.QueryRow(
-		`SELECT COUNT(*) FROM tasks WHERE id IN (`+strings.Join(placeholders, ",")+`) AND status != 'DONE'`,
-		args...,
-	).Scan(&count); err != nil {
-		return false, fmt.Errorf("check deps for %s: %w", t.ID, err)
+	err := tx.QueryRow(
+		`SELECT COUNT(*) FROM task_dependencies d
+		  JOIN tasks t ON t.id = d.depends_on_task_id
+		 WHERE d.task_id = ? AND t.status != 'DONE'`,
+		taskID,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check deps for %s: %w", taskID, err)
 	}
 	return count > 0, nil
 }

@@ -1,636 +1,342 @@
-# Post-Mortem Fixes Plan
+# Technical Debt Sprint — 5 Production Blockers
 
-Branch: `post-mortem-fixes`
+Priority order: hook lifecycle → migration infra → dependency join table → ApproveAll resilience → documentation.
 
----
-
-## Release Strategy
-
-Ordered by leverage, not implementation convenience.
-
-Version note: codebase is currently at v0.1.9. v0.2 and v0.3 are reserved for the hooks system and events tail work already merged on this branch. These three releases pick up from v0.4.
-
-### Release 1 — Make multi-agent execution safe (v0.4)
-
-Safety before speed. These three changes turn the system from "works in demos" into "safe for real projects."
-
-| Step | What | Why |
-|------|------|-----|
-| 1 | `depends_on` schema + claim guard | Without this, parallel workers produce garbage |
-| 2 | `extend-lease` command | Without this, long tasks get double-claimed |
-| 3 | Cross-agent review gate | Without this, a single agent can approve its own work |
-
-### Release 2 — Make multi-agent execution fast (v0.5)
-
-| Step | What | Why |
-|------|------|-----|
-| 4 | `claim-next --count N` | Atomic batch claim for parallel worker spawning |
-| 5 | Optional subagent delegation | Make parallelism easy, not mandatory |
-| 6 | Project env auto-detection | Subagents in subdirs auto-find the DB |
-
-### Release 3 — Operational maturity (v0.6)
-
-| Step | What | Why |
-|------|------|-----|
-| 7 | `kanban status --burndown` | Progress visibility |
-| 8 | `kanban plan lint` | Catch bad plans before execution |
-| 9 | `approve-plan --all` flag | Minor UX improvement |
+Items 2 and 3 are schema-breaking — must land before v1.
 
 ---
 
-## Step 1: `depends_on` — Dependency tracking (PM#6)
+## Item 1: `.d/` Hook Goroutine Race
 
-### Files changed
-- `internal/storage/schema.sql` — migration
-- `internal/task/model.go` — add `DependsOn` field
-- `internal/task/claim.go` — guard in `ClaimNext`, reuse in `ClaimBatch`
-- `internal/task/service.go` — `Dispatch` accepts `dependsOn`
-- `cmd/kanban/dispatch.go` — `--depends-on` flag
+**File:** `internal/task/hooks.go`
 
-### Schema
-Add column via migration in `storage.Open()` (same pattern as `project` and `ttl_seconds`):
+**Problem:** `runHook()` spawns `go execHook(...)` for each `.d/` entry with no `sync.WaitGroup`. When the main process exits (after `os.Exit` or `return`), goroutines are killed mid-flight. Production hooks (Slack, webhooks) silently drop.
 
+**Fix:** Introduce a `HookRunner` struct with a `sync.WaitGroup`.
+
+```go
+type HookRunner struct {
+    wg sync.WaitGroup
+}
+
+func NewHookRunner() *HookRunner {
+    return &HookRunner{}
+}
+
+// runHook now takes a *HookRunner. Single-file hooks run synchronously (existing behavior).
+// .d/ hooks register with wg.Add(1) and run in goroutines.
+func runHook(runner *HookRunner, hooksDir, eventType string, payload any) {
+    // ... existing logic ...
+    // For .d/ entries:
+    runner.wg.Add(1)
+    go func() {
+        defer runner.wg.Done()
+        execHook(...)
+    }()
+}
+
+// Wait blocks until all .d/ hooks finish, with a timeout.
+// Called by CLI commands before os.Exit.
+// Timeout must exceed execHook's 30s context timeout (35s = 30s + 5s margin).
+func (r *HookRunner) Wait(timeout time.Duration) {
+    done := make(chan struct{})
+    go func() {
+        r.wg.Wait()
+        close(done)
+    }()
+    select {
+    case <-done:
+    case <-time.After(timeout):
+        fmt.Fprintf(os.Stderr, "hook runner timeout after %v\n", timeout)
+    }
+}
+
+// Usage: svc.HookRunner.Wait(35 * time.Second)
+```
+
+**Changes:**
+- `internal/task/hooks.go` — add `HookRunner` struct, refactor `runHook` signature
+- `internal/task/service.go` — embed `*HookRunner` in `Service`, pass to `runHook` calls
+- `cmd/kanban/main.go` — add `defer svc.HookRunner.Wait(35*time.Second)` after command dispatch (single canonical location)
+- Constructor `NewService` — accept `*HookRunner`
+
+---
+
+## Item 2: Ad-Hoc `pragma_table_info` → Versioned Migration Table
+
+**File:** `internal/storage/sqlite.go` (lines ~77-145)
+
+**Problem:** 6 inline `SELECT COUNT(*) FROM pragma_table_info(...)` checks + `ALTER TABLE` / `DROP INDEX` calls hard-coded in `Open()`. Adding migration #7 means another ad-hoc block. Unmaintainable, race-prone on first startup, and the ordering is implicit (line order).
+
+**Fix:** Introduce `schema_migrations` table and a numbered migration runner.
+
+**Schema addition** (`schema.sql`):
 ```sql
-ALTER TABLE tasks ADD COLUMN depends_on TEXT;
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    INTEGER PRIMARY KEY,
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-`depends_on` stores comma-separated task IDs (e.g., `TASK-8,TASK-9`) or NULL.
-
-**Backwards compatibility**: Migration runs at `Open()`, safe for existing DBs. Old rows have `depends_on = NULL` which the guard treats as "no deps" — zero behavior change.
-
-**Rollback**: SQLite doesn't support `DROP COLUMN` before 3.35. If needed: copy table to temp, recreate without column, copy back. Unlikely to be needed — the column is read-only for existing tasks.
-
-### Model
+**Migration runner** (new file `internal/storage/migrations.go`):
 ```go
-type Task struct {
-    // ...existing fields
-    DependsOn *string `json:"depends_on"` // comma-separated dependency IDs, nullable
+// migration is a numbered step. Can be SQL string or Go func for complex migrations.
+type migration struct {
+    version int
+    upSQL   string           // for pure SQL migrations
+    upFunc  func(*sql.Tx) error // for Go-based migrations (e.g., data transforms)
+}
+
+var migrations = []migration{
+    {1, `DROP TABLE IF EXISTS task_seq;`, nil},
+    // ^ old task_seq had no PK, allows duplicates. v1 task_seq in schema.sql replaces it.
+    {2, `ALTER TABLE tasks ADD COLUMN project TEXT NOT NULL DEFAULT 'default';`, nil},
+    {3, `ALTER TABLE events ADD COLUMN ttl_seconds INTEGER DEFAULT 259200;
+         CREATE INDEX IF NOT EXISTS idx_events_ttl ON events(created_at, ttl_seconds);`, nil},
+    {4, `ALTER TABLE tasks ADD COLUMN depends_on TEXT;`, nil},
+    {5, `ALTER TABLE tasks ADD COLUMN claimed_by TEXT;`, nil},
+    {6, `DROP INDEX IF EXISTS idx_tasks_claim;
+         CREATE INDEX IF NOT EXISTS idx_tasks_claim
+           ON tasks(role_boundary, status, priority, created_at, lease_until);
+         CREATE INDEX IF NOT EXISTS idx_tasks_claim_project
+           ON tasks(role_boundary, project, status, priority, created_at, lease_until);`, nil},
+    {7, "", migrateDependsOnToJoinTable}, // Go func: split TEXT, insert, drop column
+}
+
+func migrateDependsOnToJoinTable(tx *sql.Tx) error {
+    // 1. Read all tasks with depends_on TEXT
+    rows, err := tx.Query(`SELECT id, depends_on FROM tasks WHERE depends_on IS NOT NULL`)
+    // 2. For each task, split on comma, insert into task_dependencies
+    // 3. ALTER TABLE tasks DROP COLUMN depends_on (SQLite 3.35+)
+    // 4. Return error if any step fails (tx rolls back)
 }
 ```
+```
 
-### Claim guard in `ClaimNext`
-**Key change**: `ClaimNext` currently issues a single atomic SQL update (SELECT + UPDATE in one statement) — impossible to double-claim. The new approach uses a Serializable transaction with SELECT-then-UPDATE: same correctness guarantee, but the concurrency contract is now explicit (Serializable isolation, not implicit atomicity). This is the correct tradeoff — it enables dep filtering while preserving safety.
-
-After Step 4, `ClaimNext` is refactored to call `ClaimBatch(ctx, agent, role, project, 1)` and return the first result. This means one code path, one test suite, one place for dep bugs.
-
-**scanTask update**: `scanTask()` in `helpers.go` currently scans 10 fields. `depends_on` makes 11. Add `depends_on` to `scanTask()` — the migration runs at `Open()`, so by the time any service method runs, the column exists.
-
-**depends_on trade-off**: Comma-separated TEXT works for the forward query ("can I claim this task?") but makes reverse queries ("what tasks depend on TASK-8?") require a LIKE scan. No FK constraint. Pragmatic choice — acceptable for the dependency fan-out sizes expected here.
-
+**In `Open()`**, after schema apply:
 ```go
-// ClaimNext delegates to ClaimBatch after Step 4.
-// Until then, inline the same SELECT-then-UPDATE logic with count=1.
-func (s *Service) ClaimNext(ctx context.Context, agent, role, project string) (Task, error) {
-    tasks, err := s.ClaimBatch(ctx, agent, role, project, 1)
-    if err != nil || len(tasks) == 0 {
-        return Task{}, err
-    }
-    return tasks[0], nil
+current := getCurrentVersion(db) // SELECT MAX(version) FROM schema_migrations
+
+// Fresh-DB seed: if schema_migrations is empty but tasks table exists,
+// the DB was created from current schema.sql — seed with all migration versions.
+if current == 0 && tableExists(db, "tasks") {
+    seedMigrations(db, len(migrations)) // INSERT 1..7
 }
 
-func hasUnmetDeps(tx *sql.Tx, t Task) bool {
-    if t.DependsOn == nil || *t.DependsOn == "" {
-        return false
+for _, m := range migrations {
+    if m.version <= current {
+        continue
     }
-    parts := strings.Split(*t.DependsOn, ",")
-    var ids []string
-    for _, p := range parts {
-        if id := strings.TrimSpace(p); id != "" { // skip whitespace-only entries
-            ids = append(ids, id)
-        }
-    }
-    if len(ids) == 0 {
-        return false
-    }
-    // Build dynamic IN clause
-    placeholders := make([]string, len(ids))
-    args := make([]any, len(ids))
-    for i, id := range ids {
-        placeholders[i] = "?"
-        args[i] = id
-    }
+    // apply m.up (SQL string or Go func)
+    // INSERT INTO schema_migrations(version) VALUES(m.version)
+}
+
+// Preserve task_seq seeding: runs unconditionally on every Open() after migrations.
+// Re-seeds next_id from MAX(task number) in existing tasks table.
+_, _ = db.Exec(`UPDATE task_seq SET next_id = (
+    SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
+) WHERE id = 1`)
+```
+
+This replaces all 6 `pragma_table_info` blocks. Each migration runs exactly once, in order, in a single transaction.
+
+**Fresh-DB handling**: When `schema_migrations` is empty but `tasks` table exists, the DB was created from the current embedded schema — seed with versions 1-7 instead of replaying migrations.
+
+**task_seq preservation**: The seeding step runs on every `Open()` after migrations — ensures new tasks get unique IDs even after migration 1 drops/recreates `task_seq`.
+
+**Changes:**
+- `internal/storage/schema.sql` — add `schema_migrations` table
+- `internal/storage/sqlite.go` — remove ad-hoc migration blocks, call `runMigrations(db)`
+- New `internal/storage/migrations.go` — migration definitions + runner
+
+---
+
+## Item 3: Comma-Separated `depends_on` TEXT → Join Table
+
+**Files:** `internal/storage/schema.sql`, `internal/task/model.go`, `internal/task/service.go`, `internal/task/claim.go`
+
+**Problem:** `Task.DependsOn *string` stores comma-separated IDs. `hasUnmetDeps()` does `strings.Split` + iterative DB lookups. Cycle detection in `Dispatch()` does N separate queries per edge. At 500+ tasks with deep chains this is O(n²) string scans and O(depth) round-trips. No FK constraints. Reverse query ("what depends on TASK-8?") requires a LIKE scan.
+
+**Fix:**
+1. Create `task_dependencies` join table:
+```sql
+CREATE TABLE IF NOT EXISTS task_dependencies (
+    task_id           TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, depends_on_task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_deps_reverse
+    ON task_dependencies(depends_on_task_id);
+```
+
+2. **Migration** (item 7 in migration table): read existing `depends_on` TEXT, split on comma, insert into `task_dependencies`, then `ALTER TABLE tasks DROP COLUMN depends_on` (SQLite 3.35+).
+
+3. **Replace `Task.DependsOn *string`** with a method or helper. Remove the field from `Task` struct (or keep it as deprecated). Add `LoadDeps(tx, taskID) ([]string, error)` to fetch from join table.
+
+4. **Rewrite `hasUnmetDeps()`**:
+```go
+func hasUnmetDeps(tx *sql.Tx, taskID string) (bool, error) {
     var count int
-    // err intentionally ignored — returns false (claimable) on query failure; outer tx will catch
-    tx.QueryRow(
-        `SELECT COUNT(*) FROM tasks WHERE id IN (`+strings.Join(placeholders, ",")+`) AND status != 'DONE'`,
-        args...,
+    err := tx.QueryRow(
+        `SELECT COUNT(*) FROM task_dependencies d
+          JOIN tasks t ON t.id = d.depends_on_task_id
+         WHERE d.task_id = ? AND t.status != 'DONE'`,
+        taskID,
     ).Scan(&count)
-    return count > 0
+    if err != nil {
+        return false, fmt.Errorf("check deps for %s: %w", taskID, err)
+    }
+    return count > 0, nil
 }
 ```
 
-**Concurrency test to add**: Two goroutines each call `ClaimNext` concurrently; one task has unmet deps. Assert: exactly one task claimed total, no double-claim, dep-blocked task remains TODO.
-
-### Dispatch update
-`Dispatch` accepts optional `--depends-on` flag (comma-separated task IDs). Stored as-is in the column.
-
-```bash
-kanban task dispatch \
-  --title "Build auth API" \
-  --priority 20 \
-  --role worker \
-  --depends-on "TASK-8"
+5. **Rewrite cycle detection in `Dispatch()`** as a recursive CTE:
+```sql
+WITH RECURSIVE dep_chain(id) AS (
+    SELECT depends_on_task_id FROM task_dependencies WHERE task_id = ?
+    UNION ALL
+    SELECT d.depends_on_task_id
+      FROM task_dependencies d
+      JOIN dep_chain c ON c.id = d.task_id
+)
+SELECT COUNT(*) FROM dep_chain WHERE id = ?
 ```
+Checks if the new task's dependency chain circles back to itself.
 
-### Verification
-```bash
-# 1. Dispatch two tasks
-kanban task dispatch --title "Scaffold" --role worker
-kanban task dispatch --title "Deploy" --role worker --depends-on "TASK-<scaffold-id>"
-# 2. Claim for worker role → claims Scaffold, skips Deploy
-kanban task claim-next --agent test --role worker
-# 3. Complete Scaffold
-kanban task complete <scaffold-id> --agent test
-# 4. Claim again → now claims Deploy
-kanban task claim-next --agent test --role worker
-```
+**Changes:**
+- `internal/storage/schema.sql` — add `task_dependencies` table
+- `internal/task/model.go` — remove `DependsOn *string` from `Task` struct
+- `internal/task/service.go` — rewrite `Dispatch()` cycle detection with CTE, change signature to `dependsOn []string`
+- `internal/task/claim.go` — rewrite `hasUnmetDeps(tx, taskID)` to use join table; update `ClaimByID` to call `LoadDeps(tx, id)`
+- `internal/task/helpers.go` — update `scanTask()` and `reRead()` to skip `depends_on` column
+- `cmd/kanban/dispatch.go` — `--depends-on` flag: parse comma-separated input to `[]string`, pass to `Dispatch()`
+- `cmd/kanban/task.go` — `view` and `search` output: call `LoadDeps()` or omit `depends_on` display
+- `internal/storage/migrations.go` — add migration 7 (Go func: TEXT → join table data migration)
 
 ---
 
-## Step 2: `extend-lease` — Lease renewal (PM#5)
+## Item 4: `ApproveAll` First-Error Bailout → Per-Task Diagnostics
 
-### Files changed
-- `internal/task/service.go` — new `ExtendLease` method
-- `cmd/kanban/update.go` — `extend-lease` CLI command
+**File:** `internal/task/service.go` — `ApproveAll()` method (~lines 500+)
 
-### Method
+**Problem:** Iterates IN_REVIEW tasks in a Serializable tx. First error (`checkSelfReview`, `insertEvent`) triggers `return fmt.Errorf(...)` → full tx rollback. All prior approvals in the loop are lost. Correct ACID but zero diagnostic value — operator can't see which tasks approved and which failed.
+
+**Fix:** Same pattern as `BatchComplete`: return `([]Task, []error)`.
+
 ```go
-func (s *Service) ExtendLease(ctx context.Context, id, agent string, minutes int) (Task, error) {
-    if minutes <= 0 { minutes = defaultLeaseMinutes }
-
-    var task Task
-    err := s.retryOnBusy(func() error {
-        res, err := s.db.Exec(
-            `UPDATE tasks
-                SET lease_until = datetime('now', '+' || ? || ' minutes'),
-                    updated_at = CURRENT_TIMESTAMP
-              WHERE id = ? AND assigned_agent = ?`,
-            minutes, id, agent,
-        )
-        // ... error handling same as LogProgress ...
-        task, err = s.View(ctx, id)
-        return err
-    })
-    return task, err
+func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task, []error) {
+    var approved []Task
+    var errs []error
+    // ... tx begin ...
+    // Collect per-task errors, continue loop on non-fatal errors
+    // Only tx.Begin/tx.Commit failures are fatal
+    return approved, errs
 }
 ```
 
-**No events, no hooks** — heartbeat extension is not a state transition. The updated `lease_until` is visible via `kanban task view <id>`.
+**Behavior:**
+- Self-review violation on TASK-3 → add error to `errs`, continue to TASK-4
+- Event insert failure on TASK-5 → add error to `errs`, continue
+- tx.Commit() failure → all went in or none (ACID), but operator sees `errs`
 
-### CLI
-```bash
-kanban task extend-lease TASK-101 --agent worker-1 --minutes 30
-```
-
-Defaults to `defaultLeaseMinutes` (15) if `--minutes` omitted.
-
-### Verification
-```bash
-# 1. Claim a task → lease_until is now + 15 min
-kanban task claim-next --agent test --role worker
-# 2. Extend to 60 min
-kanban task extend-lease <id> --agent test --minutes 60
-# 3. Verify extension
-kanban task view <id> | jq '.task.lease_until'
-```
+**Changes:**
+- `internal/task/service.go` — change return signature, add per-task error collection
+- `cmd/kanban/review.go` — update handler to print success count + error list
 
 ---
 
-## Step 3: Cross-agent review gate (PM#3)
+## Item 5: Events/CDC Polling Undocumented in LLM Ref
 
-### Files changed
-- `internal/task/review.go` — one check in `ReviewApprove` and `ReviewReject`
+**File:** `internal/bootstrap/embed/skills/kanban.md`
 
-### Configurability
+**Problem:** The `events` table and hook CDC mechanism exist but the skill file does not mention them. Agents reading `kanban.md` cannot discover event-driven integration patterns without reading Go source code.
 
-The gate is on by default but can be disabled for small single-agent projects via env var (matches the `KANBAN_DB` pattern already in the codebase — no TOML parser needed):
+**Fix:** Add an "Event-Driven Hooks & CDC" section to `kanban.md`:
 
-```bash
-KANBAN_ALLOW_SELF_REVIEW=true kanban task approve <id> --agent worker-1
-```
+```markdown
+## Event-Driven Hooks & CDC
 
-Read with `os.Getenv("KANBAN_ALLOW_SELF_REVIEW") == "true"` before calling `checkSelfReview`. When set, `checkSelfReview` returns `nil` immediately.
+### Events Table
 
-### Logic
-Query the history table for the last agent who claimed the task:
+Every state transition writes to the `events` table — an append-only CDC log:
 
 ```sql
-SELECT agent FROM history
- WHERE task_id = ?
-   AND action = 'CLAIM'
- ORDER BY id DESC LIMIT 1
+CREATE TABLE events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    event_type  TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    ttl_seconds INTEGER DEFAULT 259200  -- 3 days; NULL = never expires
+);
 ```
 
-If result matches the reviewing agent → return `ErrSelfReview`.
+### Polling for Integration
 
-### Edge case: no CLAIM history
-Tasks created directly in `IN_REVIEW` (manual or script) have no CLAIM entry. Handle gracefully — allow the review:
+Agents or external systems can poll for new events:
 
-```go
-var ErrSelfReview = &ExitError{Code: 2, Message: "cannot review your own task — another agent must approve"}
-
-func checkSelfReview(tx *sql.Tx, id, agent string) error {
-    var claimingAgent sql.NullString
-    err := tx.QueryRow(
-        `SELECT agent FROM history WHERE task_id=? AND action='CLAIM' ORDER BY id DESC LIMIT 1`,
-        id,
-    ).Scan(&claimingAgent)
-
-    if err == sql.ErrNoRows {
-        return nil // no CLAIM history — task was created directly in review, allow
-    }
-    if err != nil {
-        return err
-    }
-    if claimingAgent.Valid && claimingAgent.String == agent {
-        return ErrSelfReview
-    }
-    return nil
-}
+```sql
+SELECT id, event_type, payload FROM events
+ WHERE id > :last_seen_id
+ ORDER BY id ASC
+ LIMIT 100;
 ```
 
-### Implementation
-Add as first check inside the retry callback in both `ReviewApprove` and `ReviewReject`. Check `os.Getenv("KANBAN_ALLOW_SELF_REVIEW")` before calling.
+Events auto-expire after `ttl_seconds` (default 3 days). TTL cleanup runs during board operations.
 
-### Verification
-```bash
-# 1. Worker claims and completes a task
-kanban task claim-next --agent worker-1 --role worker
-kanban task complete <id> --agent worker-1 --review
-# 2. Same agent tries to approve → rejected
-kanban task approve <id> --agent worker-1
-# → Error: "cannot review your own task — another agent must approve"
-# 3. Different agent approves → OK
-kanban task approve <id> --agent reviewer-2
-# → Task marked DONE
-# 4. Disable gate for single-agent project
-KANBAN_ALLOW_SELF_REVIEW=true kanban task approve <id> --agent worker-1  # → OK
+### Event Types
+
+| Event | Trigger | Payload Fields |
+|-------|---------|----------------|
+| `task.created` | dispatch | task_id, title, project, priority, role_boundary |
+| `task.claimed` | claim | task_id, agent, title, project, priority, role_boundary |
+| `task.progress` | log-progress | task_id, agent, note_type |
+| `task.completed` | complete | task_id, agent, title |
+| `task.submitted_for_review` | complete --review | task_id, agent, title |
+| `task.blocked` | block | task_id, agent, reason |
+| `task.transferred` | transfer-claim | task_id, agent, from_agent |
+| `task.priority_updated` | batch set-priority | task_id, title, priority |
+| `task.project_updated` | batch set-project | task_id, title, project |
+| `review.approved` | approve | task_id, agent, title |
+| `review.rejected` | reject | task_id, agent, reason |
+
+### Hook Directory Layout
+
+Events also fire executable hooks on disk:
+
+```
+.kanban/hooks/
+├── task-created          ← synchronous, ordered
+├── task-completed        ← synchronous, ordered
+└── task-completed.d/     ← concurrent goroutines (async)
+    ├── slack
+    ├── metrics
+    └── dashboard
 ```
 
----
-
-## Step 4: `claim-next --count N` — Batch parallelism (PM#1)
-
-### Files changed
-- `internal/task/claim.go` — `ClaimBatch` becomes the canonical implementation; `ClaimNext` delegates to it with `count=1`
-- `cmd/kanban/dispatch.go` — extend `claim-next` with `--count` flag
-
-### API design
-
-Instead of a separate `claim-batch` command, extend the existing `claim-next`:
-
-```bash
-kanban task claim-next --agent "worker-1" --role worker --count 3
-```
-
-`--count 1` (default) → existing single-task behavior, returns single task JSON.
-`--count N` → returns JSON array of N tasks.
-
-This keeps the API surface clean — one command, one concept.
-
-### SQLite batch-claim: select-then-update (not CTE)
-SQLite flattens LIMIT in subquery-UPDATE. Use explicit two-step.
-
-**Design choice**: Fetch ALL eligible candidates (up to 100), filter in Go for unmet deps, then claim up to N. If fewer than N remain after filtering, return what's available (no partial failure).
-
-Note: `_` in pseudo-code below represents error handling omitted for brevity — actual implementation must check all errors (see existing `ClaimNext` for the pattern).
-
-```go
-func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, count int) ([]Task, error) {
-    tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-    if err != nil { return nil, err }
-    defer tx.Rollback()
-
-    // Step 1: select ALL eligible candidates (cap at 100 to avoid OOM)
-    maxFetch := count * 5
-    if maxFetch > 100 { maxFetch = 100 }
-
-    rows, _ := tx.Query(`
-        SELECT id, title, status, role_boundary, project, priority,
-               assigned_agent, lease_until, created_at, updated_at, depends_on
-          FROM tasks
-         WHERE role_boundary = ?
-           AND project = ?
-           AND (status = 'TODO'
-                OR (status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP))
-         ORDER BY priority ASC, created_at ASC
-         LIMIT ?`, role, project, maxFetch,
-    )
-
-    // Filter out tasks with unmet deps
-    var claimable []Task
-    for rows.Next() {
-        t, _ := scanTask(rows)
-        if hasUnmetDeps(tx, t) {
-            continue
-        }
-        claimable = append(claimable, t)
-        if len(claimable) >= count {
-            break
-        }
-    }
-
-    // Step 2: claim up to `count` tasks in same transaction
-    claimed := make([]Task, 0, len(claimable))
-    for _, t := range claimable[:min(count, len(claimable))] {
-        res, _ := tx.Exec(
-            `UPDATE tasks SET status='IN_PROGRESS', assigned_agent=?,
-             lease_until=datetime('now','+' || ? || ' minutes'), updated_at=CURRENT_TIMESTAMP
-             WHERE id=? AND status IN ('TODO','IN_PROGRESS')`,
-            agent, defaultLeaseMinutes, t.ID,
-        )
-        n, _ := res.RowsAffected()
-        if n == 0 { continue } // race lost, skip
-
-        tx.Exec(`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'CLAIM')`, t.ID, agent)
-        insertEvent(tx, "task.claimed", EventPayload{TaskID: t.ID, Agent: agent, Title: t.Title})
-        claimed = append(claimed, t)
-    }
-
-    if err := tx.Commit(); err != nil {
-        return nil, fmt.Errorf("batch claim commit: %w", err)
-    }
-
-    // Fire hooks outside tx
-    for _, t := range claimed {
-        runHook(s.hooksDir, "task.claimed", EventPayload{TaskID: t.ID, Agent: agent, Title: t.Title})
-    }
-    return claimed, nil
-}
-```
-
-### Verification
-```bash
-# 1. Dispatch 5 independent tasks
-# 2. Claim 3 at once
-kanban task claim-next --agent worker-bot --role worker --count 3
-# → Returns JSON array of 3 tasks
-# → 3 become IN_PROGRESS, 2 remain TODO
-kanban task search --status TODO | jq length  # → 2
+- Single-file hooks run synchronously and complete before the command returns.
+- `.d/` directory hooks run concurrently in goroutines with a 30s timeout.
+- Hook receives JSON event on stdin: `{"event": "task.completed", "payload": {...}}`
+- Must be executable (`chmod +x`).
+- Non-zero exit is logged to stderr but does not fail the operation.
+- Missing hook or missing `.d/` directory is silently ignored.
+- The runner waits up to 35s for `.d/` hooks before process exit (to prevent mid-flight goroutine killing — exceeds 30s execHook timeout).
 ```
 
 ---
 
-
-## Step 5: Optional subagent delegation
-
-### Files changed (agent/skill markdown — no Go code)
-- `internal/bootstrap/embed/agents/pi/manager.md` — add `manager_mode` config, parallel vs serial
-- `internal/bootstrap/embed/agents/pi/worker.md` — update for claim-next --count + extend-lease
-- `internal/bootstrap/embed/agents/pi/reviewer.md` — update for cross-agent gate awareness
-- `internal/bootstrap/embed/skills/manager/approve-plan.md` — document both modes
-- `internal/bootstrap/embed/skills/worker/complete-task.md` — extend-lease instruction
-- `internal/bootstrap/embed/skills/worker/claim-next-task.md` — mention --count as parallel path
-
-### Design
-
-**Don't force parallelism.** Many projects want a single manager + single worker. Make it a config:
-
-```yaml
-# .kanban/config.toml
-[manager]
-mode = "serial"   # or "parallel"
-```
-
-- `serial` (default): manager executes tasks itself, one at a time. Works fine for small projects.
-- `parallel`: manager uses `claim-next --count N` + subagent-creator to spawn parallel workers.
-
-### Manager agent update — mode-aware
-
-```
-You are a kanban manager agent.
-
-manager_mode = serial (default):
-  Plan → dispatch tasks → claim them yourself → execute one at a time
-
-manager_mode = parallel:
-  Plan → dispatch tasks → claim-next --count N → spawn N worker subagents in parallel
-  You NEVER execute tasks in parallel mode — only delegate.
-```
-
-### Worker agent update — claim-next --count + extend-lease awareness
-
-```
-You execute individual tasks claimed from the kanban board.
-
-For long-running work (>15 min), periodically run:
-  kanban task extend-lease <task-id> --agent <name> --minutes 30
-```
-
-### Reviewer agent update — cross-agent gate awareness
-
-```
-You review tasks submitted for review. You MUST NOT review tasks you claimed.
-The system enforces this: if you try, it will reject with "cannot review your own task."
-```
-
-### Post-merge: regenerate skills
-```bash
-kanban init --harness pi
-```
-
----
-
-## Step 6: Project env auto-detection (PM#8)
-
-### Files changed
-- `cmd/kanban/config.go` — `resolveConfig` logic
-
-### Rule
-1. If `--db` flag explicitly passed (not the default) → use it.
-2. Else if `KANBAN_DB` env var set → use it.
-3. Else → walk up from `os.Getwd()` looking for `.kanban/` directory. First hit wins.
-
-```go
-func findProjectRoot() string {
-    dir, _ := os.Getwd()
-    for dir != "/" && dir != "." {
-        if _, err := os.Stat(filepath.Join(dir, ".kanban")); err == nil {
-            return filepath.Join(dir, ".kanban", "kanban.db")
-        }
-        dir = filepath.Dir(dir)
-    }
-    return ".kanban/kanban.db"
-}
-```
-
-Called only as fallback when no explicit path + no env var.
-
-### Subagent benefit
-A subagent spawned in any subdirectory of a kanban project auto-finds the DB. No more `KANBAN_DB` manual override needed.
-
-### Verification
-```bash
-cd ./deeply/nested/subdir
-kanban task search  # finds the DB in parent .kanban/ automatically
-kanban task search --db .kanban/kanban.db  # explicit path still works
-KANBAN_DB=/custom/path kanban task search  # env var still overrides
-```
-
----
-
-## Step 7: `kanban status --burndown` — Progress visibility (PM#7)
-
-### Files changed
-- `internal/task/queries.go` — add `Burndown` method
-- `cmd/kanban/view.go` — `status` subcommand with `--burndown` and `--json` flags
-
-### Data
-```go
-type BurndownStats struct {
-    ByStatus    map[string]int `json:"by_status"`
-    ByRole      map[string]int `json:"by_role"`
-    Total       int            `json:"total"`
-    DoneCount   int            `json:"done_count"`
-    PercentDone float64        `json:"percent_done"`
-}
-```
-
-### Output: table (human) or JSON (pipeable)
-Default output is a human-readable table. Add `--json` flag for machine parsing.
-
-```bash
-kanban status           # human table, counts by status + role
-kanban status --json    # same data as JSON
-kanban status --burndown # human table with % charts
-```
-
-Table output:
-```
-Status               Count
-───────────────────────────
-TODO                 8
-IN_PROGRESS          3
-BLOCKED              1
-IN_REVIEW            2
-DONE                 6
-───────────────────────────
-Total:    20  │  Done: 6  │  30% complete
-
-By Role:
-worker     14
-reviewer    6
-```
-
-### Implementation
-New `Burndown()` method reuses existing `Stats()` query but adds formatting. The `stats` subcommand becomes a `status` subcommand. Backwards compatible: `kanban task stats` still works (alias).
-
-### Verification
-```bash
-# After dispatching 10 tasks, completing 3:
-kanban status
-# → TODO: 7, DONE: 3, 30% complete
-kanban status --json | jq '.percent_done'  # → 30
-```
-
----
-
-## Step 8: `kanban plan lint` — Catch bad plans before execution
-
-### Files changed
-- `internal/task/lint.go` — new `LintPlan` function
-- `cmd/kanban/lint.go` — `plan lint` CLI command
-
-### What it checks
-
-```bash
-kanban plan lint          # lint all tasks on the board
-kanban plan lint --json   # machine-readable output
-```
-
-Checks run against the current board state:
-
-| Check | Example warning | Note |
-|-------|----------------|------|
-| Unknown dependency | `WARN: TASK-12 depends on unknown task TASK-99` | |
-| Dependency cycle | `ERROR: Cycle detected: TASK-3 → TASK-5 → TASK-3` | |
-| Task with no role | `WARN: TASK-7 has no role_boundary set` | Schema enforces NOT NULL, so this catches empty string `""` only |
-
-Dropped: "blocked by nonexistent task" — schema has no `blocked_by` column; BLOCKED status uses free-text notes, not task refs. No reliable way to parse blocker IDs.
-
-### Output
-
-```
-WARN  TASK-12  depends on unknown task TASK-99
-ERROR TASK-3   cycle detected: TASK-3 → TASK-5 → TASK-3
-WARN  TASK-7   no role_boundary set
-
-3 issues found (1 error, 2 warnings)
-```
-
-Exits 0 if no errors (warnings are OK). Exits 1 if any errors.
-
-### Implementation
-
-```go
-type LintIssue struct {
-    TaskID   string `json:"task_id"`
-    Severity string `json:"severity"` // "error" or "warn"
-    Message  string `json:"message"`
-}
-
-func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, error) {
-    // 1. Load all tasks for project
-    // 2. Build dependency graph
-    // 3. Check each rule: unknown deps, cycles (DFS), missing roles, stale blockers
-    // 4. Return sorted issues (errors first)
-}
-```
-
-Cycle detection uses iterative DFS — no recursion, no stack overflow on deep chains.
-
-### Verification
-```bash
-# 1. Dispatch tasks with bad dependency
-kanban task dispatch --title "Deploy" --role worker --depends-on "TASK-99"
-# 2. Lint → catches it
-kanban plan lint
-# → WARN TASK-X depends on unknown task TASK-99
-# → 1 issue found (0 errors, 1 warning)
-```
-
----
-
-## Step 9: `approve-plan --all` flag (PM#4)
-
-### Files changed (skill markdown only)
-- `internal/bootstrap/embed/skills/manager/approve-plan.md`
-
-### Change
-Update `approve-plan.md` to say: "If the user passes `--all`, dispatch every task in the proposal regardless of checkbox state. Otherwise, only dispatch `[x]` checked items."
-
-No Go changes — pure skill behavior.
-
-### Verification
-```bash
-# Approve all tasks in a plan, ignoring checkboxes
-/approve-plan --all
-# → dispatches every task in the proposal
-```
-
----
-
-## Summary of changes
-
-| Release | Step | Change | Files | Verification |
-|---------|------|--------|-------|--------------|
-| v0.4 | 1 | `depends_on` | `model.go`, `schema.sql`, `claim.go`, `service.go`, `dispatch.go` | claim skips until dep done, then claims |
-| v0.4 | 2 | `extend-lease` | `service.go`, `update.go` | view shows extended `lease_until` |
-| v0.4 | 3 | Review gate (configurable) | `review.go`, `config.go` | same-agent approve rejected; gate disableable |
-| v0.5 | 4 | `claim-next --count N` | `claim.go`, `dispatch.go` | claim-next --count 3 returns 3 tasks |
-| v0.5 | 5 | Optional subagent delegation | 6 agent/skill `.md` files | manager serial by default, parallel opt-in |
-| v0.5 | 6 | Env auto-detection | `config.go` | subdir kanban finds parent `.kanban/` |
-| v0.6 | 7 | `kanban status` | `queries.go`, `view.go` | table output, `--json` flag |
-| v0.6 | 8 | `kanban plan lint` | `lint.go`, `cmd/kanban/lint.go` | catches unknown deps, cycles, missing roles |
-| v0.6 | 9 | `approve-plan --all` | `approve-plan.md` | dispatches all tasks, ignores checkboxes |
-
-All changes are incremental. No structural rewrites, no new dependencies, no breaking schema changes. The DB remains compatible with existing boards. Migration runs at `storage.Open()` — no manual step needed.
-
----
-
-## What we're skipping (for now)
-
-- **Worker discovery / load balancing** — a coordinator process. Defer until `claim-next --count N` is proven.
-- **Cycle-time metrics** — needs timestamps per transition. Schema change. Defer.
-- **.env file extension** — MCP host limitation, not ours to fix.
-- **Dependency visualization** — nice-to-have, deferred to v0.6+.
+## Summary
+
+| # | Item | Primary Files | Schema Change | Breaking |
+|---|------|--------------|---------------|----------|
+| 1 | Hook goroutine race | `hooks.go`, `service.go`, `cmd/*.go` | No | No |
+| 2 | Migration table | `sqlite.go`, new `migrations.go`, `schema.sql` | Yes (`schema_migrations`) | No |
+| 3 | Dependency join table | `schema.sql`, `model.go`, `claim.go`, `service.go` | Yes (`task_dependencies`, drop `depends_on`) | Yes — v1 break |
+| 4 | ApproveAll diagnostics | `service.go`, `cmd/kanban/review.go` | No | No |
+| 5 | CDC documentation | `kanban.md` | No | No |
+
+**Execution order:** 1 → 2 → 3 → 4 → 5.
+
+Items 1 and 4 have no schema dependencies — can be done first or in parallel.
+Item 2 must land before item 3 (migration infra needed for 7th migration).
+Item 3 is the highest-value structural change but depends on item 2.
+Item 5 is pure documentation — can land any time, listed last for ordering discipline.

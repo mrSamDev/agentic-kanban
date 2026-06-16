@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     assigned_agent TEXT,                             -- current lease holder, nullable
     lease_until   DATETIME,                          -- nullable when unclaimed
     claimed_by    TEXT,                               -- immutable snapshot of who claimed it (for self-review check)
+    depends_on    TEXT,                               -- comma-separated dependency IDs (deprecated, use task_dependencies)
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -65,3 +66,18 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_ttl
     ON events(created_at, ttl_seconds);
+
+-- Dependency graph: join table replacing comma-separated depends_on TEXT.
+CREATE TABLE IF NOT EXISTS task_dependencies (
+    task_id           TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, depends_on_task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_deps_reverse
+    ON task_dependencies(depends_on_task_id);
+
+-- Migration tracking: records which numbered migrations have been applied.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    INTEGER PRIMARY KEY,
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

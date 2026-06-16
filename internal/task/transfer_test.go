@@ -17,7 +17,7 @@ func TestDispatch_CycleDetected(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	s := NewService(db.DB, db.Reader(), 0, "")
+	s := NewService(db.DB, db.Reader(), 0, "", nil)
 
 	// Chain: 1→2→3
 	t1, _ := s.Dispatch(t.Context(), "one", "worker", "default", 10, nil)
@@ -25,7 +25,7 @@ func TestDispatch_CycleDetected(t *testing.T) {
 	t3, _ := s.Dispatch(t.Context(), "three", "worker", "default", 30, &t2.ID)
 
 	// Inject back edge: 1→2→3→1 creates a cycle
-	db.Exec("UPDATE tasks SET depends_on = ? WHERE id = ?", t3.ID, t1.ID)
+	db.Exec("INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES(?, ?)", t1.ID, t3.ID)
 
 	// Dispatching a task that depends on the cycle should fail.
 	_, err = s.Dispatch(t.Context(), "four", "worker", "default", 40, &t1.ID)

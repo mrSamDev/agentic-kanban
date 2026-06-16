@@ -1,0 +1,88 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+  title="Install — agentic-kanban"
+  description="Install agentic-kanban — curl pipe, binary releases, or build from source"
+>
+  <h1 slot="header">Installation</h1>
+  <p class="docs-lede" slot="header">Get agentic-kanban running in under a minute. One Go binary, zero dependencies.</p>
+
+  <h2>Quick install (curl pipe)</h2>
+  <p>The fastest way for trusted environments:</p>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
+    <pre><code>curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh</code></pre>
+  </div>
+  <p>This downloads the latest binary for your OS/arch and places it in <code>/usr/local/bin</code>. Requires <code>curl</code> and <code>sh</code>.</p>
+
+  <h3>For production — pin a version</h3>
+  <p>Use the <a href="https://github.com/mrSamDev/agentic-kanban/releases">GitHub Releases</a> page to download a specific version and verify the checksum:</p>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
+    <pre><code># Download a specific release
+curl -L -o kanban https://github.com/mrSamDev/agentic-kanban/releases/download/v0.1.12/kanban_linux_amd64
+chmod +x kanban
+./kanban --version
+
+# Verify checksum (compare against the release page)
+sha256sum kanban</code></pre>
+  </div>
+
+  <h2>Build from source</h2>
+  <p>Requires Go 1.24 or later. Pure Go — no CGo needed.</p>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
+    <pre><code>git clone https://github.com/mrSamDev/agentic-kanban.git
+cd agentic-kanban
+go build -o kanban ./cmd/kanban/
+./kanban --version</code></pre>
+  </div>
+
+  <h2>Initialize a project</h2>
+  <p>After installing, scaffold a new kanban project:</p>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
+    <pre><code>cd your-project
+kanban init
+
+# Or with a plan file and harness:
+kanban init --harness pi --plan plan.md</code></pre>
+  </div>
+  <p>This creates <code>.kanban/</code> with a SQLite database, agent <code>.md</code> files, and embedded skill files. See <a href="/agentic-kanban/commands/">Commands reference</a> for <code>init</code> options.</p>
+
+  <h2>What gets created</h2>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>tree</b></div>
+    <pre><code>.kanban/
+├── kanban.db          # SQLite database (coordination state)
+├── agents/
+│   ├── manager.md     # Manager agent definition
+│   ├── worker.md      # Worker agent definition
+│   └── reviewer.md    # Reviewer agent definition
+├── skills/
+│   ├── INDEX          # Skill index
+│   ├── manager/       # Manager protocol skills
+│   ├── worker/        # Worker protocol skills
+│   └── reviewer/      # Reviewer protocol skills
+└── hooks/             # Event hooks (optional, create as needed)</code></pre>
+  </div>
+
+  <h2>Upgrading</h2>
+  <p>Re-run the curl install to get the latest binary. The database schema is automatically migrated on open — no manual steps. To check your current version:</p>
+  <div class="terminal">
+    <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
+    <pre><code>kanban --version</code></pre>
+  </div>
+
+  <h2>Troubleshooting</h2>
+  <h3>"command not found"</h3>
+  <p>The installer places the binary in <code>/usr/local/bin</code>. Ensure it&rsquo;s in your <code>PATH</code>. If you lack permissions, try <code>sudo</code> or install to <code>~/.local/bin</code>.</p>
+
+  <h3>Build fails</h3>
+  <p>Ensure Go 1.24+ is installed. Run <code>go version</code> to check. If you see CGo errors, the project uses <code>modernc.org/sqlite</code> which is a pure-Go SQLite implementation — CGo is not required. File an issue if it persists.</p>
+
+  <h3>Database locked</h3>
+  <p>If you see <code>database is locked</code> errors, another kanban process is holding a write lock. The built-in retry loop (100ms/200ms/400ms backoff) handles transient contention. For persistent locks, check for stuck processes.</p>
+</DocsLayout>

@@ -28,13 +28,13 @@ func newTestDB(t *testing.T) *storage.DB {
 
 func newTestService(t *testing.T) *Service {
 	db := newTestDB(t)
-	return NewService(db.DB, db.Reader(), 0, "")
+	return NewService(db.DB, db.Reader(), 0, "", nil)
 }
 
 func newTestServiceWithHooks(t *testing.T, hooksDir string) *Service {
 	t.Helper()
 	db := newTestDB(t)
-	return NewService(db.DB, db.Reader(), 0, hooksDir)
+	return NewService(db.DB, db.Reader(), 0, hooksDir, nil)
 }
 
 func newBenchDB(b *testing.B) *storage.DB {
@@ -50,7 +50,7 @@ func newBenchDB(b *testing.B) *storage.DB {
 
 func newBenchService(b *testing.B) *Service {
 	db := newBenchDB(b)
-	return NewService(db.DB, db.Reader(), 0, "")
+	return NewService(db.DB, db.Reader(), 0, "", nil)
 }
 
 func TestDispatch(t *testing.T) {
@@ -1554,9 +1554,9 @@ func TestApproveAll(t *testing.T) {
 	// TASK-3 still TODO — not in review
 
 	// ApproveAll — should approve 2 tasks
-	tasks, err := s.ApproveAll(t.Context(), "bob", "")
-	if err != nil {
-		t.Fatal(err)
+	tasks, errs := s.ApproveAll(t.Context(), "bob", "")
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
 	}
 	if len(tasks) != 2 {
 		t.Fatalf("expected 2 approved, got %d", len(tasks))
@@ -1589,9 +1589,9 @@ func TestApproveAllFiltersByProject(t *testing.T) {
 	s.Complete(t.Context(), "TASK-2", "alice", true)
 
 	// ApproveAll only for project-a — should approve 1 task
-	tasks, err := s.ApproveAll(t.Context(), "bob", "project-a")
-	if err != nil {
-		t.Fatal(err)
+	tasks, errs := s.ApproveAll(t.Context(), "bob", "project-a")
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
 	}
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 approved (project-a), got %d", len(tasks))
@@ -1613,9 +1613,9 @@ func TestApproveAllNoTasksInReview(t *testing.T) {
 	s.Dispatch(t.Context(), "task", "worker", "default", 10, nil)
 	// Not submitted for review
 
-	tasks, err := s.ApproveAll(t.Context(), "bob", "")
-	if err != nil {
-		t.Fatal(err)
+	tasks, errs := s.ApproveAll(t.Context(), "bob", "")
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
 	}
 	if len(tasks) != 0 {
 		t.Fatalf("expected 0 approved (none in review), got %d", len(tasks))
@@ -1630,12 +1630,12 @@ func TestApproveAllRespectsSelfReview(t *testing.T) {
 	s.Complete(t.Context(), "TASK-1", "alice", true)
 
 	// alice tries to approve all — self-review should block
-	_, err := s.ApproveAll(t.Context(), "alice", "")
-	if err == nil {
+	_, errs := s.ApproveAll(t.Context(), "alice", "")
+	if len(errs) == 0 {
 		t.Fatal("expected self-review error")
 	}
-	if !strings.Contains(err.Error(), ErrSelfReview.Error()) {
-		t.Fatalf("expected ErrSelfReview, got %v", err)
+	if !strings.Contains(errs[0].Error(), ErrSelfReview.Error()) {
+		t.Fatalf("expected ErrSelfReview, got %v", errs[0])
 	}
 }
 
@@ -1647,9 +1647,9 @@ func TestApproveAllSelfReviewAllowedWithEnv(t *testing.T) {
 	s.ClaimNext(t.Context(), "alice", "worker", "")
 	s.Complete(t.Context(), "TASK-1", "alice", true)
 
-	tasks, err := s.ApproveAll(t.Context(), "alice", "")
-	if err != nil {
-		t.Fatal(err)
+	tasks, errs := s.ApproveAll(t.Context(), "alice", "")
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
 	}
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 approved, got %d", len(tasks))
@@ -1943,9 +1943,9 @@ func TestE2EFullWorkflowBatchClaim(t *testing.T) {
 
 	// Approve all (need env var since batch-bot claimed)
 	t.Setenv("KANBAN_ALLOW_SELF_REVIEW", "true")
-	approved, err := s.ApproveAll(t.Context(), "batch-bot", "")
-	if err != nil {
-		t.Fatalf("approve all: %v", err)
+	approved, errs := s.ApproveAll(t.Context(), "batch-bot", "")
+	if len(errs) > 0 {
+		t.Fatalf("approve all: %v", errs)
 	}
 	if len(approved) != 3 {
 		t.Fatalf("expected 3 approved, got %d", len(approved))

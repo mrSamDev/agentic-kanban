@@ -53,10 +53,12 @@ Worker-B calls claim-next and gets TASK-1.
 Tasks can depend on other tasks. A task with unmet dependencies cannot
 be claimed until all dependencies are DONE.
 
-- `depends_on`: Comma-separated task IDs (e.g., `TASK-1,TASK-3`)
+- Dependencies stored in `task_dependencies` join table (FK-enforced)
 - Claim checks: `claim-next` respects deps by default (`--respect-deps`)
 - No claim: if a dependency isn't DONE, the task is skipped for claiming
-- Plan lint: detects circular dependencies before dispatch
+- Plan lint: detects circular dependencies via DFS
+- Cycle detection: recursive CTE prevents circular dependency graphs at
+  dispatch time
 
 ## Roles
 
@@ -133,3 +135,74 @@ the orchestrator and use the collect-results pattern.
 - Events are append-only with TTL-based cleanup (default 3 days)
 - Foreign keys enforce referential integrity across tasks, notes, and
   history
+
+## Event-Driven Hooks & CDC
+
+### Events Table
+
+Every state transition writes to the `events` table — an append-only CDC log:
+
+```sql
+CREATE TABLE events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    event_type  TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    ttl_seconds INTEGER DEFAULT 259200  -- 3 days; NULL = never expires
+);
+```
+
+### Polling for Integration
+
+Agents or external systems can poll for new events:
+
+```sql
+SELECT id, event_type, payload FROM events
+ WHERE id > :last_seen_id
+ ORDER BY id ASC
+ LIMIT 100;
+```
+
+Events auto-expire after `ttl_seconds` (default 3 days). TTL cleanup runs
+during board operations.
+
+### Event Types
+
+| Event | Trigger | Payload Fields |
+|-------|---------|----------------|
+| `task.created` | dispatch | task_id, title, project, priority, role_boundary |
+| `task.claimed` | claim | task_id, agent, title, project, priority, role_boundary |
+| `task.progress` | log-progress | task_id, agent, note_type |
+| `task.completed` | complete | task_id, agent, title |
+| `task.submitted_for_review` | complete --review | task_id, agent, title |
+| `task.blocked` | block | task_id, agent, reason |
+| `task.transferred` | transfer-claim | task_id, agent, from_agent |
+| `task.priority_updated` | batch set-priority | task_id, title, priority |
+| `task.project_updated` | batch set-project | task_id, title, project |
+| `review.approved` | approve | task_id, agent, title |
+| `review.rejected` | reject | task_id, agent, reason |
+
+### Hook Directory Layout
+
+Events also fire executable hooks on disk:
+
+```
+.kanban/hooks/
+├── task-created          ← synchronous, ordered
+├── task-completed        ← synchronous, ordered
+└── task-completed.d/     ← concurrent goroutines (async)
+    ├── slack
+    ├── metrics
+    └── dashboard
+```
+
+- Single-file hooks run synchronously and complete before the command
+  returns.
+- `.d/` directory hooks run concurrently in goroutines with a 30s timeout.
+- Hook receives JSON event on stdin:
+  `{"event": "task.completed", "payload": {...}}`
+- Must be executable (`chmod +x`).
+- Non-zero exit is logged to stderr but does not fail the operation.
+- Missing hook or missing `.d/` directory is silently ignored.
+- The runner waits up to 35s for `.d/` hooks before process exit (exceeds
+  30s execHook timeout, preventing mid-flight goroutine killing).
