@@ -3,10 +3,13 @@ export interface Props {
   title: string;
   description: string;
   canonical?: string;
+  image?: string;
 }
 
-const { title, description, canonical } = Astro.props;
+const { title, description, canonical, image } = Astro.props;
 const canonicalUrl = canonical || `https://mrsamdev.github.io${Astro.url.pathname}`;
+const ogImage = image || 'https://mrsamdev.github.io/agentic-kanban/og-image.png';
+const siteName = 'agentic-kanban';
 ---
 
 <!DOCTYPE html>
@@ -17,11 +20,37 @@ const canonicalUrl = canonical || `https://mrsamdev.github.io${Astro.url.pathnam
   <meta name="description" content={description}>
   <meta name="theme-color" content="#f4f5f0">
   <link rel="icon" type="image/svg+xml" href="/agentic-kanban/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/agentic-kanban/favicon.ico">
   <title>{title}</title>
   <link rel="canonical" href={canonicalUrl}>
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content={canonicalUrl}>
+  <meta property="og:title" content={title}>
+  <meta property="og:description" content={description}>
+  <meta property="og:image" content={ogImage}>
+  <meta property="og:site_name" content={siteName}>
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content={title}>
+  <meta name="twitter:description" content={description}>
+  <meta name="twitter:image" content={ogImage}>
+
+  <!-- Google Fonts: non-blocking -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"></noscript>
+
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-XXXXXXXXXX');
+  </script>
   <link rel="stylesheet" href="/agentic-kanban/style.css">
   <script is:inline>(function(){var t=localStorage.getItem("theme")||(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"");if(t)document.documentElement.setAttribute("data-theme",t)})()</script>
 </head>

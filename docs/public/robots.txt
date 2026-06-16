@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mrsamdev.github.io/agentic-kanban/sitemap-index.xml
