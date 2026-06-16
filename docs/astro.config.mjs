@@ -25,16 +25,15 @@ export default defineConfig({
           url,
           changefreq: 'weekly',
           priority: isEnHome || isZhHome ? 1.0 : 0.8,
+          links: isEnHome || isZhHome
+            ? [
+                { url: 'https://mrsamdev.github.io/agentic-kanban/', lang: 'en' },
+                { url: 'https://mrsamdev.github.io/agentic-kanban/zh/', lang: 'zh' },
+                { url: 'https://mrsamdev.github.io/agentic-kanban/', lang: 'x-default' },
+              ]
+            : [],
         };
-        // Add hreflang alternates for translated homepages
-        if (isEnHome || isZhHome) {
-          entry.links = [
-            { url: 'https://mrsamdev.github.io/agentic-kanban/', rel: 'alternate', lang: 'en' },
-            { url: 'https://mrsamdev.github.io/agentic-kanban/zh/', rel: 'alternate', lang: 'zh' },
-            { url: 'https://mrsamdev.github.io/agentic-kanban/', rel: 'alternate', lang: 'x-default' },
-          ];
-        }
-        return entry;
+        return /** @type {import('@astrojs/sitemap').SitemapItem} */ (entry);
       },
     }),
   ],
