@@ -1,0 +1,40 @@
+---
+import { languages } from '../i18n/ui';
+import { getLangFromUrl, useTranslations } from '../i18n/utils';
+
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+---
+
+<nav class="lang-picker" aria-label="Language switcher">
+  {Object.entries(languages).map(([code, label]) => (
+    code === lang
+      ? <span class="lang-current" aria-current="page">{label}</span>
+      : <a href={`/agentic-kanban/${code === 'en' ? '' : code + '/'}`} class="lang-link">{label}</a>
+  ))}
+</nav>
+
+<style>
+  .lang-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+  }
+  .lang-current {
+    color: var(--accent);
+    font-weight: 600;
+    padding: 2px 6px;
+  }
+  .lang-link {
+    color: var(--muted);
+    text-decoration: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color .15s, background .15s;
+  }
+  .lang-link:hover {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+</style>

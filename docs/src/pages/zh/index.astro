@@ -1,0 +1,515 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { useTranslations } from '../../i18n/utils';
+
+const t = useTranslations('zh');
+---
+
+<BaseLayout
+  title="agentic-kanban — AI 智能体任务协调"
+  description="Agentic Kanban — 轻量级自治 AI 智能体协调协议。SQLite 驱动的任务协调，无需服务器、守护进程。一个二进制文件，一个数据库。"
+  lang="zh"
+  canonical="https://mrsamdev.github.io/agentic-kanban/zh/"
+>
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span>开源</span> / 为智能体团队打造</p>
+        <h1 id="hero-title">让每个智能体<br>都有清晰的下一个任务。</h1>
+        <p class="hero-lede">Agentic Kanban — 轻量级 AI 智能体协调协议。无需服务器、守护进程或队列。通过一个 SQLite 文件实现持久化任务协调。智能体原子化认领工作、报告进度、崩溃恢复、移交审核——无需任何中间环节。</p>
+        <div class="hero-actions">
+          <a href="/agentic-kanban/install/" class="button button-primary">开始使用 <span aria-hidden="true">→</span></a>
+          <a href="/agentic-kanban/#workflow" class="button button-secondary">查看工作流</a>
+        </div>
+        <ul class="hero-facts" aria-label="关键数据">
+          <li><strong>1</strong><span>Go 二进制文件</span></li>
+          <li><strong>0</strong><span>个需要运行的服务</span></li>
+          <li><strong>15m</strong><span>可恢复的租约</span></li>
+        </ul>
+      </div>
+
+      <div class="cli-preview" aria-label="初始化脚手架输出">
+        <div class="cli-preview-bar">
+          <span>终端</span>
+          <span>kanban init</span>
+        </div>
+        <pre><code><span class="cli-comment"># 搭建项目脚手架</span>
+<span class="cli-prompt">$</span> kanban init
+
+<span class="cli-output">→ .kanban/kanban.db
+→ .kanban/agents/ (manager, worker, reviewer)
+→ .kanban/skills/ (14 个协议技能)
+→ .kanban/tools/ (kanban CLI)
+
+14 个技能 · 3 个智能体 · 1 个二进制文件</span></code></pre>
+        <div class="cli-preview-status">
+          <span><i></i> 14 个技能 · 3 个智能体 · 1 个二进制文件</span>
+          <span>exit 0</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" class="install-strip" aria-labelledby="install-title">
+      <div>
+        <p class="section-index">01 / 安装</p>
+        <h2 id="install-title">一条命令。无需搭建任何服务。</h2>
+      </div>
+      <div class="install-command">
+        <code>curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh</code>
+        <button class="copy-button" type="button" data-copy="curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh" aria-label="复制安装命令">复制</button>
+      </div>
+      <p class="install-note">单个 Go 二进制文件 + SQLite。固定版本请使用 <a href="https://github.com/mrSamDev/agentic-kanban/releases">GitHub Releases</a>。</p>
+    </section>
+
+    <section id="problem" class="section problem-section" aria-labelledby="problem-title">
+      <div class="section-heading">
+        <p class="section-index">02 / 问题</p>
+        <h2 id="problem-title">一个智能体没问题。<br>两个智能体需要协调。</h2>
+        <p>一个改代码。一个写测试。一个做审核。没有共享状态，它们就会冲突、重复工作、互相等待。</p>
+      </div>
+      <div class="problem-split">
+        <div class="problem-narrative">
+          <p>大多数方案会引入这些基础设施：</p>
+          <ul class="infra-list">
+            <li>智能体框架</li>
+            <li>消息队列</li>
+            <li>Redis</li>
+            <li>Postgres</li>
+            <li>后台服务</li>
+            <li>复杂编排层</li>
+          </ul>
+          <p class="infra-verdict">为同一台机器上的几个智能体运行这么多东西，太重了。</p>
+        </div>
+        <div class="approach-callout">
+          <p class="approach-label">更简单的答案</p>
+          <p class="approach-statement">把协调当作<strong>数据库问题</strong>。</p>
+          <p>每个智能体读写同一个 SQLite 文件。没有 RPC、事件总线或服务器进程——只有持久化的共享状态。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="motivation" class="section motivation-section" aria-labelledby="motivation-title">
+      <div class="section-heading">
+        <p class="section-index">03 / 动机</p>
+        <h2 id="motivation-title">从一个 markdown 文件开始。</h2>
+        <p>Sprint 1, task 1.1, task 1.2。智能体们不断互相覆盖更新、忘记标记完成、或者认领已被占用的任务。文件很快就变成了噪音。</p>
+      </div>
+      <div class="motivation-content">
+        <div class="motivation-narrative">
+          <p>答案是<strong>数据库</strong>。每次状态变更都是一次事务，所以两个智能体不能认领同一个任务。如果一个崩溃了，它的租约到期后另一个可以接手——就像 Rust 的所有权模型：一次只有一个所有者，所有者消失时释放。</p>
+          <p><code>.db</code> 文件是<strong>唯一的协调点</strong>。没有服务器、守护进程或消息队列——只有你们已经共享的文件系统上的一个共享文件。</p>
+        </div>
+        <div class="motivation-quote">
+          <blockquote>
+            <p>"最简单的协调就是不需要你运行的协调。"</p>
+          </blockquote>
+        </div>
+      </div>
+    </section>
+
+    <section id="why" class="section why-section" aria-labelledby="why-title">
+      <div class="section-heading">
+        <p class="section-index">04 / 为什么</p>
+        <h2 id="why-title">协调，但不碍事。</h2>
+        <p>使用你已经共享的文件系统。保持任务所有权明确且可恢复。</p>
+      </div>
+      <div class="feature-list">
+        <article>
+          <span class="feature-number">01</span>
+          <div><h3>无需服务器进程</h3><p>每个项目一个 <code>.db</code> 文件。无需 Redis、Postgres、队列、守护进程或网络依赖。</p></div>
+        </article>
+        <article>
+          <span class="feature-number">02</span>
+          <div><h3>原子化认领</h3><p>并发调用 <code>claim-next</code> 的智能体通过 SQLite 写入串行化获得不同的任务。</p></div>
+        </article>
+        <article>
+          <span class="feature-number">03</span>
+          <div><h3>崩溃恢复</h3><p>任务使用 15 分钟租约。进度更新续期所有权；过期的工作可被重新认领。</p></div>
+        </article>
+        <article>
+          <span class="feature-number">04</span>
+          <div><h3>稳定的 JSON</h3><p>命令输出可预测的 JSON 到 stdout。错误使用 stderr 和退出码 2。</p></div>
+        </article>
+        <article>
+          <span class="feature-number">05</span>
+          <div><h3>有限的存储</h3><p>WAL 检查点机制防止长时间运行的协调中磁盘无限制增长。</p></div>
+        </article>
+        <article>
+          <span class="feature-number">06</span>
+          <div><h3>可读的协议</h3><p>Markdown 角色技能文件教会智能体工作流，无需额外的工具调用协议。</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="workflow" class="section workflow-section" aria-labelledby="workflow-title">
+      <div class="section-heading">
+        <p class="section-index">05 / 工作流</p>
+        <h2 id="workflow-title">小而清晰的协议。</h2>
+        <p>三个角色。三个计划。一个生命周期。</p>
+      </div>
+      <div class="workflow-grid">
+        <ol class="workflow-steps">
+          <li><span>01</span><div><h3>计划</h3><p>管理者阅读规范 → 三轮提取 → 用户审核提案 → 批准后派发任务。</p></div></li>
+          <li><span>02</span><div><h3>认领</h3><p>工作者认领最高优先级的 TODO（或收回已过期的租约）。尊重依赖关系。</p></div></li>
+          <li><span>03</span><div><h3>工作</h3><p>心跳续期 15 分钟租约。阻塞的任务标记原因。</p></div></li>
+          <li><span>04</span><div><h3>审核</h3><p>直接完成或交给审核者。审核者批准或拒绝并附上说明。</p></div></li>
+        </ol>
+        <div class="terminal">
+          <div class="terminal-bar"><span></span><span></span><span></span><b>快速开始</b></div>
+          <pre><code><span class="comment"># 使用计划初始化</span>
+<span class="prompt">$</span> kanban init --plan plan.md
+
+<span class="comment"># 管理者：创建计划提案</span>
+<span class="prompt">$</span> kanban plan create plan.md
+<span class="comment"># 用户批准 → kanban plan approve 派发任务</span>
+
+<span class="comment"># 工作者：认领下一个任务，工作，完成</span>
+<span class="prompt">$</span> kanban task claim-next --agent alice --role worker
+<span class="prompt">$</span> kanban task log-progress TASK-1 --agent alice --note "完成"
+<span class="prompt">$</span> kanban task complete TASK-1 --agent alice --review
+
+<span class="comment"># 审核者：审核提交</span>
+<span class="prompt">$</span> kanban task approve TASK-1 --agent bob</code></pre>
+        </div>
+      </div>
+
+      <div class="state-flow" aria-label="任务状态流转">
+        <div><span>01</span><strong>TODO</strong></div><i aria-hidden="true">→</i>
+        <div class="state-active"><span>02</span><strong>IN_PROGRESS</strong></div><i aria-hidden="true">→</i>
+        <div><span>03</span><strong>IN_REVIEW</strong></div><i aria-hidden="true">→</i>
+        <div class="state-done"><span>04</span><strong>DONE</strong></div>
+      </div>
+      <div class="state-extras">
+        <p><strong>计划流程：</strong> plan.md → 提案 → 批准 → 派发任务</p>
+        <p><strong>驳回：</strong> IN_REVIEW → TODO（附带原因）</p>
+        <p><strong>阻塞：</strong> IN_PROGRESS → BLOCKED（租约清除）</p>
+        <p><strong>崩溃恢复：</strong> 租约过期 → 下次 claim-next 时惰性收回</p>
+        <p><strong>依赖：</strong> 任务支持 <code>depends_on</code> — claim-next 默认跳过未满足依赖的任务</p>
+      </div>
+
+      <div class="arch-terminal" aria-label="架构图">
+        <div class="terminal-bar"><span></span><span></span><span></span><b>架构</b></div>
+        <div class="arch-diagram-wrap">
+          <pre><code>┌─────────────────────────────────────────────────────┐
+│                  SQLite 数据库                        │
+│              .kanban/kanban.db                       │
+└─────────────┬───────────────┬────────────────────────┘
+              │               │
+ ┌────────────┴─────┐  ┌──────┴─────────────┐
+ │   智能体配置      │  │   嵌入式 CLI        │
+ │  agent .md 文件  │  │  kanban task ...    │
+ │  角色定义文件     │  │  kanban skill ...   │
+ └────────┬─────────┘  └──────────┬──────────┘
+          │                       │
+ ┌────────┴───────────────────────┴─────────┐
+ │              智能体角色                    │
+ │  ┌──────────┐  ┌────────┐  ┌──────────┐ │
+ │  │ manager  │  │ worker │  │ reviewer │ │
+ │  │ .md 文件  │  │ .md    │  │ .md      │ │
+ │  │ 计划     │  │ 认领   │  │ 批准     │ │
+ │  │ 派发     │  │ 工作   │  │ 拒绝     │ │
+ │  └──────────┘  └────────┘  └──────────┘ │
+ └──────────────────────────────────────────┘</code></pre>
+        </div>
+        <div class="arch-caption">没有服务器、守护进程或协调服务。一个 SQLite 文件，三个角色。</div>
+      </div>
+    </section>
+
+    <section id="commands" class="section commands-section" aria-labelledby="commands-title">
+      <div class="section-heading">
+        <p class="section-index">06 / 参考</p>
+        <h2 id="commands-title">完整的命令面板。</h2>
+        <p>小到够学，清晰到可调试。</p>
+      </div>
+      <div class="command-list">
+        <div class="command-head"><span>命令</span><span>角色</span><span>功能</span></div>
+      <div class="command-row"><code>task dispatch --title --role [--project] [--priority] [--depends-on]</code><span>任意</span><p>创建任务，可选依赖列表。</p></div>
+        <div class="command-row"><code>task claim &lt;id&gt; --agent</code><span>worker, reviewer</span><p>按 ID 认领特定任务（层级委派）。</p></div>
+        <div class="command-row"><code>task claim-next --agent --role [--count N] [--project] [--respect-deps]</code><span>worker, reviewer</span><p>原子化认领最高优先级的任务。<code>--count N</code> 认领多个。</p></div>
+        <div class="command-row"><code>task log-progress &lt;id&gt; --agent --note [--type]</code><span>worker</span><p>记录进度并续期 15 分钟租约。</p></div>
+        <div class="command-row"><code>task extend-lease &lt;id&gt; --agent [--minutes]</code><span>worker</span><p>不记录进度仅续期租约（心跳）。</p></div>
+        <div class="command-row"><code>task block &lt;id&gt; --agent --reason</code><span>worker</span><p>标记阻塞并清除当前租约。</p></div>
+        <div class="command-row"><code>task complete &lt;id&gt; --agent [--review]</code><span>worker</span><p>标记完成或提交任务审核。</p></div>
+        <div class="command-row"><code>task view &lt;id&gt; [--notes] [--history]</code><span>全部</span><p>查看任务详情、笔记和历史。</p></div>
+        <div class="command-row"><code>task search [--status] [--role] [--agent] [--project]</code><span>manager</span><p>筛选任务列表。</p></div>
+        <div class="command-row"><code>task approve &lt;id&gt; --agent</code><span>reviewer</span><p>将 IN_REVIEW 移动到 DONE。</p></div>
+        <div class="command-row"><code>task reject &lt;id&gt; --agent --reason</code><span>reviewer</span><p>将 IN_REVIEW 退回 TODO 并附上下文。</p></div>
+        <div class="command-row"><code>batch claim --agent --role [--count N] [--project]</code><span>worker</span><p>原子化认领多个任务。</p></div>
+        <div class="command-row"><code>batch complete --ids --agent [--to-review]</code><span>worker</span><p>一次性完成多个任务。</p></div>
+        <div class="command-row"><code>batch set-priority --ids --priority</code><span>manager</span><p>批量设置任务优先级。</p></div>
+        <div class="command-row"><code>batch set-project --ids --project</code><span>manager</span><p>批量设置任务项目标签。</p></div>
+        <div class="command-row"><code>task stats [--status] [--role]</code><span>manager</span><p>按状态或角色聚合任务统计。</p></div>
+        <div class="command-row"><code>plan lint</code><span>manager</span><p>检查结构性问题（循环、缺失依赖）。</p></div>
+        <div class="command-row"><code>init [--harness generic] [--plan plan.md] [--dir]</code><span>设置</span><p>搭建数据库、智能体 .md 文件、技能文件。</p></div>
+        <div class="command-row"><code>re-init</code><span>设置</span><p>重新搭建智能体文件而不影响数据库。</p></div>
+        <div class="command-row"><code>events [--task TASK-1]</code><span>全部</span><p>查看事件日志，可按任务筛选。</p></div>
+        <div class="command-row"><code>skill list / skill view &lt;name&gt;</code><span>全部</span><p>列出或查看内嵌技能定义。</p></div>
+      </div>
+    </section>
+
+    <section id="skills" class="section" aria-labelledby="skills-title">
+      <div class="section-heading">
+        <p class="section-index">07 / 技能</p>
+        <h2 id="skills-title">智能体的运行时。</h2>
+        <p>技能文件教会智能体协调协议。技能内置于二进制文件中，由 <code>kanban init</code> 脚手架生成。</p>
+      </div>
+
+      <h3 class="subheading">角色如何使用技能</h3>
+
+      <div class="terminal">
+        <div class="terminal-bar"><span></span><span></span><span></span><b>技能流程</b></div>
+        <pre><code><span class="comment">── manager/ ──</span>
+
+<span class="comment"># "我需要把需求变成任务"</span>
+<span class="prompt">→</span> kanban plan create plan.md
+<span class="comment"># 三轮提取 → 写入提案</span>
+
+<span class="comment"># "用户批准了计划"</span>
+<span class="prompt">→</span> kanban plan approve
+<span class="comment"># 派发所有已勾选的任务</span>
+
+<span class="comment"># "我现在需要一个任务"</span>
+<span class="prompt">→</span> kanban task dispatch --title "..." --role worker --priority 10
+
+<span class="comment"># "看板上有什么？"</span>
+<span class="prompt">→</span> kanban task search --status BLOCKED
+<span class="prompt">→</span> kanban task view TASK-4
+
+<span class="comment"># "接入 Slack"</span>
+<span class="prompt">→</span> setup-hooks (bash)
+
+<span class="comment">── worker/ ──</span>
+
+<span class="comment"># "我需要工作"</span>
+<span class="prompt">→</span> kanban task claim-next --agent alice --role worker
+<span class="comment"># 获取最高优先级 TODO（或收回已过期的）</span>
+
+<span class="comment"># "我知道是哪个任务"</span>
+<span class="prompt">→</span> kanban task claim TASK-12 --agent alice
+
+<span class="comment"># "正在推进，续期我的租约"</span>
+<span class="prompt">→</span> kanban task log-progress TASK-12 --agent alice --note "..."
+
+<span class="comment"># "卡住了"</span>
+<span class="prompt">→</span> kanban task block TASK-12 --agent alice --reason "..."
+
+<span class="comment"># "做完了"</span>
+<span class="prompt">→</span> kanban task complete TASK-12 --agent alice --review
+
+<span class="comment">── reviewer/ ──</span>
+
+<span class="comment"># "有什么需要审核？"</span>
+<span class="prompt">→</span> kanban task claim-next --agent bob --role reviewer
+
+<span class="comment"># "这个没问题"</span>
+<span class="prompt">→</span> kanban task approve TASK-5 --agent bob
+<span class="comment"># status → DONE</span>
+
+<span class="comment"># "需要返工"</span>
+<span class="prompt">→</span> kanban task reject TASK-5 --agent bob --reason "..."
+<span class="comment"># status → TODO</span></code></pre>
+      </div>
+
+      <h3 class="subheading">技能层级</h3>
+
+      <div class="command-list" style="margin-bottom:28px">
+        <div class="command-head"><span>层级</span><span>内容</span><span>角色</span></div>
+        <div class="command-row"><code>智能体 .md 文件</code><span>manager.md · worker.md · reviewer.md</span><p>YAML 前置元数据：工具、模型、工作流步骤</p></div>
+        <div class="command-row"><code>.kanban/skills/（协议）</code><span>14 个技能文件 + INDEX</span><p>内置于二进制，教授协调协议</p></div>
+        <div class="command-row"><code>智能体配置</code><span>agent .md 文件</span><p>角色定义、工作流步骤、工具引用</p></div>
+        <div class="command-row"><code>kanban CLI</code><span>Go 二进制文件</span><p>SQLite 事务、租约、WAL 检查点</p></div>
+      </div>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:48px">协议技能随二进制文件发布，教授协调。任务技能教授领域逻辑——由你自行提供。两者并存于 .kanban/skills/。</p>
+
+      <h3 class="subheading">智能体定义示例: worker.md</h3>
+
+      <div class="terminal">
+        <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/agents/worker.md</b></div>
+        <pre><code><span class="comment">---</span>
+<span class="comment">name: worker</span>
+<span class="comment">description: 从看板认领和完成任务的 Kanban 工作者智能体</span>
+<span class="comment">---</span>
+
+你是一个 kanban 工作者智能体。从看板认领和
+完成任务。
+
+<span class="cli-output">工作流：</span>
+1. 认领下一个可用任务
+2. 处理任务，定期记录进度
+3. 提交审核或标记完成
+4. 如果阻塞，标记原因
+
+<span class="cli-output">长时间运行的任务：</span>
+对于 >15 分钟的工作，定期运行：
+  kanban task extend-lease &lt;task-id&gt; --agent &lt;name&gt; --minutes 30
+
+使用 claim-next --count N 来认领多个任务
+以并行执行。
+
+.kanban/skills/ 中的技能文件提供了详细的
+bash 备用使用说明。</code></pre>
+      </div>
+
+      <h3 class="subheading">工作原理: init → 智能体运行周期</h3>
+
+      <div class="terminal">
+        <div class="terminal-bar"><span></span><span></span><span></span><b>生命周期</b></div>
+        <pre><code><span class="comment">1. 脚手架</span>
+<span class="prompt">$</span> kanban init --plan plan.md
+<span class="cli-output">→ .kanban/kanban.db 已创建</span>
+<span class="cli-output">→ .kanban/agents/&lbrace;manager,worker,reviewer&rbrace;.md</span>
+<span class="cli-output">→ .kanban/skills/ (14 个技能文件 + INDEX)</span>
+<span class="cli-output">→ plan.md 已解析 → 任务已派发</span>
+
+<span class="comment">2. 智能体加载配置</span>
+<span class="prompt">$</span> kanban init
+<span class="cli-output">→ kanban CLI 就绪</span>
+<span class="cli-output">→ 14 个技能可用</span>
+
+<span class="comment">3. 运行智能体（特定于运行时，例如 pi run worker）</span>
+<span class="cli-output">pi run manager</span>
+<span class="cli-output">pi run worker</span>
+<span class="cli-output">pi run reviewer</span>
+<span class="cli-output">→ 智能体读取其 .md 文件</span>
+<span class="cli-output">→ 使用 CLI 命令 + 技能文档</span></code></pre>
+      </div>
+    </section>
+
+    <section id="hooks" class="section" aria-labelledby="hooks-title">
+      <div class="section-heading">
+        <p class="section-index">08 / 钩子</p>
+        <h2 id="hooks-title">响应每个事件。</h2>
+        <p>在 <code>.kanban/hooks/</code> 中放入可执行文件，无需修改核心即可扩展工作流。</p>
+      </div>
+      <div class="command-list">
+        <div class="command-head"><span>事件</span><span>可执行文件</span><span>触发时机</span></div>
+        <div class="command-row"><code>task.created</code><span><code>task-created</code></span><p>任务已派发</p></div>
+        <div class="command-row"><code>task.claimed</code><span><code>task-claimed</code></span><p>智能体认领任务</p></div>
+        <div class="command-row"><code>task.progress</code><span><code>task-progress</code></span><p>进度已记录</p></div>
+        <div class="command-row"><code>task.completed</code><span><code>task-completed</code></span><p>任务已完成</p></div>
+        <div class="command-row"><code>task.submitted_for_review</code><span><code>task-submitted-for-review</code></span><p>已提交审核</p></div>
+        <div class="command-row"><code>task.blocked</code><span><code>task-blocked</code></span><p>已阻塞</p></div>
+        <div class="command-row"><code>review.approved</code><span><code>review-approved</code></span><p>已批准</p></div>
+        <div class="command-row"><code>review.rejected</code><span><code>review-rejected</code></span><p>已拒绝</p></div>
+        <div class="command-row"><code>task.priority_updated</code><span><code>task-priority-updated</code></span><p>批量优先级更新</p></div>
+        <div class="command-row"><code>task.project_updated</code><span><code>task-project-updated</code></span><p>批量项目标签更新</p></div>
+      </div>
+      <div class="hooks-detail">
+        <p>钩子通过 stdin 接收事件 JSON，超时 30 秒。错误记录到 stderr 但不会导致操作失败。缺失的钩子静默忽略。使用 <code>.d/</code> 目录串联多个钩子——钩子并发运行，慢速通知不会阻塞调用者。</p>
+        <div class="terminal">
+          <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/</b></div>
+          <pre><code>task-created
+task-completed
+task-completed.d/
+  slack
+  metrics
+  dashboard</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section fit-section" aria-labelledby="fit-title">
+      <div class="section-heading">
+        <p class="section-index">09 / 适用场景</p>
+        <h2 id="fit-title">为本地智能体团队打造。</h2>
+      </div>
+      <div class="no-framework">
+        <div class="no-framework-left">
+          <h3>不是又一个智能体框架。</h3>
+          <p>Agentic Kanban 解决一个问题：可靠的协调。带上你自己的智能体、模型和工作流。</p>
+        </div>
+        <ul class="no-framework-list">
+          <li><span>×</span> 智能体运行时</li>
+          <li><span>×</span> 工具调用</li>
+          <li><span>×</span> 记忆系统</li>
+          <li><span>×</span> 规划引擎</li>
+          <li><span>×</span> 模型托管</li>
+        </ul>
+      </div>
+
+      <div class="fit-grid">
+        <div class="fit-copy">
+          <p>最适合 <strong>Claude Code 子智能体、Codex 工作流</strong>以及同一台机器或共享文件系统上的本地编码智能体。并发测试达到 50 个智能体。</p>
+          <a href="https://github.com/mrSamDev/agentic-kanban" class="text-link">阅读源代码 <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="fit-list fit-good"><h3><span>✓</span> 适用于</h3><ul><li>智能体需要持久化的共享状态</li><li>任务所有权必须能承受崩溃</li><li>你想要零基础设施开销</li></ul></div>
+        <div class="fit-list fit-bad"><h3><span>×</span> 不适用于</h3><ul><li>智能体跨不可信网络运行</li><li>你需要实时推送通知</li><li>你有数千个并发工作者</li></ul></div>
+      </div>
+    </section>
+
+    <section class="section reference-section" aria-labelledby="reference-title">
+      <div class="section-heading">
+        <p class="section-index">参考</p>
+        <h2 id="reference-title">你需要的一切。</h2>
+        <p>安装、配置和扩展 agentic-kanban。</p>
+      </div>
+      <div class="ref-grid">
+        <a href="/agentic-kanban/install/" class="ref-card">
+          <span class="ref-icon">01</span>
+          <h3>安装</h3>
+          <p>一条命令设置。二进制发布、从源码构建或 curl 管道。</p>
+        </a>
+        <a href="/agentic-kanban/commands/" class="ref-card">
+          <span class="ref-icon">02</span>
+          <h3>命令</h3>
+          <p>完整的 CLI 参考。每个命令、标志和输出格式。</p>
+        </a>
+        <a href="/agentic-kanban/protocol/" class="ref-card">
+          <span class="ref-icon">03</span>
+          <h3>协议</h3>
+          <p>状态机、租约模型、依赖解析和事件系统。</p>
+        </a>
+        <a href="/agentic-kanban/examples/" class="ref-card">
+          <span class="ref-icon">04</span>
+          <h3>示例</h3>
+          <p>Pi 子智能体、Claude Code、原始 CLI、批处理工作流和崩溃恢复。</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="closing">
+      <p class="section-index">准备好协调了吗？</p>
+      <p class="closing-analogy">Git 成为了代码的共享事实来源。<br>Agentic Kanban 成为了工作的共享事实来源。</p>
+      <h2>一个数据库。<br>每个智能体步调一致。</h2>
+      <div class="hero-actions">
+        <a href="/agentic-kanban/install/" class="button button-primary">安装 agentic-kanban <span aria-hidden="true">→</span></a>
+        <a href="https://github.com/mrSamDev/agentic-kanban" class="button button-secondary">在 GitHub 上查看</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      function copyText(text:string) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text).catch(function () {
+            return copyWithSelection(text);
+          });
+        }
+        return copyWithSelection(text);
+      }
+
+      function copyWithSelection(text:string) {
+        var input = document.createElement("textarea");
+        input.value = text;
+        input.setAttribute("readonly", "");
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+        return Promise.resolve();
+      }
+
+      document.querySelectorAll("[data-copy]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          copyText(button.getAttribute("data-copy")!).then(function () {
+            button.textContent = "已复制";
+            window.setTimeout(function () { button.textContent = "复制"; }, 1600);
+          });
+        });
+      });
+    })();
+  </script>
+</BaseLayout>
