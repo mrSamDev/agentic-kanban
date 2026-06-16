@@ -9,10 +9,36 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
-func runHook(hooksDir, eventType string, payload any) {
+// HookRunner manages lifecycle of concurrent hook goroutines.
+// Use Wait() before process exit to prevent goroutine killing.
+type HookRunner struct {
+	wg sync.WaitGroup
+}
+
+func NewHookRunner() *HookRunner {
+	return &HookRunner{}
+}
+
+// Wait blocks until all .d/ hooks finish, with a timeout.
+// Must exceed execHook's 30s context timeout (35s recommended).
+func (r *HookRunner) Wait(timeout time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		r.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		fmt.Fprintf(os.Stderr, "hook runner timeout after %v\n", timeout)
+	}
+}
+
+func runHook(runner *HookRunner, hooksDir, eventType string, payload any) {
 	if hooksDir == "" {
 		return
 	}
@@ -37,7 +63,11 @@ func runHook(hooksDir, eventType string, payload any) {
 		if err != nil || info.Mode()&0111 == 0 {
 			continue
 		}
-		go execHook(filepath.Join(dirPath, e.Name()), b, name+".d/"+e.Name())
+		runner.wg.Add(1)
+		go func(path, label string, payload []byte) {
+			defer runner.wg.Done()
+			execHook(path, payload, label)
+		}(filepath.Join(dirPath, e.Name()), name+".d/"+e.Name(), b)
 	}
 }
 

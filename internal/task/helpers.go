@@ -31,9 +31,13 @@ type Service struct {
 	maxRetries  int
 	retryBaseMs int
 	hooksDir    string
+	HookRunner  *HookRunner
 }
 
-func NewService(db *sql.DB, reader *sql.DB, timeout time.Duration, hooksDir string) *Service {
+func NewService(db *sql.DB, reader *sql.DB, timeout time.Duration, hooksDir string, runner *HookRunner) *Service {
+	if runner == nil {
+		runner = NewHookRunner()
+	}
 	return &Service{
 		db:         db,
 		reader:     reader,
@@ -41,7 +45,14 @@ func NewService(db *sql.DB, reader *sql.DB, timeout time.Duration, hooksDir stri
 		maxRetries: 3,
 		retryBaseMs: 100,
 		hooksDir:   hooksDir,
+		HookRunner: runner,
 	}
+}
+
+// WaitHooks waits for concurrent .d/ hook goroutines to finish.
+// Timeout must exceed execHook's 30s context timeout (35s recommended).
+func (s *Service) WaitHooks(timeout time.Duration) {
+	s.HookRunner.Wait(timeout)
 }
 
 const defaultTimeout = 30 * time.Second

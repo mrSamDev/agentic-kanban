@@ -134,7 +134,7 @@ func dispatchPlan(sqlDB *sql.DB, planPath string) error {
 		return err
 	}
 
-	svc := task.NewService(sqlDB, nil, 0, "")
+	svc := task.NewService(sqlDB, nil, 0, "", nil)
 	for _, pt := range tasks {
 		role := pt.Role
 		if role == "" {

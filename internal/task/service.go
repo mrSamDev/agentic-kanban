@@ -44,6 +44,23 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert task: %w", err)
 	}
 
+	// If dependencies specified, insert into join table.
+	if dependsOn != nil && *dependsOn != "" {
+		parts := strings.Split(*dependsOn, ",")
+		for _, p := range parts {
+			depID := strings.TrimSpace(p)
+			if depID == "" {
+				continue
+			}
+			if _, err := tx.Exec(
+				`INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES(?, ?)`,
+				id, depID,
+			); err != nil {
+				return Task{}, fmt.Errorf("insert dependency %s -> %s: %w", id, depID, err)
+			}
+		}
+	}
+
 	_, err = tx.Exec(
 		`INSERT INTO history (task_id, agent, action) VALUES (?, 'system', 'DISPATCH')`,
 		id,
@@ -56,59 +73,46 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert event: %w", err)
 	}
 
-	// Prevent impossible dependency graphs: detect cycles before committing.
-	// Walk the transitive closure of the new task's dependencies. If any path
-	// revisits a node already on the current recursion stack, the new task would
-	// inherit a cycle. O(depth) instead of O(total-tasks).
+	// Cycle detection via Go-level DFS against join table.
+	// Load all task_dependencies, then check if any path from depID leads back to depID.
 	if dependsOn != nil && *dependsOn != "" {
+		depRows, err := tx.Query(`SELECT task_id, depends_on_task_id FROM task_dependencies`)
+		if err != nil {
+			return Task{}, fmt.Errorf("cycle check load deps: %w", err)
+		}
+		depGraph := map[string][]string{}
+		for depRows.Next() {
+			var from, to string
+			if err := depRows.Scan(&from, &to); err != nil {
+				depRows.Close()
+				return Task{}, fmt.Errorf("cycle check scan dep: %w", err)
+			}
+			depGraph[from] = append(depGraph[from], to)
+		}
+		depRows.Close()
+
 		onStack := map[string]bool{}
-		var walk func(current string) (bool, error)
-		walk = func(current string) (bool, error) {
+		var walk func(current string) bool
+		walk = func(current string) bool {
 			if onStack[current] {
-				return true, nil // back edge found
+				return true
 			}
 			onStack[current] = true
-			var raw sql.NullString
-			err := tx.QueryRow(`SELECT depends_on FROM tasks WHERE id = ?`, current).Scan(&raw)
-			if err == sql.ErrNoRows {
-				delete(onStack, current)
-				return false, nil
-			}
-			if err != nil {
-				delete(onStack, current)
-				return false, fmt.Errorf("cycle check look up %s: %w", current, err)
-			}
-			if raw.Valid && raw.String != "" {
-				for _, d := range strings.Split(raw.String, ",") {
-					d = strings.TrimSpace(d)
-					if d == "" {
-						continue
-					}
-					cycle, err := walk(d)
-					if err != nil {
-						delete(onStack, current)
-						return false, err
-					}
-					if cycle {
-						delete(onStack, current)
-						return true, nil
-					}
+			for _, child := range depGraph[current] {
+				if walk(child) {
+					return true
 				}
 			}
 			delete(onStack, current)
-			return false, nil
+			return false
 		}
 
-		for _, d := range strings.Split(*dependsOn, ",") {
-			d = strings.TrimSpace(d)
-			if d == "" {
+		for _, p := range strings.Split(*dependsOn, ",") {
+			depID := strings.TrimSpace(p)
+			if depID == "" {
 				continue
 			}
-			cycle, err := walk(d)
-			if err != nil {
-				return Task{}, err
-			}
-			if cycle {
+			if walk(depID) {
 				return Task{}, fmt.Errorf("cycle detected: adding %s would create a dependency cycle", id)
 			}
 		}
@@ -118,7 +122,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("commit dispatch: %w", err)
 	}
 
-	runHook(s.hooksDir, "task.created", EventPayload{
+	runHook(s.HookRunner, s.hooksDir, "task.created", EventPayload{
 		TaskID:       id,
 		Title:        title,
 		Project:      project,
@@ -207,10 +211,10 @@ func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool)
 		return err
 	})
 	if err == nil && !toReview {
-		runHook(s.hooksDir, "task.completed", payload)
+		runHook(s.HookRunner, s.hooksDir, "task.completed", payload)
 	}
 	if err == nil && toReview {
-		runHook(s.hooksDir, "task.submitted_for_review", payload)
+		runHook(s.HookRunner, s.hooksDir, "task.submitted_for_review", payload)
 	}
 	return task, err
 }
@@ -291,7 +295,7 @@ func (s *Service) LogProgress(ctx context.Context, id, agent, content string, no
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "task.progress", payload)
+		runHook(s.HookRunner, s.hooksDir, "task.progress", payload)
 	}
 	return task, err
 }
@@ -452,7 +456,7 @@ func (s *Service) BatchComplete(ctx context.Context, ids []string, agent string,
 			Priority:     fmt.Sprintf("%d", t.Priority),
 			RoleBoundary: t.RoleBoundary,
 		}
-		runHook(s.hooksDir, eventType, payload)
+		runHook(s.HookRunner, s.hooksDir, eventType, payload)
 	}
 	return completed, errs
 }
@@ -531,17 +535,19 @@ func (s *Service) Block(ctx context.Context, id, agent, reason string) (Task, er
 		return err
 	})
 	if err == nil {
-		runHook(s.hooksDir, "task.blocked", payload)
+		runHook(s.HookRunner, s.hooksDir, "task.blocked", payload)
 	}
 	return task, err
 }
 
 // ApproveAll batch-approves all IN_REVIEW tasks for a given project (or all projects if empty).
-func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task, error) {
+// Returns approved tasks + per-task errors for partial failures.
+func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task, []error) {
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
 
 	var approved []Task
+	var errs []error
 	err := s.retryOnBusy(func() error {
 		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 		if err != nil {
@@ -563,17 +569,18 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		if err != nil {
 			return fmt.Errorf("approve all query: %w", err)
 		}
-		defer rows.Close()
 
 		var tasks []Task
 		for rows.Next() {
 			t, err := scanTask(rows)
 			if err != nil {
+				rows.Close()
 				return fmt.Errorf("approve all scan: %w", err)
 			}
 			tasks = append(tasks, t)
 		}
 		if err := rows.Err(); err != nil {
+			rows.Close()
 			return fmt.Errorf("approve all rows: %w", err)
 		}
 		rows.Close()
@@ -581,7 +588,8 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		for _, t := range tasks {
 			if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
 				if err := checkSelfReview(tx, t.ID, agent); err != nil {
-					return fmt.Errorf("%s: %w", t.ID, err)
+					errs = append(errs, fmt.Errorf("%s: %w", t.ID, err))
+					continue
 				}
 			}
 
@@ -593,10 +601,12 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 				t.ID,
 			)
 			if err != nil {
-				return fmt.Errorf("approve all update %s: %w", t.ID, err)
+				errs = append(errs, fmt.Errorf("%s update: %w", t.ID, err))
+				continue
 			}
 			n, _ := res.RowsAffected()
 			if n == 0 {
+				errs = append(errs, fmt.Errorf("%s: already approved", t.ID))
 				continue
 			}
 
@@ -604,24 +614,29 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 				`INSERT INTO history (task_id, agent, action) VALUES (?, ?, 'REVIEW')`,
 				t.ID, agent,
 			); err != nil {
-				return fmt.Errorf("approve all history %s: %w", t.ID, err)
+				errs = append(errs, fmt.Errorf("%s history: %w", t.ID, err))
+				continue
 			}
 
 			payload := eventPayload(tx, t.ID, EventPayload{Agent: agent})
 			if err := insertEvent(tx, "review.approved", payload); err != nil {
-				return fmt.Errorf("approve all event %s: %w", t.ID, err)
+				errs = append(errs, fmt.Errorf("%s event: %w", t.ID, err))
+				continue
 			}
 
 			approved = append(approved, t)
 		}
 
 		if err := tx.Commit(); err != nil {
+			// Fatal — all approved tasks in this batch are rolled back
+			approved = nil
+			errs = nil
 			return fmt.Errorf("approve all commit: %w", err)
 		}
 		return nil
 	})
 	if err != nil {
-		return approved, err
+		return approved, append(errs, fmt.Errorf("tx: %w", err))
 	}
 
 	for _, t := range approved {
@@ -633,7 +648,7 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 			Priority:     fmt.Sprintf("%d", t.Priority),
 			RoleBoundary: t.RoleBoundary,
 		}
-		runHook(s.hooksDir, "review.approved", payload)
+		runHook(s.HookRunner, s.hooksDir, "review.approved", payload)
 	}
-	return approved, nil
+	return approved, errs
 }

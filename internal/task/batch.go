@@ -74,7 +74,7 @@ func (s *Service) batchUpdate(ctx context.Context, ids []string, column string, 
 	})
 	if err == nil {
 		for _, p := range payloads {
-			runHook(s.hooksDir, eventType, p)
+			runHook(s.HookRunner, s.hooksDir, eventType, p)
 		}
 	}
 	return updated, err

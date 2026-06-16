@@ -43,42 +43,43 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 		return nil, fmt.Errorf("lint iterate: %w", err)
 	}
 
-	taskByID := make(map[string]bool, len(tasks))
+	tByID := make(map[string]bool, len(tasks))
 	for _, t := range tasks {
-		taskByID[t.ID] = true
+		tByID[t.ID] = true
 	}
 
-	// adjacency list for cycle detection (only known tasks)
+	// Load dependency edges from join table
+	depRows, err := db.QueryContext(ctx,
+		`SELECT task_id, depends_on_task_id FROM task_dependencies`)
+	if err != nil {
+		return nil, fmt.Errorf("lint load deps: %w", err)
+	}
+	defer depRows.Close()
+
 	deps := make(map[string][]string, len(tasks))
 	var nodeIDs []string
-
 	var errors, warns []LintIssue
 
 	for _, t := range tasks {
 		nodeIDs = append(nodeIDs, t.ID)
-		// Missing role_boundary (schema enforces NOT NULL, so this catches empty string "")
 		if strings.TrimSpace(t.RoleBoundary) == "" {
 			warns = append(warns, LintIssue{TaskID: t.ID, Severity: "warn", Message: "no role_boundary set"})
 		}
+	}
 
-		if t.DependsOn == nil || *t.DependsOn == "" {
-			continue
+	for depRows.Next() {
+		var from, to string
+		if err := depRows.Scan(&from, &to); err != nil {
+			depRows.Close()
+			return nil, fmt.Errorf("lint scan dep: %w", err)
 		}
-		for _, raw := range strings.Split(*t.DependsOn, ",") {
-			depID := strings.TrimSpace(raw)
-			if depID == "" {
-				continue
-			}
-			if !taskByID[depID] {
-				warns = append(warns, LintIssue{
-					TaskID:   t.ID,
-					Severity: "warn",
-					Message:  fmt.Sprintf("depends on unknown task %s", depID),
-				})
-			} else {
-				deps[t.ID] = append(deps[t.ID], depID)
-			}
+		if tByID[to] {
+			deps[from] = append(deps[from], to)
 		}
+	}
+	depRows.Close()
+	if err := depRows.Err(); err != nil {
+		return nil, fmt.Errorf("lint dep iterate: %w", err)
 	}
 
 	for _, cycle := range detectCycles(deps, nodeIDs) {
@@ -94,11 +95,7 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 
 // detectCycles finds all cycles in the dependency graph using iterative DFS.
 // Each returned slice is the cycle path with the start node repeated at the end.
-// detectCycles finds all cycles in the dependency graph using iterative DFS.
-// Each returned slice is the cycle path with the start node repeated at the end.
-// nodes must contain every task ID in the graph; detectCycles iterates over it
-// rather than map keys so nodes that are only targets (no outgoing edges) are
-// still visited as starting points.
+// nodes must contain every task ID in the graph.
 func detectCycles(deps map[string][]string, nodes []string) [][]string {
 	const (
 		unvisited = 0
@@ -106,7 +103,7 @@ func detectCycles(deps map[string][]string, nodes []string) [][]string {
 		done      = 2
 	)
 	state := make(map[string]int)
-	seen := make(map[string]bool) // deduplicate reported cycles
+	seen := make(map[string]bool)
 	var cycles [][]string
 
 	for _, start := range nodes {
@@ -115,7 +112,7 @@ func detectCycles(deps map[string][]string, nodes []string) [][]string {
 		}
 		type frame struct {
 			id  string
-			idx int // next child index to process
+			idx int
 		}
 		stack := []frame{{start, 0}}
 		state[start] = inStack
@@ -138,7 +135,6 @@ func detectCycles(deps map[string][]string, nodes []string) [][]string {
 				state[child] = inStack
 				stack = append(stack, frame{child, 0})
 			case inStack:
-				// Back edge: extract the cycle from the stack
 				var cycle []string
 				for i := len(stack) - 1; i >= 0; i-- {
 					cycle = append([]string{stack[i].id}, cycle...)
@@ -146,7 +142,7 @@ func detectCycles(deps map[string][]string, nodes []string) [][]string {
 						break
 					}
 				}
-				cycle = append(cycle, child) // close the loop
+				cycle = append(cycle, child)
 				key := strings.Join(cycle, ",")
 				if !seen[key] {
 					seen[key] = true
