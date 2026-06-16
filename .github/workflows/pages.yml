@@ -2,8 +2,8 @@ name: pages
 
 on:
   push:
-    tags:
-      - 'gh*'
+    branches:
+      - main
 
 permissions:
   contents: write
