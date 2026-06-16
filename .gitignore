@@ -7,6 +7,7 @@ kanban-test
 ralph.sh
 PROMPT.md
 docs/screenshots
+docs/public/screenshots
 docs/node_modules
 docs/.astro
 docs/_site/
