@@ -8,6 +8,6 @@ export default defineConfig({
   outDir: '_site',
   publicDir: 'public',
   build: {
-    format: 'directory',
+    format: 'file',
   },
 });
