@@ -3,19 +3,19 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 ---
 
 <DocsLayout
-  title="Hooks — agentic-kanban"
-  description="agentic-kanban hooks — react to every event with executable hooks"
+  title="Hooks — taskbind"
+  description="taskbind hooks — react to every event with executable hooks"
 >
   <h1 slot="header">Hooks</h1>
-  <p class="docs-lede" slot="header">React to every state transition. Drop executable scripts in <code>.kanban/hooks/</code> and extend the workflow without touching the binary.</p>
+  <p class="docs-lede" slot="header">React to every state transition. Drop executable scripts in <code>.taskbind/hooks/</code> and extend the workflow without touching the binary.</p>
 
   <h2>How it works</h2>
-  <p>Each event type maps to an executable file named after the event (dots replaced by dashes). When the event fires, the hook receives JSON on stdin with a 30-second timeout. If the hook exits non-zero, the error is logged to stderr but the kanban operation continues. Missing hooks are silently ignored.</p>
+  <p>Each event type maps to an executable file named after the event (dots replaced by dashes). When the event fires, the hook receives JSON on stdin with a 30-second timeout. If the hook exits non-zero, the error is logged to stderr but the taskbind operation continues. Missing hooks are silently ignored.</p>
 
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>hook lifecycle</b></div>
     <pre><code><span class="cli-comment"># 1. An agent completes a task</span>
-$ kanban task complete TASK-1 --agent alice
+$ taskbind task complete TASK-1 --agent alice
 
 <span class="cli-comment"># 2. Kanban fires task-completed hook with stdin:</span>
 <span class="cli-output">&lbrace;
@@ -34,9 +34,9 @@ $ kanban task complete TASK-1 --agent alice
 
   <h2>Hook placement</h2>
   <div class="terminal" style="margin-bottom:28px">
-    <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/</b></div>
+    <div class="terminal-bar"><span></span><span></span><span></span><b>.taskbind/hooks/</b></div>
     <pre><code><span class="cli-comment"># Single hook per event:</span>
-.kanban/hooks/
+.taskbind/hooks/
 ├── task-created
 ├── task-claimed
 ├── task-progress
@@ -50,7 +50,7 @@ $ kanban task complete TASK-1 --agent alice
 └── task-project-updated
 
 <span class="cli-comment"># Multiple hooks per event (concurrent execution):</span>
-.kanban/hooks/
+.taskbind/hooks/
 ├── task-completed
 └── task-completed.d/
     ├── slack        ← notifies Slack channel
@@ -84,7 +84,7 @@ $ kanban task complete TASK-1 --agent alice
 
   <h3>Example: Slack notification</h3>
   <div class="terminal">
-    <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/task-completed.d/slack</b></div>
+    <div class="terminal-bar"><span></span><span></span><span></span><b>.taskbind/hooks/task-completed.d/slack</b></div>
     <pre><code><span class="cli-comment">#!/usr/bin/env bash</span>
 <span class="cli-comment"># Notify Slack when a task is completed</span>
 set -euo pipefail
@@ -98,7 +98,7 @@ curl -s -X POST "$SLACK_WEBHOOK_URL" \
 
   <h3>Example: Metrics counter</h3>
   <div class="terminal">
-    <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/task-completed.d/metrics</b></div>
+    <div class="terminal-bar"><span></span><span></span><span></span><b>.taskbind/hooks/task-completed.d/metrics</b></div>
     <pre><code><span class="cli-comment">#!/usr/bin/env bash</span>
 set -euo pipefail
 
@@ -107,13 +107,13 @@ task_id=$(echo "$payload" | jq -r '.payload.task_id')
 agent=$(echo "$payload" | jq -r '.payload.agent')
 
 <span class="cli-comment"># Append to local metrics log (rotated externally)</span>
-echo "$(date -Iseconds) completed $task_id by $agent" >> .kanban/metrics.log</code></pre>
+echo "$(date -Iseconds) completed $task_id by $agent" >> .taskbind/metrics.log</code></pre>
   </div>
 
   <h2>Hook contract</h2>
   <ul>
     <li><strong>Timeout:</strong> 30 seconds per hook. Hooks in <code>.d/</code> directories each get their own 30s timeout (concurrent, not cumulative).</li>
-    <li><strong>Errors:</strong> Non-zero exit is logged to stderr but does not fail the operation. The kanban command returns success regardless of hook failures.</li>
+    <li><strong>Errors:</strong> Non-zero exit is logged to stderr but does not fail the operation. The taskbind command returns success regardless of hook failures.</li>
     <li><strong>Missing:</strong> If the hook file or directory doesn't exist, it's silently skipped. No error, no warning.</li>
     <li><strong>Permissions:</strong> Files must be executable (<code>chmod +x</code>). Non-executable files in <code>.d/</code> are skipped.</li>
   </ul>

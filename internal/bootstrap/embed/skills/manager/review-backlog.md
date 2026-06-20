@@ -13,16 +13,16 @@ tasks: stalled, unassigned, or in a certain state.
 
 ```bash
 # All tasks
-kanban task search
+taskbind task search
 
 # Filter by status
-kanban task search --status BLOCKED
+taskbind task search --status BLOCKED
 
 # Filter by role
-kanban task search --role worker --status TODO
+taskbind task search --role worker --status TODO
 
 # Filter by agent
-kanban task search --agent alice
+taskbind task search --agent alice
 ```
 
 ## Flags

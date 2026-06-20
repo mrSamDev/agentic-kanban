@@ -3,8 +3,8 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 ---
 
 <DocsLayout
-  title="Commands — agentic-kanban"
-  description="agentic-kanban commands reference — the complete CLI surface for task coordination"
+  title="Commands — taskbind"
+  description="taskbind commands reference — the complete CLI surface for task coordination"
 >
   <h1 slot="header">Commands Reference</h1>
   <p class="docs-lede" slot="header">Complete CLI surface. Every command outputs stable JSON to stdout. Errors go to stderr with exit code 2.</p>
@@ -14,7 +14,7 @@ import DocsLayout from '../layouts/DocsLayout.astro';
   <div class="command-list" style="margin-bottom:48px">
     <div class="command-head"><span>Flag</span><span>Type</span><span>What it does</span></div>
     <div class="command-row"><code>--debug</code><span>bool</span><p>Print database operations alongside normal output</p></div>
-    <div class="command-row"><code>--db &lt;path&gt;</code><span>string</span><p>Path to the kanban database (default: <code>.kanban/kanban.db</code>)</p></div>
+    <div class="command-row"><code>--db &lt;path&gt;</code><span>string</span><p>Path to the taskbind database (default: <code>.taskbind/taskbind.db</code>)</p></div>
   </div>
 
   <h2>task</h2>
@@ -56,10 +56,10 @@ import DocsLayout from '../layouts/DocsLayout.astro';
   </div>
 
   <h2>init</h2>
-  <p>Scaffold the kanban project structure.</p>
+  <p>Scaffold the taskbind project structure.</p>
   <div class="command-list" style="margin-bottom:48px">
     <div class="command-head"><span>Command</span><span>Who</span><span>What it does</span></div>
-    <div class="command-row"><code>init [--harness generic|pi|claude] [--plan plan.md] [--dir &lt;path&gt;]</code><span>setup</span><p>Create <code>.kanban/</code> directory, database, agent definitions, and skill files. <code>--harness</code> selects agent format.</p></div>
+    <div class="command-row"><code>init [--harness generic|pi|claude] [--plan plan.md] [--dir &lt;path&gt;]</code><span>setup</span><p>Create <code>.taskbind/</code> directory, database, agent definitions, and skill files. <code>--harness</code> selects agent format.</p></div>
     <div class="command-row"><code>re-init</code><span>setup</span><p>Re-scaffold agent files without touching the database.</p></div>
   </div>
 
@@ -78,15 +78,15 @@ import DocsLayout from '../layouts/DocsLayout.astro';
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>example</b></div>
     <pre><code><span class="comment"># Successful operation</span>
-$ kanban task claim-next --agent alice --role worker
+$ taskbind task claim-next --agent alice --role worker
 &lbrace;"id":"TASK-1","title":"Set up auth","status":"IN_PROGRESS"}
 
 <span class="comment"># Empty result (no work available)</span>
-$ kanban task claim-next --agent bob --role worker
+$ taskbind task claim-next --agent bob --role worker
 &lbrace;&rbrace;
 
 <span class="comment"># Error</span>
-$ kanban task approve TASK-1 --agent bob
+$ taskbind task approve TASK-1 --agent bob
 &lbrace;"error":"task is not IN_REVIEW (current state: TODO, expected: IN_REVIEW)"}
 <span class="cli-output"># (exit code 2)</span></code></pre>
   </div>

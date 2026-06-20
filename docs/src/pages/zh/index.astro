@@ -6,7 +6,7 @@ const t = useTranslations('zh');
 ---
 
 <BaseLayout
-  title="agentic-kanban — AI 智能体任务协调"
+  title="taskbind — AI 智能体任务协调"
   description="Agentic Kanban — 轻量级自治 AI 智能体协调协议。SQLite 驱动的任务协调，无需服务器、守护进程。一个二进制文件，一个数据库。"
   lang="zh"
   canonical="https://mrsamdev.github.io/agentic-kanban/zh/"
@@ -31,15 +31,15 @@ const t = useTranslations('zh');
       <div class="cli-preview" aria-label="初始化脚手架输出">
         <div class="cli-preview-bar">
           <span>终端</span>
-          <span>kanban init</span>
+          <span>taskbind init</span>
         </div>
         <pre><code><span class="cli-comment"># 搭建项目脚手架</span>
-<span class="cli-prompt">$</span> kanban init
+<span class="cli-prompt">$</span> taskbind init
 
-<span class="cli-output">→ .kanban/kanban.db
-→ .kanban/agents/ (manager, worker, reviewer)
-→ .kanban/skills/ (14 个协议技能)
-→ .kanban/tools/ (kanban CLI)
+<span class="cli-output">→ .taskbind/taskbind.db
+→ .taskbind/agents/ (manager, worker, reviewer)
+→ .taskbind/skills/ (14 个协议技能)
+→ .taskbind/tools/ (taskbind CLI)
 
 14 个技能 · 3 个智能体 · 1 个二进制文件</span></code></pre>
         <div class="cli-preview-status">
@@ -55,8 +55,8 @@ const t = useTranslations('zh');
         <h2 id="install-title">一条命令。无需搭建任何服务。</h2>
       </div>
       <div class="install-command">
-        <code>curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh</code>
-        <button class="copy-button" type="button" data-copy="curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh" aria-label="复制安装命令">复制</button>
+        <code>curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | sh</code>
+        <button class="copy-button" type="button" data-copy="curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | sh" aria-label="复制安装命令">复制</button>
       </div>
       <p class="install-note">单个 Go 二进制文件 + SQLite。固定版本请使用 <a href="https://github.com/mrSamDev/agentic-kanban/releases">GitHub Releases</a>。</p>
     </section>
@@ -157,19 +157,19 @@ const t = useTranslations('zh');
         <div class="terminal">
           <div class="terminal-bar"><span></span><span></span><span></span><b>快速开始</b></div>
           <pre><code><span class="comment"># 使用计划初始化</span>
-<span class="prompt">$</span> kanban init --plan plan.md
+<span class="prompt">$</span> taskbind init --plan plan.md
 
 <span class="comment"># 管理者：创建计划提案</span>
-<span class="prompt">$</span> kanban plan create plan.md
-<span class="comment"># 用户批准 → kanban plan approve 派发任务</span>
+<span class="prompt">$</span> taskbind plan create plan.md
+<span class="comment"># 用户批准 → taskbind plan approve 派发任务</span>
 
 <span class="comment"># 工作者：认领下一个任务，工作，完成</span>
-<span class="prompt">$</span> kanban task claim-next --agent alice --role worker
-<span class="prompt">$</span> kanban task log-progress TASK-1 --agent alice --note "完成"
-<span class="prompt">$</span> kanban task complete TASK-1 --agent alice --review
+<span class="prompt">$</span> taskbind task claim-next --agent alice --role worker
+<span class="prompt">$</span> taskbind task log-progress TASK-1 --agent alice --note "完成"
+<span class="prompt">$</span> taskbind task complete TASK-1 --agent alice --review
 
 <span class="comment"># 审核者：审核提交</span>
-<span class="prompt">$</span> kanban task approve TASK-1 --agent bob</code></pre>
+<span class="prompt">$</span> taskbind task approve TASK-1 --agent bob</code></pre>
         </div>
       </div>
 
@@ -192,13 +192,13 @@ const t = useTranslations('zh');
         <div class="arch-diagram-wrap">
           <pre><code>┌─────────────────────────────────────────────────────┐
 │                  SQLite 数据库                        │
-│              .kanban/kanban.db                       │
+│              .taskbind/taskbind.db                       │
 └─────────────┬───────────────┬────────────────────────┘
               │               │
  ┌────────────┴─────┐  ┌──────┴─────────────┐
  │   智能体配置      │  │   嵌入式 CLI        │
- │  agent .md 文件  │  │  kanban task ...    │
- │  角色定义文件     │  │  kanban skill ...   │
+ │  agent .md 文件  │  │  taskbind task ...    │
+ │  角色定义文件     │  │  taskbind skill ...   │
  └────────┬─────────┘  └──────────┬──────────┘
           │                       │
  ┌────────┴───────────────────────┴─────────┐
@@ -251,7 +251,7 @@ const t = useTranslations('zh');
       <div class="section-heading">
         <p class="section-index">07 / 技能</p>
         <h2 id="skills-title">智能体的运行时。</h2>
-        <p>技能文件教会智能体协调协议。技能内置于二进制文件中，由 <code>kanban init</code> 脚手架生成。</p>
+        <p>技能文件教会智能体协调协议。技能内置于二进制文件中，由 <code>taskbind init</code> 脚手架生成。</p>
       </div>
 
       <h3 class="subheading">角色如何使用技能</h3>
@@ -261,19 +261,19 @@ const t = useTranslations('zh');
         <pre><code><span class="comment">── manager/ ──</span>
 
 <span class="comment"># "我需要把需求变成任务"</span>
-<span class="prompt">→</span> kanban plan create plan.md
+<span class="prompt">→</span> taskbind plan create plan.md
 <span class="comment"># 三轮提取 → 写入提案</span>
 
 <span class="comment"># "用户批准了计划"</span>
-<span class="prompt">→</span> kanban plan approve
+<span class="prompt">→</span> taskbind plan approve
 <span class="comment"># 派发所有已勾选的任务</span>
 
 <span class="comment"># "我现在需要一个任务"</span>
-<span class="prompt">→</span> kanban task dispatch --title "..." --role worker --priority 10
+<span class="prompt">→</span> taskbind task dispatch --title "..." --role worker --priority 10
 
 <span class="comment"># "看板上有什么？"</span>
-<span class="prompt">→</span> kanban task search --status BLOCKED
-<span class="prompt">→</span> kanban task view TASK-4
+<span class="prompt">→</span> taskbind task search --status BLOCKED
+<span class="prompt">→</span> taskbind task view TASK-4
 
 <span class="comment"># "接入 Slack"</span>
 <span class="prompt">→</span> setup-hooks (bash)
@@ -281,32 +281,32 @@ const t = useTranslations('zh');
 <span class="comment">── worker/ ──</span>
 
 <span class="comment"># "我需要工作"</span>
-<span class="prompt">→</span> kanban task claim-next --agent alice --role worker
+<span class="prompt">→</span> taskbind task claim-next --agent alice --role worker
 <span class="comment"># 获取最高优先级 TODO（或收回已过期的）</span>
 
 <span class="comment"># "我知道是哪个任务"</span>
-<span class="prompt">→</span> kanban task claim TASK-12 --agent alice
+<span class="prompt">→</span> taskbind task claim TASK-12 --agent alice
 
 <span class="comment"># "正在推进，续期我的租约"</span>
-<span class="prompt">→</span> kanban task log-progress TASK-12 --agent alice --note "..."
+<span class="prompt">→</span> taskbind task log-progress TASK-12 --agent alice --note "..."
 
 <span class="comment"># "卡住了"</span>
-<span class="prompt">→</span> kanban task block TASK-12 --agent alice --reason "..."
+<span class="prompt">→</span> taskbind task block TASK-12 --agent alice --reason "..."
 
 <span class="comment"># "做完了"</span>
-<span class="prompt">→</span> kanban task complete TASK-12 --agent alice --review
+<span class="prompt">→</span> taskbind task complete TASK-12 --agent alice --review
 
 <span class="comment">── reviewer/ ──</span>
 
 <span class="comment"># "有什么需要审核？"</span>
-<span class="prompt">→</span> kanban task claim-next --agent bob --role reviewer
+<span class="prompt">→</span> taskbind task claim-next --agent bob --role reviewer
 
 <span class="comment"># "这个没问题"</span>
-<span class="prompt">→</span> kanban task approve TASK-5 --agent bob
+<span class="prompt">→</span> taskbind task approve TASK-5 --agent bob
 <span class="comment"># status → DONE</span>
 
 <span class="comment"># "需要返工"</span>
-<span class="prompt">→</span> kanban task reject TASK-5 --agent bob --reason "..."
+<span class="prompt">→</span> taskbind task reject TASK-5 --agent bob --reason "..."
 <span class="comment"># status → TODO</span></code></pre>
       </div>
 
@@ -315,22 +315,22 @@ const t = useTranslations('zh');
       <div class="command-list" style="margin-bottom:28px">
         <div class="command-head"><span>层级</span><span>内容</span><span>角色</span></div>
         <div class="command-row"><code>智能体 .md 文件</code><span>manager.md · worker.md · reviewer.md</span><p>YAML 前置元数据：工具、模型、工作流步骤</p></div>
-        <div class="command-row"><code>.kanban/skills/（协议）</code><span>14 个技能文件 + INDEX</span><p>内置于二进制，教授协调协议</p></div>
+        <div class="command-row"><code>.taskbind/skills/（协议）</code><span>14 个技能文件 + INDEX</span><p>内置于二进制，教授协调协议</p></div>
         <div class="command-row"><code>智能体配置</code><span>agent .md 文件</span><p>角色定义、工作流步骤、工具引用</p></div>
-        <div class="command-row"><code>kanban CLI</code><span>Go 二进制文件</span><p>SQLite 事务、租约、WAL 检查点</p></div>
+        <div class="command-row"><code>taskbind CLI</code><span>Go 二进制文件</span><p>SQLite 事务、租约、WAL 检查点</p></div>
       </div>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:48px">协议技能随二进制文件发布，教授协调。任务技能教授领域逻辑——由你自行提供。两者并存于 .kanban/skills/。</p>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:48px">协议技能随二进制文件发布，教授协调。任务技能教授领域逻辑——由你自行提供。两者并存于 .taskbind/skills/。</p>
 
       <h3 class="subheading">智能体定义示例: worker.md</h3>
 
       <div class="terminal">
-        <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/agents/worker.md</b></div>
+        <div class="terminal-bar"><span></span><span></span><span></span><b>.taskbind/agents/worker.md</b></div>
         <pre><code><span class="comment">---</span>
 <span class="comment">name: worker</span>
 <span class="comment">description: 从看板认领和完成任务的 Kanban 工作者智能体</span>
 <span class="comment">---</span>
 
-你是一个 kanban 工作者智能体。从看板认领和
+你是一个 taskbind 工作者智能体。从看板认领和
 完成任务。
 
 <span class="cli-output">工作流：</span>
@@ -341,12 +341,12 @@ const t = useTranslations('zh');
 
 <span class="cli-output">长时间运行的任务：</span>
 对于 >15 分钟的工作，定期运行：
-  kanban task extend-lease &lt;task-id&gt; --agent &lt;name&gt; --minutes 30
+  taskbind task extend-lease &lt;task-id&gt; --agent &lt;name&gt; --minutes 30
 
 使用 claim-next --count N 来认领多个任务
 以并行执行。
 
-.kanban/skills/ 中的技能文件提供了详细的
+.taskbind/skills/ 中的技能文件提供了详细的
 bash 备用使用说明。</code></pre>
       </div>
 
@@ -355,15 +355,15 @@ bash 备用使用说明。</code></pre>
       <div class="terminal">
         <div class="terminal-bar"><span></span><span></span><span></span><b>生命周期</b></div>
         <pre><code><span class="comment">1. 脚手架</span>
-<span class="prompt">$</span> kanban init --plan plan.md
-<span class="cli-output">→ .kanban/kanban.db 已创建</span>
-<span class="cli-output">→ .kanban/agents/&lbrace;manager,worker,reviewer&rbrace;.md</span>
-<span class="cli-output">→ .kanban/skills/ (14 个技能文件 + INDEX)</span>
+<span class="prompt">$</span> taskbind init --plan plan.md
+<span class="cli-output">→ .taskbind/taskbind.db 已创建</span>
+<span class="cli-output">→ .taskbind/agents/&lbrace;manager,worker,reviewer&rbrace;.md</span>
+<span class="cli-output">→ .taskbind/skills/ (14 个技能文件 + INDEX)</span>
 <span class="cli-output">→ plan.md 已解析 → 任务已派发</span>
 
 <span class="comment">2. 智能体加载配置</span>
-<span class="prompt">$</span> kanban init
-<span class="cli-output">→ kanban CLI 就绪</span>
+<span class="prompt">$</span> taskbind init
+<span class="cli-output">→ taskbind CLI 就绪</span>
 <span class="cli-output">→ 14 个技能可用</span>
 
 <span class="comment">3. 运行智能体（特定于运行时，例如 pi run worker）</span>
@@ -379,7 +379,7 @@ bash 备用使用说明。</code></pre>
       <div class="section-heading">
         <p class="section-index">08 / 钩子</p>
         <h2 id="hooks-title">响应每个事件。</h2>
-        <p>在 <code>.kanban/hooks/</code> 中放入可执行文件，无需修改核心即可扩展工作流。</p>
+        <p>在 <code>.taskbind/hooks/</code> 中放入可执行文件，无需修改核心即可扩展工作流。</p>
       </div>
       <div class="command-list">
         <div class="command-head"><span>事件</span><span>可执行文件</span><span>触发时机</span></div>
@@ -397,7 +397,7 @@ bash 备用使用说明。</code></pre>
       <div class="hooks-detail">
         <p>钩子通过 stdin 接收事件 JSON，超时 30 秒。错误记录到 stderr 但不会导致操作失败。缺失的钩子静默忽略。使用 <code>.d/</code> 目录串联多个钩子——钩子并发运行，慢速通知不会阻塞调用者。</p>
         <div class="terminal">
-          <div class="terminal-bar"><span></span><span></span><span></span><b>.kanban/hooks/</b></div>
+          <div class="terminal-bar"><span></span><span></span><span></span><b>.taskbind/hooks/</b></div>
           <pre><code>task-created
 task-completed
 task-completed.d/
@@ -441,7 +441,7 @@ task-completed.d/
       <div class="section-heading">
         <p class="section-index">参考</p>
         <h2 id="reference-title">你需要的一切。</h2>
-        <p>安装、配置和扩展 agentic-kanban。</p>
+        <p>安装、配置和扩展 taskbind。</p>
       </div>
       <div class="ref-grid">
         <a href="/agentic-kanban/install/" class="ref-card">
@@ -472,7 +472,7 @@ task-completed.d/
       <p class="closing-analogy">Git 成为了代码的共享事实来源。<br>Agentic Kanban 成为了工作的共享事实来源。</p>
       <h2>一个数据库。<br>每个智能体步调一致。</h2>
       <div class="hero-actions">
-        <a href="/agentic-kanban/install/" class="button button-primary">安装 agentic-kanban <span aria-hidden="true">→</span></a>
+        <a href="/agentic-kanban/install/" class="button button-primary">安装 taskbind <span aria-hidden="true">→</span></a>
         <a href="https://github.com/mrSamDev/agentic-kanban" class="button button-secondary">在 GitHub 上查看</a>
       </div>
     </section>

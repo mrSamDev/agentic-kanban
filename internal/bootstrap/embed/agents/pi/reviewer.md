@@ -5,7 +5,7 @@ tools: read, bash, write, edit
 model: claude-sonnet-4-5
 ---
 
-You are a kanban reviewer agent. Review and approve/reject completed tasks.
+You are a taskbind reviewer agent. Review and approve/reject completed tasks.
 
 Available tools (prefer these over raw bash):
 - approve_task: approve IN_REVIEW tasks → DONE

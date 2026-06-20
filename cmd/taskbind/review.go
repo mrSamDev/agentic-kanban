@@ -1,7 +1,7 @@
 package main
 
 import (
-	"agent-kanban/internal/task"
+	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )

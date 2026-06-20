@@ -1,6 +1,6 @@
 # Integration: Claude Code subagents
 
-Coordinating Claude Code subagents via agentic-kanban. Uses Claude's native
+Coordinating Claude Code subagents via taskbind. Uses Claude's native
 subagent/agent delegation.
 
 ## Setup
@@ -8,18 +8,18 @@ subagent/agent delegation.
 ```bash
 cd my-project
 
-# Install kanban
-curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
+# Install taskbind
+curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | sh
 
 # Init with claude harness
-kanban init --harness claude --plan plan.md
+taskbind init --harness claude --plan plan.md
 ```
 
 Creates:
 
 ```
-.kanban/
-└── kanban.db
+.taskbind/
+└── taskbind.db
 .claude/
 └── agents/
     ├── manager/
@@ -49,14 +49,14 @@ Save as `plan.md`:
 ### Worker agent (`worker.md`)
 
 ```markdown
-You are a worker agent. You coordinate work through a kanban board.
+You are a worker agent. You coordinate work through a taskbind board.
 
 Rules:
-1. Claim one task at a time via: kanban task claim-next --agent worker-1 --role worker
+1. Claim one task at a time via: taskbind task claim-next --agent worker-1 --role worker
 2. If no work (output is {}), report idle.
-3. Work on the task, log progress: kanban task log-progress TASK-N --agent worker-1 --note "..."
-4. When done: kanban task complete TASK-N --agent worker-1
-5. If blocked: kanban task block TASK-N --agent worker-1 --reason "..."
+3. Work on the task, log progress: taskbind task log-progress TASK-N --agent worker-1 --note "..."
+4. When done: taskbind task complete TASK-N --agent worker-1
+5. If blocked: taskbind task block TASK-N --agent worker-1 --reason "..."
 
 Read the skill files in .claude/agents/worker/skills/ for exact command syntax.
 ```
@@ -64,13 +64,13 @@ Read the skill files in .claude/agents/worker/skills/ for exact command syntax.
 ### Reviewer agent (`reviewer.md`)
 
 ```markdown
-You are a reviewer agent. Review completed work via the kanban board.
+You are a reviewer agent. Review completed work via the taskbind board.
 
 Rules:
-1. Find IN_REVIEW tasks: kanban task search --status IN_REVIEW
-2. View task details: kanban task view TASK-N
-3. If acceptable: kanban task approve TASK-N --agent reviewer-1
-4. If needs rework: kanban task reject TASK-N --agent reviewer-1 --reason "..."
+1. Find IN_REVIEW tasks: taskbind task search --status IN_REVIEW
+2. View task details: taskbind task view TASK-N
+3. If acceptable: taskbind task approve TASK-N --agent reviewer-1
+4. If needs rework: taskbind task reject TASK-N --agent reviewer-1 --reason "..."
 
 No need to claim IN_REVIEW tasks — approve/reject directly.
 ```
@@ -81,10 +81,10 @@ No need to claim IN_REVIEW tasks — approve/reject directly.
 You are a manager agent. You plan and dispatch work.
 
 Rules:
-1. Create tasks: kanban task dispatch --title "..." --role worker --priority N
-2. Check backlog: kanban task search --status TODO
-3. Check blockers: kanban task search --status BLOCKED
-4. Inspect tasks: kanban task view TASK-N
+1. Create tasks: taskbind task dispatch --title "..." --role worker --priority N
+2. Check backlog: taskbind task search --status TODO
+3. Check blockers: taskbind task search --status BLOCKED
+4. Inspect tasks: taskbind task view TASK-N
 ```
 
 ## Running with Claude Code

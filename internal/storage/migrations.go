@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"strings"
 )
 
 // runMigrations applies schema additions that are not in the base schema.sql.
@@ -32,13 +31,13 @@ func runMigrations(db *sql.DB, debug bool) error {
 		var hasTasks bool
 		_ = db.QueryRow(`SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='tasks'`).Scan(&hasTasks)
 		if hasTasks {
-			for _, v := range []int{1, 2, 4, 5, 6, 7} {
+			for _, v := range []int{1, 2, 5, 6, 8} {
 				if _, err := db.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES(?)`, v); err != nil {
 					return fmt.Errorf("seed migration %d: %w", v, err)
 				}
 			}
 			if debug {
-				slog.Info("schema_migrations seeded", "version_count", 6)
+				slog.Info("schema_migrations seeded", "version_count", 4)
 			}
 			return nil
 		}
@@ -49,10 +48,9 @@ func runMigrations(db *sql.DB, debug bool) error {
 		desc    string
 	}{
 		{2, "add tasks.project column"},
-		{4, "add tasks.depends_on column"},
 		{5, "add tasks.claimed_by column"},
 		{6, "rebuild claim indexes with lease_until"},
-		{7, "migrate depends_on text into task_dependencies"},
+		{8, "add tasks.description column"},
 	}
 
 	for _, m := range migrations {
@@ -68,11 +66,6 @@ func runMigrations(db *sql.DB, debug bool) error {
 		switch m.version {
 		case 2:
 			if err := addColumnIfMissing(tx, "tasks", "project", "TEXT NOT NULL DEFAULT 'default'"); err != nil {
-				_ = tx.Rollback()
-				return fmt.Errorf("migration %d: %w", m.version, err)
-			}
-		case 4:
-			if err := addColumnIfMissing(tx, "tasks", "depends_on", "TEXT"); err != nil {
 				_ = tx.Rollback()
 				return fmt.Errorf("migration %d: %w", m.version, err)
 			}
@@ -96,10 +89,10 @@ func runMigrations(db *sql.DB, debug bool) error {
 				_ = tx.Rollback()
 				return fmt.Errorf("migration 6 create claim_project index: %w", err)
 			}
-		case 7:
-			if err := migrateDependsOnData(tx); err != nil {
+		case 8:
+			if err := addColumnIfMissing(tx, "tasks", "description", "TEXT NOT NULL DEFAULT ''"); err != nil {
 				_ = tx.Rollback()
-				return fmt.Errorf("migration 7: %w", err)
+				return fmt.Errorf("migration 8: %w", err)
 			}
 		}
 
@@ -137,33 +130,4 @@ func addColumnIfMissing(tx *sql.Tx, table, column, definition string) error {
 		return fmt.Errorf("add %s.%s: %w", table, column, err)
 	}
 	return nil
-}
-
-// migrateDependsOnData reads existing depends_on TEXT and inserts into task_dependencies.
-func migrateDependsOnData(tx *sql.Tx) error {
-	rows, err := tx.Query(`SELECT id, depends_on FROM tasks WHERE depends_on IS NOT NULL`)
-	if err != nil {
-		return fmt.Errorf("read depends_on data: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var id, dependsOn string
-		if err := rows.Scan(&id, &dependsOn); err != nil {
-			return fmt.Errorf("scan depends_on row: %w", err)
-		}
-		for _, p := range strings.Split(dependsOn, ",") {
-			depID := strings.TrimSpace(p)
-			if depID == "" {
-				continue
-			}
-			if _, err := tx.Exec(
-				`INSERT OR IGNORE INTO task_dependencies(task_id, depends_on_task_id) VALUES(?, ?)`,
-				id, depID,
-			); err != nil {
-				return fmt.Errorf("insert dependency %s -> %s: %w", id, depID, err)
-			}
-		}
-	}
-	return rows.Err()
 }

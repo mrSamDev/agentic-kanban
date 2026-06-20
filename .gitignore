@@ -1,9 +1,9 @@
 .kanban
 *.db
-/kanban
+/taskbind
 evaluations
 graphify-out
-kanban-test
+taskbind-test
 ralph.sh
 PROMPT.md
 docs/screenshots

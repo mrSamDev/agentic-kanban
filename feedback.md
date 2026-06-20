@@ -1,4 +1,4 @@
-# Senior Engineer Codebase Review: `agent-kanban`
+# Senior Engineer Codebase Review: `taskbind`
 
 SQLite-backed coordination protocol for multi-agent systems. ~5,800 Go LOC, 36 files. Two direct deps (cobra + sqlite). Agents claim tasks via leases, flow TODO→IN_PROGRESS→BLOCKED→IN_REVIEW→DONE, emit events that fire shell hooks.
 
@@ -42,7 +42,7 @@ Three column-sniffing blocks in `storage.Open()` using `PRAGMA table_info`. No v
 
 ### Config in context.Context
 
-`Config{DBPath, Debug}` stuffed into `context.WithValue`. Anti-pattern in Go — config is global, context is request-scoped. Every handler does an unchecked type assertion that panics on mismatch. (*cmd/kanban/config.go*)
+`Config{DBPath, Debug}` stuffed into `context.WithValue`. Anti-pattern in Go — config is global, context is request-scoped. Every handler does an unchecked type assertion that panics on mismatch. (*cmd/taskbind/config.go*)
 
 ### `Burndown` is a dead abstraction
 

@@ -32,7 +32,7 @@ body:
     attributes:
       label: Checklist
       options:
-        - label: "`go build -o kanban ./cmd/kanban/` compiles cleanly"
+        - label: "`go build -o taskbind ./cmd/taskbind/` compiles cleanly"
         - label: "`go test ./...` passes"
         - label: README updated if CLI behavior changed
         - label: Skill templates updated if protocol changed

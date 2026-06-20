@@ -2,7 +2,7 @@ import { ui, defaultLang, type Lang } from './ui';
 
 export function getLangFromUrl(url: URL): Lang {
   const [, base, lang] = url.pathname.split('/');
-  // URL pattern: /agentic-kanban/zh/... or /agentic-kanban/
+  // URL pattern: /taskbind/zh/... or /taskbind/
   if (lang && lang in ui) return lang as Lang;
   return defaultLang;
 }

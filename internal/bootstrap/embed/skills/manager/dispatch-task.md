@@ -1,18 +1,18 @@
 ---
 name: dispatch-task
-description: Create a new task in the kanban board. Tasks start as TODO and are picked up by workers via claim-next.
+description: Create a new task in the taskbind board. Tasks start as TODO and are picked up by workers via claim-next.
 role: manager
 type: protocol
 ---
 # Dispatch Task
 
-Dispatch a new task into the kanban board. The task starts as `TODO` and will be
+Dispatch a new task into the taskbind board. The task starts as `TODO` and will be
 claimed by the next available worker matching its role boundary.
 
 ## Usage
 
 ```bash
-kanban task dispatch \
+taskbind task dispatch \
   --title "Brief task description" \
   --role worker \
   --priority 50

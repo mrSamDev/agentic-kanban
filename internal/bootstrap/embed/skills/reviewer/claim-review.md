@@ -14,7 +14,7 @@ directly — no claim step needed.
 ## Usage
 
 ```bash
-kanban task claim-next \
+taskbind task claim-next \
   --agent reviewer-agent \
   --role reviewer
 ```

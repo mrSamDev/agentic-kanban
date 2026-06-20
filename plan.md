@@ -57,7 +57,7 @@ func (r *HookRunner) Wait(timeout time.Duration) {
 **Changes:**
 - `internal/task/hooks.go` — add `HookRunner` struct, refactor `runHook` signature
 - `internal/task/service.go` — embed `*HookRunner` in `Service`, pass to `runHook` calls
-- `cmd/kanban/main.go` — add `defer svc.HookRunner.Wait(35*time.Second)` after command dispatch (single canonical location)
+- `cmd/taskbind/main.go` — add `defer svc.HookRunner.Wait(35*time.Second)` after command dispatch (single canonical location)
 - Constructor `NewService` — accept `*HookRunner`
 
 ---
@@ -209,8 +209,8 @@ Checks if the new task's dependency chain circles back to itself.
 - `internal/task/service.go` — rewrite `Dispatch()` cycle detection with CTE, change signature to `dependsOn []string`
 - `internal/task/claim.go` — rewrite `hasUnmetDeps(tx, taskID)` to use join table; update `ClaimByID` to call `LoadDeps(tx, id)`
 - `internal/task/helpers.go` — update `scanTask()` and `reRead()` to skip `depends_on` column
-- `cmd/kanban/dispatch.go` — `--depends-on` flag: parse comma-separated input to `[]string`, pass to `Dispatch()`
-- `cmd/kanban/task.go` — `view` and `search` output: call `LoadDeps()` or omit `depends_on` display
+- `cmd/taskbind/dispatch.go` — `--depends-on` flag: parse comma-separated input to `[]string`, pass to `Dispatch()`
+- `cmd/taskbind/task.go` — `view` and `search` output: call `LoadDeps()` or omit `depends_on` display
 - `internal/storage/migrations.go` — add migration 7 (Go func: TEXT → join table data migration)
 
 ---
@@ -241,17 +241,17 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 
 **Changes:**
 - `internal/task/service.go` — change return signature, add per-task error collection
-- `cmd/kanban/review.go` — update handler to print success count + error list
+- `cmd/taskbind/review.go` — update handler to print success count + error list
 
 ---
 
 ## Item 5: Events/CDC Polling Undocumented in LLM Ref
 
-**File:** `internal/bootstrap/embed/skills/kanban.md`
+**File:** `internal/bootstrap/embed/skills/taskbind.md`
 
-**Problem:** The `events` table and hook CDC mechanism exist but the skill file does not mention them. Agents reading `kanban.md` cannot discover event-driven integration patterns without reading Go source code.
+**Problem:** The `events` table and hook CDC mechanism exist but the skill file does not mention them. Agents reading `taskbind.md` cannot discover event-driven integration patterns without reading Go source code.
 
-**Fix:** Add an "Event-Driven Hooks & CDC" section to `kanban.md`:
+**Fix:** Add an "Event-Driven Hooks & CDC" section to `taskbind.md`:
 
 ```markdown
 ## Event-Driven Hooks & CDC
@@ -304,7 +304,7 @@ Events auto-expire after `ttl_seconds` (default 3 days). TTL cleanup runs during
 Events also fire executable hooks on disk:
 
 ```
-.kanban/hooks/
+.taskbind/hooks/
 ├── task-created          ← synchronous, ordered
 ├── task-completed        ← synchronous, ordered
 └── task-completed.d/     ← concurrent goroutines (async)
@@ -331,8 +331,8 @@ Events also fire executable hooks on disk:
 | 1 | Hook goroutine race | `hooks.go`, `service.go`, `cmd/*.go` | No | No |
 | 2 | Migration table | `sqlite.go`, new `migrations.go`, `schema.sql` | Yes (`schema_migrations`) | No |
 | 3 | Dependency join table | `schema.sql`, `model.go`, `claim.go`, `service.go` | Yes (`task_dependencies`, drop `depends_on`) | Yes — v1 break |
-| 4 | ApproveAll diagnostics | `service.go`, `cmd/kanban/review.go` | No | No |
-| 5 | CDC documentation | `kanban.md` | No | No |
+| 4 | ApproveAll diagnostics | `service.go`, `cmd/taskbind/review.go` | No | No |
+| 5 | CDC documentation | `taskbind.md` | No | No |
 
 **Execution order:** 1 → 2 → 3 → 4 → 5.
 

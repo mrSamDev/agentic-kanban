@@ -5,7 +5,7 @@ import (
 )
 
 func dispatchCmd() *cobra.Command {
-	var title, role, project, dependsOn string
+	var title, role, project, dependsOn, description string
 	var priority int
 
 	cmd := &cobra.Command{
@@ -24,7 +24,7 @@ func dispatchCmd() *cobra.Command {
 				depPtr = &dependsOn
 			}
 
-			t, err := s.Dispatch(cmd.Context(), title, role, project, priority, depPtr)
+			t, err := s.Dispatch(cmd.Context(), title, description, role, project, priority, depPtr)
 			if err != nil {
 				return err
 			}
@@ -37,6 +37,7 @@ func dispatchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "project/scope label (default: default)")
 	cmd.Flags().IntVar(&priority, "priority", 100, "priority (lower = more urgent)")
 	cmd.Flags().StringVar(&dependsOn, "depends-on", "", "comma-separated dependency task IDs")
+	cmd.Flags().StringVar(&description, "description", "", "task description")
 	_ = cmd.MarkFlagRequired("title")
 	_ = cmd.MarkFlagRequired("role")
 	cmd.PreRunE = func(_ *cobra.Command, _ []string) error {

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"agent-kanban/internal/storage"
-	"agent-kanban/internal/task"
+	"taskbind/internal/storage"
+	"taskbind/internal/task"
 )
 
 func openService(cfg Config) (*task.Service, func(), error) {

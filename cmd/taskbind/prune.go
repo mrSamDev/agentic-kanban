@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-kanban/internal/task"
+	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )
@@ -20,13 +20,13 @@ func pruneCmd() *cobra.Command {
 		Long: `Delete records older than a specified age.
 
 After pruning, run VACUUM to reclaim disk space:
-  sqlite3 .kanban/kanban.db "VACUUM"
+  sqlite3 .taskbind/taskbind.db "VACUUM"
 
 Examples:
-  kanban prune --before 7d          # delete everything older than 7 days
-  kanban prune --before 30d         # delete everything older than 30 days
-  kanban prune --before 2024-06-01  # delete before a specific date
-  kanban prune --before 30d --dry-run  # preview without deleting
+  taskbind prune --before 7d          # delete everything older than 7 days
+  taskbind prune --before 30d         # delete everything older than 30 days
+  taskbind prune --before 2024-06-01  # delete before a specific date
+  taskbind prune --before 30d --dry-run  # preview without deleting
 `,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := ConfigFromContext(cmd.Context())

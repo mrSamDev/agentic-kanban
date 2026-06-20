@@ -12,7 +12,7 @@ worker can pick it up again with the rejection feedback.
 ## Usage
 
 ```bash
-kanban task reject TASK-101 \
+taskbind task reject TASK-101 \
   --agent reviewer-agent \
   --reason "Missing test coverage for edge case"
 ```

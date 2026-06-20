@@ -10,6 +10,7 @@ INSERT OR IGNORE INTO task_seq (id, next_id) VALUES (1, 0);
 CREATE TABLE IF NOT EXISTS tasks (
     id            TEXT PRIMARY KEY,                  -- e.g. 'TASK-101'
     title         TEXT NOT NULL,
+    description   TEXT NOT NULL DEFAULT '',
     status        TEXT NOT NULL CHECK(status IN
                   ('TODO','IN_PROGRESS','BLOCKED','IN_REVIEW','DONE')),
     role_boundary TEXT NOT NULL,                     -- 'worker' | 'reviewer' | ...
@@ -18,7 +19,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     assigned_agent TEXT,                             -- current lease holder, nullable
     lease_until   DATETIME,                          -- nullable when unclaimed
     claimed_by    TEXT,                               -- immutable snapshot of who claimed it (for self-review check)
-    depends_on    TEXT,                               -- comma-separated dependency IDs (deprecated, use task_dependencies)
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

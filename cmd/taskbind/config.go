@@ -16,8 +16,8 @@ type ctxKey struct{}
 var configKey = ctxKey{}
 
 func resolveConfig(dbPath string, debug bool) Config {
-	if dbPath == ".kanban/kanban.db" {
-		if env := os.Getenv("KANBAN_DB"); env != "" {
+	if dbPath == ".taskbind/taskbind.db" {
+		if env := os.Getenv("TASKBIND_DB"); env != "" {
 			dbPath = env
 		} else if found := findProjectRoot(); found != "" {
 			dbPath = found
@@ -26,16 +26,16 @@ func resolveConfig(dbPath string, debug bool) Config {
 	return Config{DBPath: dbPath, Debug: debug}
 }
 
-// findProjectRoot walks up from CWD looking for a .kanban directory.
-// Returns the path to kanban.db inside the first .kanban/ found, or empty string.
+// findProjectRoot walks up from CWD looking for a .taskbind directory.
+// Returns the path to taskbind.db inside the first .taskbind/ found, or empty string.
 func findProjectRoot() string {
 	dir, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, ".kanban")); err == nil {
-			return filepath.Join(dir, ".kanban", "kanban.db")
+		if _, err := os.Stat(filepath.Join(dir, ".taskbind")); err == nil {
+			return filepath.Join(dir, ".taskbind", "taskbind.db")
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

@@ -14,7 +14,7 @@ submit for human (or reviewer agent) approval instead.
 For work that takes longer than 15 minutes, periodically extend your lease:
 
 ```bash
-kanban task extend-lease TASK-101 \
+taskbind task extend-lease TASK-101 \
   --agent my-agent-name \
   --minutes 30
 ```
@@ -25,11 +25,11 @@ This prevents the task from being reclaimed by another worker.
 
 ```bash
 # Direct completion (status → DONE)
-kanban task complete TASK-101 \
+taskbind task complete TASK-101 \
   --agent my-agent-name
 
 # Submit for review (status → IN_REVIEW)
-kanban task complete TASK-101 \
+taskbind task complete TASK-101 \
   --agent my-agent-name \
   --review
 ```

@@ -11,7 +11,7 @@ This project is **alpha** software. Only the latest commit on `main` receives se
 
 ## Reporting a Vulnerability
 
-**Do not open a public GitHub issue.** Report privately via [GitHub Security Advisories](https://github.com/mrSamDev/agentic-kanban/security/advisories/new).
+**Do not open a public GitHub issue.** Report privately via [GitHub Security Advisories](https://github.com/mrSamDev/taskbind/security/advisories/new).
 
 You should receive an initial response within 5 business days. If you don't, follow up by opening an issue with the `security` label — the project is alpha and response may be delayed.
 
@@ -28,7 +28,7 @@ We follow a 90-day disclosure window. After a fix is released, the vulnerability
 
 ## Scope
 
-SQLite-level or filesystem-level attacks are considered out of scope — the kanban database is only shared between trusted agents on the same machine or shared filesystem. The threat model assumes no malicious access to the `.db` file itself.
+SQLite-level or filesystem-level attacks are considered out of scope — the taskbind database is only shared between trusted agents on the same machine or shared filesystem. The threat model assumes no malicious access to the `.db` file itself.
 
 ## No Bug Bounty
 

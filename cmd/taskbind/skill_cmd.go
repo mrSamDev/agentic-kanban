@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"agent-kanban/internal/bootstrap"
+	"taskbind/internal/bootstrap"
 
 	"github.com/spf13/cobra"
 )

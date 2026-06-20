@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in agentic-kanban.
+Thanks for your interest in taskbind.
 
 ## Before you start
 
@@ -22,7 +22,7 @@ go test ./...
 - Ensure the build compiles cleanly:
 
 ```bash
-go build -o kanban ./cmd/kanban/
+go build -o taskbind ./cmd/taskbind/
 ```
 
 - Update `README.md` if you add or change CLI commands.
@@ -33,21 +33,21 @@ go build -o kanban ./cmd/kanban/
 Requires Go 1.24 or later.
 
 ```bash
-git clone https://github.com/mrSamDev/agentic-kanban.git
-cd agentic-kanban
-go build -o kanban ./cmd/kanban/
+git clone https://github.com/mrSamDev/taskbind.git
+cd taskbind
+go build -o taskbind ./cmd/taskbind/
 ```
 
-The `kanban` binary is self-contained. Use `--debug` to trace database ops:
+The `taskbind` binary is self-contained. Use `--debug` to trace database ops:
 
 ```bash
-./kanban --debug init --harness pi
-./kanban --debug task dispatch --title "test" --role worker
+./taskbind --debug init --harness pi
+./taskbind --debug task dispatch --title "test" --role worker
 ```
 
 ### Skills
 
-Coordination skills ship embedded in the binary at `internal/bootstrap/embed/skills/`. Each role gets its own directory (`manager/`, `worker/`, `reviewer/`). Custom skills can be added at `./kanban/hooks/` — see the README for details.
+Coordination skills ship embedded in the binary at `internal/bootstrap/embed/skills/`. Each role gets its own directory (`manager/`, `worker/`, `reviewer/`). Custom skills can be added at `./taskbind/hooks/` — see the README for details.
 
 ## Code of conduct
 
@@ -59,4 +59,4 @@ There is no Contributor License Agreement. By submitting a pull request, you agr
 
 ## Questions?
 
-Open a [Discussion](https://github.com/mrSamDev/agentic-kanban/discussions) or an issue.
+Open a [Discussion](https://github.com/mrSamDev/taskbind/discussions) or an issue.

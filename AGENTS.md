@@ -475,10 +475,10 @@ The best code is the code the next engineer understands immediately.
 
 # Hooks Convention
 
-Place executables in `.kanban/hooks/` named after the event type (`.` replaced by `-`):
+Place executables in `.taskbind/hooks/` named after the event type (`.` replaced by `-`):
 
 ```
-.kanban/hooks/
+.taskbind/hooks/
 ├── task-created          ← single hook
 ├── task-completed        ← single hook
 └── task-completed.d/     ← multiple hooks, all receive same payload

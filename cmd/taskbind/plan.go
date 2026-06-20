@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"agent-kanban/internal/storage"
-	"agent-kanban/internal/task"
+	"taskbind/internal/storage"
+	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )

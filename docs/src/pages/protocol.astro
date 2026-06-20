@@ -3,8 +3,8 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 ---
 
 <DocsLayout
-  title="Protocol — agentic-kanban"
-  description="agentic-kanban protocol spec — state machine, lease model, dependency model, and event system"
+  title="Protocol — taskbind"
+  description="taskbind protocol spec — state machine, lease model, dependency model, and event system"
 >
   <h1 slot="header">Protocol Specification</h1>
   <p class="docs-lede" slot="header">The core coordination protocol: state machine, lease model, dependency resolution, and event system. Agents don't need a framework — they read these rules from skill files and apply them via the CLI.</p>
@@ -49,17 +49,17 @@ import DocsLayout from '../layouts/DocsLayout.astro';
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>lease-lifecycle</b></div>
     <pre><code><span class="comment"># Agent Alice claims TASK-1</span>
-$ kanban task claim-next --agent alice --role worker
+$ taskbind task claim-next --agent alice --role worker
 <span class="cli-output">→ TASK-1: assigned_agent=alice, lease_until=now+15m</span>
 
 <span class="comment"># 10 minutes later — progress renews the lease</span>
-$ kanban task log-progress TASK-1 --agent alice --note "Working"
+$ taskbind task log-progress TASK-1 --agent alice --note "Working"
 <span class="cli-output">→ lease_until reset to now+15m from this call</span>
 
 <span class="comment"># Alice crashes. 15 minutes pass. Lease expires.</span>
 
 <span class="comment"># Bob calls claim-next — gets TASK-1 (expired lease reclaim)</span>
-$ kanban task claim-next --agent bob --role worker
+$ taskbind task claim-next --agent bob --role worker
 <span class="cli-output">→ TASK-1: assigned_agent=bob, lease_until=now+15m</span></code></pre>
   </div>
 
@@ -75,7 +75,7 @@ $ kanban task claim-next --agent bob --role worker
   <p>Tasks can be transferred from one agent to another:</p>
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>transfer</b></div>
-    <pre><code>kanban task claim TASK-1 --agent bob --transfer --to charlie</code></pre>
+    <pre><code>taskbind task claim TASK-1 --agent bob --transfer --to charlie</code></pre>
   </div>
   <p>Requirements:</p>
   <ul>
@@ -89,7 +89,7 @@ $ kanban task claim-next --agent bob --role worker
   <p>Tasks can declare dependencies using <code>--depends-on</code> with comma-separated task IDs:</p>
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>deps</b></div>
-    <pre><code>kanban task dispatch --title "Write tests" --role worker --depends-on TASK-1,TASK-2</code></pre>
+    <pre><code>taskbind task dispatch --title "Write tests" --role worker --depends-on TASK-1,TASK-2</code></pre>
   </div>
   <p>Dependency resolution rules:</p>
   <ul>

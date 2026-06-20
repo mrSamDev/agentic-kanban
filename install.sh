@@ -1,15 +1,15 @@
 #!/bin/sh
-# install.sh — install kanban globally
+# install.sh — install taskbind globally
 # Usage:
-#   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
-#   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh -s -- -b /usr/local/bin
+#   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-taskbind/main/install.sh | sh
+#   curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-taskbind/main/install.sh | sh -s -- -b /usr/local/bin
 
 set -e
 
 # --- defaults ---
 DEFAULT_BINDIR="${HOME}/.local/bin"
 BINDIR="${BINDIR:-$DEFAULT_BINDIR}"
-REPO="mrSamDev/agentic-kanban"
+REPO="mrSamDev/agentic-taskbind"
 VERSION="${VERSION:-latest}"
 
 # --- colors ---
@@ -41,17 +41,17 @@ esac
 # --- 1. try pre-built binary from GitHub releases ---
 download_binary() {
   if [ "$VERSION" = "latest" ]; then
-    URL="https://github.com/${REPO}/releases/latest/download/kanban_${OS}_${ARCH}"
+    URL="https://github.com/${REPO}/releases/latest/download/taskbind_${OS}_${ARCH}"
   else
-    URL="https://github.com/${REPO}/releases/download/${VERSION}/kanban_${OS}_${ARCH}"
+    URL="https://github.com/${REPO}/releases/download/${VERSION}/taskbind_${OS}_${ARCH}"
   fi
 
-  say "Downloading kanban from $URL"
+  say "Downloading taskbind from $URL"
   TMPFILE=$(mktemp)
   if curl -sfL "$URL" -o "$TMPFILE" 2>/dev/null; then
     chmod +x "$TMPFILE"
     mkdir -p "$BINDIR"
-    mv "$TMPFILE" "${BINDIR}/kanban"
+    mv "$TMPFILE" "${BINDIR}/taskbind"
     return 0
   fi
   rm -f "$TMPFILE"
@@ -71,14 +71,14 @@ build_from_source() {
   trap 'rm -rf "$TMPDIR"' EXIT
 
   say "Cloning ${REPO}…"
-  git clone --depth=1 "https://github.com/${REPO}.git" "$TMPDIR/agentic-kanban" 2>/dev/null
+  git clone --depth=1 "https://github.com/${REPO}.git" "$TMPDIR/agentic-taskbind" 2>/dev/null
 
-  say "Building kanban…"
-  cd "$TMPDIR/agentic-kanban" && go build -o kanban ./cmd/kanban/
+  say "Building taskbind…"
+  cd "$TMPDIR/agentic-taskbind" && go build -o taskbind ./cmd/taskbind/
 
   mkdir -p "$BINDIR"
-  mv "${TMPDIR}/agentic-kanban/kanban" "${BINDIR}/kanban"
-  say "Built ${BINDIR}/kanban"
+  mv "${TMPDIR}/agentic-taskbind/taskbind" "${BINDIR}/taskbind"
+  say "Built ${BINDIR}/taskbind"
 }
 
 # --- 3. ensure BINDIR is on PATH in shell rc ---
@@ -108,17 +108,17 @@ ensure_on_path() {
 
   if [ -n "$RCFILE" ]; then
     if grep -qF "$ABS_BINDIR" "$RCFILE" 2>/dev/null; then
-      say "kanban already on PATH in $RCFILE"
+      say "taskbind already on PATH in $RCFILE"
     else
       echo "" >> "$RCFILE"
-      echo "# kanban" >> "$RCFILE"
+      echo "# taskbind" >> "$RCFILE"
       echo "$LINE" >> "$RCFILE"
-      say "Added kanban to PATH in $RCFILE"
+      say "Added taskbind to PATH in $RCFILE"
       say "Run: source $RCFILE"
     fi
   else
     echo ""
-    echo "  Add kanban to your PATH by running:"
+    echo "  Add taskbind to your PATH by running:"
     echo "    $LINE"
     echo ""
   fi
@@ -126,7 +126,7 @@ ensure_on_path() {
 
 # --- main ---
 if download_binary; then
-  say "Installed ${BINDIR}/kanban (release)"
+  say "Installed ${BINDIR}/taskbind (release)"
 else
   build_from_source
 fi
@@ -137,9 +137,9 @@ say "Done!"
 echo ""
 echo "Usage:"
 echo ""
-echo "  kanban init              # set up kanban in current project"
-echo "  kanban task dispatch ...  # create a task"
-echo "  kanban task claim-next ... # claim a task"
+echo "  taskbind init              # set up taskbind in current project"
+echo "  taskbind task dispatch ...  # create a task"
+echo "  taskbind task claim-next ... # claim a task"
 echo ""
 echo "Docs: https://github.com/${REPO}"
 echo ""

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"agent-kanban/internal/task"
+	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )
@@ -35,12 +35,20 @@ func viewCmd() *cobra.Command {
 }
 
 func searchCmd() *cobra.Command {
-	var status, role, agent, project string
+	var status, role, agent, project, query string
 	var limit int
 
 	cmd := &cobra.Command{
 		Use:   "search",
-		Short: "Search tasks by filters",
+		Short: "Search tasks",
+		Long: `Search tasks by structured filters or by keyword.
+
+Filters (--status, --role, --agent, --project) are AND-combined with each other;
+--query performs LIKE matching on title and description and is mutually exclusive
+with structured filters.
+
+Keyword search uses LIKE, not tokenized full-text search — modernc.org/sqlite
+does not support FTS5.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := ConfigFromContext(cmd.Context())
 			s, close, err := openService(cfg)
@@ -48,6 +56,15 @@ func searchCmd() *cobra.Command {
 				return err
 			}
 			defer close()
+
+			if query != "" {
+				tasks, err := s.SearchFullText(cmd.Context(), query, limit)
+				if err != nil {
+					return err
+				}
+				writeJSON(tasks)
+				return nil
+			}
 
 			params := task.SearchParams{
 				Status:  task.TaskStatus(status),
@@ -68,6 +85,7 @@ func searchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&status, "status", "", "filter by status")
 	cmd.Flags().StringVar(&role, "role", "", "filter by role boundary")
 	cmd.Flags().StringVar(&agent, "agent", "", "filter by assigned agent")
+	cmd.Flags().StringVar(&query, "query", "", "keyword search (title/description, LIKE-based)")
 	cmd.Flags().StringVar(&project, "project", "", "filter by project/scope")
 	cmd.Flags().IntVar(&limit, "limit", 0, "max results (0 = unlimited)")
 	return cmd

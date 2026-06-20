@@ -14,7 +14,7 @@ var agentFiles embed.FS
 //go:embed embed/skills/manager/*.md
 //go:embed embed/skills/worker/*.md
 //go:embed embed/skills/reviewer/*.md
-//go:embed embed/skills/kanban.md
+//go:embed embed/skills/taskbind.md
 var skillFiles embed.FS
 
 func readAgentFile(harness Harness, role string) (string, error) {
@@ -52,7 +52,7 @@ var SkillNames = map[string][]string{
 }
 
 func ListSkills() []SkillInfo {
-	out := []SkillInfo{{Name: "kanban", Role: "system", File: "kanban.md"}}
+	out := []SkillInfo{{Name: "taskbind", Role: "system", File: "taskbind.md"}}
 	for _, role := range []string{"manager", "worker", "reviewer"} {
 		for _, name := range SkillNames[role] {
 			out = append(out, SkillInfo{Name: name, Role: role, File: name + ".md"})

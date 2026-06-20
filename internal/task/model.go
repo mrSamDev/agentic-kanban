@@ -21,6 +21,7 @@ const (
 type Task struct {
 	ID            string     `json:"id"`
 	Title         string     `json:"title"`
+	Description   string     `json:"description"`
 	Status        TaskStatus `json:"status"`
 	RoleBoundary  string     `json:"role_boundary"`
 	Project       string     `json:"project"`
@@ -29,7 +30,6 @@ type Task struct {
 	LeaseUntil    *time.Time `json:"lease_until"`    // nullable
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
-	DependsOn     *string    `json:"depends_on"` // comma-separated dependency IDs, nullable
 	ClaimedBy     *string    `json:"claimed_by"` // immutable snapshot of claiming agent, nullable
 }
 

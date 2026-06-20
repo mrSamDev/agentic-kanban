@@ -3,8 +3,8 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 ---
 
 <DocsLayout
-  title="Architecture — agentic-kanban"
-  description="agentic-kanban architecture — SQLite schema, WAL mode, contention model, and design decisions"
+  title="Architecture — taskbind"
+  description="taskbind architecture — SQLite schema, WAL mode, contention model, and design decisions"
 >
   <h1 slot="header">Architecture</h1>
   <p class="docs-lede" slot="header">How the parts fit together: database design, transaction model, indexing strategy, and the design decisions behind 50-agent coordination on a single SQLite file.</p>
@@ -153,8 +153,8 @@ if !hasProject &lbrace;
   <h2>Production notes</h2>
   <ul>
     <li><strong>Backup:</strong> Copy the <code>.db</code> file during operation (WAL ensures consistency). For point-in-time, also copy <code>.db-wal</code> and <code>.db-shm</code>.</li>
-    <li><strong>Pruning:</strong> <code>kanban prune --before 30d</code> cleans expired events. Run <code>VACUUM</code> periodically to reclaim space from deleted rows.</li>
+    <li><strong>Pruning:</strong> <code>taskbind prune --before 30d</code> cleans expired events. Run <code>VACUUM</code> periodically to reclaim space from deleted rows.</li>
     <li><strong>Event TTL:</strong> Default 3 days. Set <code>ttl_seconds</code> to NULL for events that should never expire (e.g., compliance audit trails).</li>
-    <li><strong>Debugging:</strong> <code>kanban --debug &lt;command&gt;</code> prints every SQL operation alongside normal output. Useful for diagnosing lock contention or WAL behavior.</li>
+    <li><strong>Debugging:</strong> <code>taskbind --debug &lt;command&gt;</code> prints every SQL operation alongside normal output. Useful for diagnosing lock contention or WAL behavior.</li>
   </ul>
 </DocsLayout>

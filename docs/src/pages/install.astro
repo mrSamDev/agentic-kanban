@@ -3,17 +3,17 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 ---
 
 <DocsLayout
-  title="Install — agentic-kanban"
-  description="Install agentic-kanban — curl pipe, binary releases, or build from source"
+  title="Install — taskbind"
+  description="Install taskbind — curl pipe, binary releases, or build from source"
 >
   <h1 slot="header">Installation</h1>
-  <p class="docs-lede" slot="header">Get agentic-kanban running in under a minute. One Go binary, zero dependencies.</p>
+  <p class="docs-lede" slot="header">Get taskbind running in under a minute. One Go binary, zero dependencies.</p>
 
   <h2>Quick install (curl pipe)</h2>
   <p>The fastest way for trusted environments:</p>
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
-    <pre><code>curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh</code></pre>
+    <pre><code>curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | sh</code></pre>
   </div>
   <p>This downloads the latest binary for your OS/arch and places it in <code>/usr/local/bin</code>. Requires <code>curl</code> and <code>sh</code>.</p>
 
@@ -22,12 +22,12 @@ import DocsLayout from '../layouts/DocsLayout.astro';
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
     <pre><code># Download a specific release
-curl -L -o kanban https://github.com/mrSamDev/agentic-kanban/releases/download/v0.1.12/kanban_linux_amd64
-chmod +x kanban
-./kanban --version
+curl -L -o taskbind https://github.com/mrSamDev/agentic-kanban/releases/download/v0.1.12/taskbind_linux_amd64
+chmod +x taskbind
+./taskbind --version
 
 # Verify checksum (compare against the release page)
-sha256sum kanban</code></pre>
+sha256sum taskbind</code></pre>
   </div>
 
   <h2>Build from source</h2>
@@ -36,27 +36,27 @@ sha256sum kanban</code></pre>
     <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
     <pre><code>git clone https://github.com/mrSamDev/agentic-kanban.git
 cd agentic-kanban
-go build -o kanban ./cmd/kanban/
-./kanban --version</code></pre>
+go build -o taskbind ./cmd/taskbind/
+./taskbind --version</code></pre>
   </div>
 
   <h2>Initialize a project</h2>
-  <p>After installing, scaffold a new kanban project:</p>
+  <p>After installing, scaffold a new taskbind project:</p>
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
     <pre><code>cd your-project
-kanban init
+taskbind init
 
 # Or with a plan file and harness:
-kanban init --harness pi --plan plan.md</code></pre>
+taskbind init --harness pi --plan plan.md</code></pre>
   </div>
-  <p>This creates <code>.kanban/</code> with a SQLite database, agent <code>.md</code> files, and embedded skill files. See <a href="/agentic-kanban/commands/">Commands reference</a> for <code>init</code> options.</p>
+  <p>This creates <code>.taskbind/</code> with a SQLite database, agent <code>.md</code> files, and embedded skill files. See <a href="/agentic-kanban/commands/">Commands reference</a> for <code>init</code> options.</p>
 
   <h2>What gets created</h2>
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>tree</b></div>
-    <pre><code>.kanban/
-├── kanban.db          # SQLite database (coordination state)
+    <pre><code>.taskbind/
+├── taskbind.db          # SQLite database (coordination state)
 ├── agents/
 │   ├── manager.md     # Manager agent definition
 │   ├── worker.md      # Worker agent definition
@@ -73,7 +73,7 @@ kanban init --harness pi --plan plan.md</code></pre>
   <p>Re-run the curl install to get the latest binary. The database schema is automatically migrated on open — no manual steps. To check your current version:</p>
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>shell</b></div>
-    <pre><code>kanban --version</code></pre>
+    <pre><code>taskbind --version</code></pre>
   </div>
 
   <h2>Troubleshooting</h2>
@@ -84,5 +84,5 @@ kanban init --harness pi --plan plan.md</code></pre>
   <p>Ensure Go 1.24+ is installed. Run <code>go version</code> to check. If you see CGo errors, the project uses <code>modernc.org/sqlite</code> which is a pure-Go SQLite implementation — CGo is not required. File an issue if it persists.</p>
 
   <h3>Database locked</h3>
-  <p>If you see <code>database is locked</code> errors, another kanban process is holding a write lock. The built-in retry loop (100ms/200ms/400ms backoff) handles transient contention. For persistent locks, check for stuck processes.</p>
+  <p>If you see <code>database is locked</code> errors, another taskbind process is holding a write lock. The built-in retry loop (100ms/200ms/400ms backoff) handles transient contention. For persistent locks, check for stuck processes.</p>
 </DocsLayout>

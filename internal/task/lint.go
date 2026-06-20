@@ -16,8 +16,8 @@ type LintIssue struct {
 // LintPlan checks all tasks in the project for structural problems.
 // Returns errors first, then warnings, each sorted by task ID within severity.
 func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, error) {
-	query := `SELECT id, title, status, role_boundary, project, priority,
-	                 assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+	query := `SELECT id, title, description, status, role_boundary, project, priority,
+	                 assigned_agent, lease_until, created_at, updated_at, claimed_by
 	            FROM tasks`
 	var args []any
 	if project != "" {

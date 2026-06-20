@@ -98,7 +98,7 @@ For long-running subagent work (>15 min), transfer the claim so the
 subagent owns it and can complete independently:
 
 ```
-kanban task claim TASK-5 --agent orchestrator --transfer --to pi-worker
+taskbind task claim TASK-5 --agent orchestrator --transfer --to pi-worker
 ```
 
 After transfer, the subagent (`pi-worker`) owns the claim — can complete,
@@ -187,7 +187,7 @@ during board operations.
 Events also fire executable hooks on disk:
 
 ```
-.kanban/hooks/
+.taskbind/hooks/
 ├── task-created          ← synchronous, ordered
 ├── task-completed        ← synchronous, ordered
 └── task-completed.d/     ← concurrent goroutines (async)

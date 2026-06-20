@@ -1,24 +1,24 @@
 # Integration: pi subagents
 
-Three-coder setup using pi subagents and agentic-kanban.
+Three-coder setup using pi subagents and taskbind.
 
 ## Setup
 
 ```bash
 cd my-project
 
-# Install kanban
-curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
+# Install taskbind
+curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | sh
 
 # Init project with pi harness and seed plan
-kanban init --harness pi --plan plan.md
+taskbind init --harness pi --plan plan.md
 ```
 
 This creates:
 
 ```
-.kanban/
-└── kanban.db
+.taskbind/
+└── taskbind.db
 .pi/
 ├── agents/
 │   ├── manager.md             # Agent definition with tool references
@@ -40,7 +40,7 @@ This creates:
 Then install the pi integration package:
 
 ```bash
-pi install agent-kanban-pi
+pi install taskbind-pi
 ```
 
 This registers 12 custom MCP tools:
@@ -48,15 +48,15 @@ This registers 12 custom MCP tools:
 `dispatch_task`, `log_progress`, `block_task`, `complete_task`,
 `approve_task`, `reject_task`, `review_backlog`, `view_task`.
 
-The footer shows live task counts by status. Type `/kanban` for a board overview.
+The footer shows live task counts by status. Type `/taskbind` for a board overview.
 
 ## How it works
 
-When you open `pi` in a project initialized with `kanban init --harness pi`:
+When you open `pi` in a project initialized with `taskbind init --harness pi`:
 
-1. Pi loads the extension → kanban tools appear in the tool list
+1. Pi loads the extension → taskbind tools appear in the tool list
 2. The LLM uses the typed tools instead of bash commands
-3. Tools auto-detect the `.kanban/kanban.db` path (walk up from cwd)
+3. Tools auto-detect the `.taskbind/taskbind.db` path (walk up from cwd)
 4. Agent definitions in `.pi/agents/` provide per-role prompts
 5. Skill files in `.pi/skills/` serve as reference docs for bash fallback
 
@@ -97,7 +97,7 @@ tools: read, bash, write, edit
 model: claude-sonnet-4-5
 ---
 
-You are a kanban manager agent. Manage the task board using the registered kanban tools.
+You are a taskbind manager agent. Manage the task board using the registered taskbind tools.
 
 Available tools (prefer these over raw bash):
 - dispatch_task: create new tasks for workers or reviewers
@@ -124,7 +124,7 @@ tools: read, bash, write, edit
 model: claude-sonnet-4-5
 ---
 
-You are a kanban worker agent. Claim and complete tasks from the kanban board.
+You are a taskbind worker agent. Claim and complete tasks from the taskbind board.
 
 Available tools (prefer these over raw bash):
 - claim_next_task: claim the highest-priority unclaimed task
@@ -153,7 +153,7 @@ tools: read, bash, write, edit
 model: claude-sonnet-4-5
 ---
 
-You are a kanban reviewer agent. Review and approve/reject completed tasks.
+You are a taskbind reviewer agent. Review and approve/reject completed tasks.
 
 Available tools (prefer these over raw bash):
 - approve_task: approve IN_REVIEW tasks → DONE
@@ -171,19 +171,19 @@ Run: `pi run reviewer`
 
 ## Manual workflow (without agents)
 
-If you just want to use the kanban CLI directly:
+If you just want to use the taskbind CLI directly:
 
 ```bash
 # Create tasks
-kanban task dispatch --title "Refactor auth" --role worker --priority 1
+taskbind task dispatch --title "Refactor auth" --role worker --priority 1
 
 # Claim and work
-kanban task claim-next --agent my-agent --role worker
-kanban task log-progress TASK-1 --agent my-agent --note "Working" --type PROGRESS
-kanban task complete TASK-1 --agent my-agent --review
+taskbind task claim-next --agent my-agent --role worker
+taskbind task log-progress TASK-1 --agent my-agent --note "Working" --type PROGRESS
+taskbind task complete TASK-1 --agent my-agent --review
 
 # Review
-kanban task approve TASK-1 --agent reviewer-1
+taskbind task approve TASK-1 --agent reviewer-1
 ```
 
 ## Crash recovery
@@ -191,7 +191,7 @@ kanban task approve TASK-1 --agent reviewer-1
 If a worker crashes mid-task:
 
 1. Lease expires after 15 minutes (no `log-progress` heartbeat).
-2. Next worker calling `claim_next_task` (or `kanban task claim-next`) automatically reclaims the stale task.
+2. Next worker calling `claim_next_task` (or `taskbind task claim-next`) automatically reclaims the stale task.
 3. Work resumes from the last logged progress note.
 
 No daemon, no monitoring, no infrastructure. Just a `.db` file.

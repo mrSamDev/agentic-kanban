@@ -8,11 +8,14 @@ import (
 	"strings"
 )
 
-func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project string, priority int, dependsOn *string) (Task, error) {
+func (s *Service) Dispatch(ctx context.Context, title, description, roleBoundary, project string, priority int, dependsOn *string) (Task, error) {
 	ctx, cancel := s.withTimeout(ctx)
 	defer cancel()
 	if len(title) > maxTitleLength {
 		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("title too long (max %d)", maxTitleLength)}
+	}
+	if len(description) > maxDescriptionLength {
+		return Task{}, &ExitError{Code: 2, Message: fmt.Sprintf("description too long (max %d)", maxDescriptionLength)}
 	}
 	if priority < 0 || priority > 999 {
 		return Task{}, &ExitError{Code: 2, Message: "priority must be between 0 and 999"}
@@ -36,9 +39,9 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 	}
 
 	_, err = tx.Exec(
-		`INSERT INTO tasks (id, title, status, role_boundary, project, priority)
-		 VALUES (?, ?, 'TODO', ?, ?, ?)`,
-		id, title, roleBoundary, project, priority,
+		`INSERT INTO tasks (id, title, description, status, role_boundary, project, priority)
+		 VALUES (?, ?, ?, 'TODO', ?, ?, ?)`,
+		id, title, description, roleBoundary, project, priority,
 	)
 	if err != nil {
 		return Task{}, fmt.Errorf("insert task: %w", err)
@@ -69,7 +72,7 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 		return Task{}, fmt.Errorf("insert history: %w", err)
 	}
 
-	if err := insertEvent(tx, "task.created", eventPayload(tx, id, EventPayload{})); err != nil {
+	if err := insertEvent(tx, "task.created", eventPayload(tx, id, EventPayload{RoleBoundary: roleBoundary})); err != nil {
 		return Task{}, fmt.Errorf("insert event: %w", err)
 	}
 
@@ -425,8 +428,8 @@ func (s *Service) BatchComplete(ctx context.Context, ids []string, agent string,
 
 			// Re-read task
 			row := tx.QueryRow(
-				`SELECT id, title, status, role_boundary, project, priority,
-				        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+				`SELECT id, title, description, status, role_boundary, project, priority,
+				        assigned_agent, lease_until, created_at, updated_at, claimed_by
 				   FROM tasks WHERE id = ?`, id,
 			)
 			t, scanErr := scanTask(row)
@@ -555,8 +558,8 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		}
 		defer func() { _ = tx.Rollback() }()
 
-		query := `SELECT id, title, status, role_boundary, project, priority,
-		        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+		query := `SELECT id, title, description, status, role_boundary, project, priority,
+		        assigned_agent, lease_until, created_at, updated_at, claimed_by
 		   FROM tasks WHERE status = 'IN_REVIEW'`
 		var args []any
 		if project != "" {
@@ -586,7 +589,7 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		rows.Close()
 
 		for _, t := range tasks {
-			if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
+			if os.Getenv("TASKBIND_ALLOW_SELF_REVIEW") != "true" {
 				if err := checkSelfReview(tx, t.ID, agent); err != nil {
 					errs = append(errs, fmt.Errorf("%s: %w", t.ID, err))
 					continue
@@ -651,4 +654,70 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		runHook(s.HookRunner, s.hooksDir, "review.approved", payload)
 	}
 	return approved, errs
+}
+
+// SetPriority updates the priority of a task.
+func (s *Service) SetPriority(ctx context.Context, id string, priority int) (Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
+	if priority < 0 || priority > 999 {
+		return Task{}, &ExitError{Code: 2, Message: "priority must be between 0 and 999"}
+	}
+
+	var task Task
+	err := s.retryOnBusy(func() error {
+		res, err := s.db.ExecContext(ctx,
+			`UPDATE tasks SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			priority, id,
+		)
+		if err != nil {
+			return fmt.Errorf("set priority: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return ErrNotFound
+		}
+		task, err = s.View(ctx, id)
+		return err
+	})
+	return task, err
+}
+
+// SearchFullText searches tasks by title and description using LIKE.
+// Pure-Go sqlite (modernc.org) does not support FTS5, so this uses
+// LIKE on title and description with a compound OR.
+func (s *Service) SearchFullText(ctx context.Context, query string, limit int) ([]Task, error) {
+	ctx, cancel := s.withTimeout(ctx)
+	defer cancel()
+	if limit <= 0 {
+		limit = 20
+	}
+
+	pattern := "%" + query + "%"
+	rows, err := s.readDB().QueryContext(ctx,
+		`SELECT id, title, description, status, role_boundary, project, priority,
+		        assigned_agent, lease_until, created_at, updated_at, claimed_by
+		   FROM tasks
+		  WHERE title LIKE ? OR description LIKE ?
+		  ORDER BY priority ASC, created_at ASC
+		  LIMIT ?`,
+		pattern, pattern, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("full-text search: %w", err)
+	}
+	defer rows.Close()
+
+	var tasks []Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, t)
+	}
+	if tasks == nil {
+		tasks = []Task{}
+	}
+	return tasks, rows.Err()
 }

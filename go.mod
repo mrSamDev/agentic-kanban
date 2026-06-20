@@ -1,4 +1,4 @@
-module agent-kanban
+module taskbind
 
 go 1.25.0
 

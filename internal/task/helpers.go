@@ -113,10 +113,11 @@ const (
 
 // Length limits prevent CLI overflow and keep task metadata concise.
 const (
-	maxTitleLength   = 500
-	maxNoteLength    = 10000
-	maxReasonLength  = 1000
-	defaultViewLimit = 20
+	maxTitleLength       = 500
+	maxDescriptionLength = 2000
+	maxNoteLength        = 10000
+	maxReasonLength      = 1000
+	defaultViewLimit     = 20
 )
 
 // Prefix "TASK-" for human-readable IDs in logs and CLI output.
@@ -148,21 +149,20 @@ func scanTask(scanner interface {
 	Scan(dest ...any) error
 }) (Task, error) {
 	var t Task
-	var assigned, lease, project, dependsOn, claimedBy sql.NullString
+	var assigned, lease, project, claimedBy sql.NullString
 	var createdAt, updatedAt time.Time
 	err := scanner.Scan(
-		&t.ID, &t.Title, (*string)(&t.Status),
+		&t.ID, &t.Title, &t.Description, (*string)(&t.Status),
 		&t.RoleBoundary, &project, &t.Priority,
 		&assigned, &lease,
 		&createdAt, &updatedAt,
-		&dependsOn, &claimedBy,
+		&claimedBy,
 	)
 	if err != nil {
 		return t, err
 	}
 	t.Project = project.String
 	t.AssignedAgent = NullableStringFromDB(assigned)
-	t.DependsOn = NullableStringFromDB(dependsOn)
 	t.ClaimedBy = NullableStringFromDB(claimedBy)
 	t.CreatedAt = createdAt
 	t.UpdatedAt = updatedAt
@@ -189,8 +189,8 @@ func alreadyDone(tx *sql.Tx, id, status string) bool {
 // reRead fetches a full Task by ID inside an existing transaction.
 func reRead(tx *sql.Tx, id string) (Task, error) {
 	row := tx.QueryRow(
-		`SELECT id, title, status, role_boundary, project, priority,
-		        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+		`SELECT id, title, description, status, role_boundary, project, priority,
+		        assigned_agent, lease_until, created_at, updated_at, claimed_by
 		   FROM tasks WHERE id = ?`, id,
 	)
 	return scanTask(row)

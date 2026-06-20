@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"agent-kanban/internal/storage"
+	"taskbind/internal/storage"
 )
 
 // Cycle detection: dispatching a task into an existing cycle is rejected.
@@ -20,15 +20,15 @@ func TestDispatch_CycleDetected(t *testing.T) {
 	s := NewService(db.DB, db.Reader(), 0, "", nil)
 
 	// Chain: 1→2→3
-	t1, _ := s.Dispatch(t.Context(), "one", "worker", "default", 10, nil)
-	t2, _ := s.Dispatch(t.Context(), "two", "worker", "default", 20, &t1.ID)
-	t3, _ := s.Dispatch(t.Context(), "three", "worker", "default", 30, &t2.ID)
+	t1, _ := s.Dispatch(t.Context(), "one", "", "worker", "default", 10, nil)
+	t2, _ := s.Dispatch(t.Context(), "two", "", "worker", "default", 20, &t1.ID)
+	t3, _ := s.Dispatch(t.Context(), "three", "", "worker", "default", 30, &t2.ID)
 
 	// Inject back edge: 1→2→3→1 creates a cycle
 	db.Exec("INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES(?, ?)", t1.ID, t3.ID)
 
 	// Dispatching a task that depends on the cycle should fail.
-	_, err = s.Dispatch(t.Context(), "four", "worker", "default", 40, &t1.ID)
+	_, err = s.Dispatch(t.Context(), "four", "", "worker", "default", 40, &t1.ID)
 	if err == nil {
 		t.Fatal("expected cycle error, got nil")
 	}
@@ -38,7 +38,7 @@ func TestDispatch_CycleDetected(t *testing.T) {
 
 	// Dispatch with no deps (doesn't touch the cycle) should succeed.
 	// The failed dispatch was rolled back; verify a clean dispatch works.
-	t5, err := s.Dispatch(t.Context(), "five", "worker", "default", 50, nil)
+	t5, err := s.Dispatch(t.Context(), "five", "", "worker", "default", 50, nil)
 	if err != nil {
 		t.Fatalf("no-deps dispatch should succeed, got: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestDispatch_CycleDetected(t *testing.T) {
 // Scenario 1: Basic A→B transfer (happy path)
 func TestTransferClaim_Basic(t *testing.T) {
 	s := newTestService(t)
-	task, _ := s.Dispatch(t.Context(), "ship it", "worker", "default", 10, nil)
+	task, _ := s.Dispatch(t.Context(), "ship it", "", "worker", "default", 10, nil)
 	claimed, _ := s.ClaimByID(t.Context(), task.ID, "alice")
 	if claimed.AssignedAgent == nil || *claimed.AssignedAgent != "alice" {
 		t.Fatalf("expected alice to have claimed task")
@@ -67,7 +67,7 @@ func TestTransferClaim_Basic(t *testing.T) {
 // Scenario 2: Transfer to self → explicit error
 func TestTransferClaim_ToSelf(t *testing.T) {
 	s := newTestService(t)
-	task, _ := s.Dispatch(t.Context(), "ship it", "worker", "default", 10, nil)
+	task, _ := s.Dispatch(t.Context(), "ship it", "", "worker", "default", 10, nil)
 	s.ClaimByID(t.Context(), task.ID, "alice")
 
 	_, err := s.TransferClaim(t.Context(), task.ID, "alice", "alice")
@@ -82,7 +82,7 @@ func TestTransferClaim_ToSelf(t *testing.T) {
 // Scenario 3: Transfer before claim / wrong status
 func TestTransferClaim_WrongStatus(t *testing.T) {
 	s := newTestService(t)
-	task, _ := s.Dispatch(t.Context(), "ship it", "worker", "default", 10, nil)
+	task, _ := s.Dispatch(t.Context(), "ship it", "", "worker", "default", 10, nil)
 	// task is TODO, not IN_PROGRESS
 
 	_, err := s.TransferClaim(t.Context(), task.ID, "alice", "bob")
@@ -97,7 +97,7 @@ func TestTransferClaim_WrongStatus(t *testing.T) {
 // Scenario 4: Transfer race / wrong owner
 func TestTransferClaim_WrongOwner(t *testing.T) {
 	s := newTestService(t)
-	task, _ := s.Dispatch(t.Context(), "ship it", "worker", "default", 10, nil)
+	task, _ := s.Dispatch(t.Context(), "ship it", "", "worker", "default", 10, nil)
 	s.ClaimByID(t.Context(), task.ID, "alice")
 
 	// bob tries to transfer alice's task
@@ -113,7 +113,7 @@ func TestTransferClaim_WrongOwner(t *testing.T) {
 // Scenario 5: Transfer chain A→B→C
 func TestTransferClaim_Chain(t *testing.T) {
 	s := newTestService(t)
-	task, _ := s.Dispatch(t.Context(), "ship it", "worker", "default", 10, nil)
+	task, _ := s.Dispatch(t.Context(), "ship it", "", "worker", "default", 10, nil)
 	s.ClaimByID(t.Context(), task.ID, "alice")
 
 	t1, _ := s.TransferClaim(t.Context(), task.ID, "alice", "bob")
@@ -136,7 +136,7 @@ func TestTransferClaim_Chain(t *testing.T) {
 // Scenario 6: Transfer to non-existent agent (no error — by design)
 func TestTransferClaim_GhostAgent(t *testing.T) {
 	s := newTestService(t)
-	task, _ := s.Dispatch(t.Context(), "ship it", "worker", "default", 10, nil)
+	task, _ := s.Dispatch(t.Context(), "ship it", "", "worker", "default", 10, nil)
 	s.ClaimByID(t.Context(), task.ID, "alice")
 
 	// No agent existence check — by design
@@ -152,7 +152,7 @@ func TestTransferClaim_GhostAgent(t *testing.T) {
 // Scenario 7: Transfer resets lease
 func TestTransferClaim_ResetsLease(t *testing.T) {
 	s := newTestService(t)
-	task, _ := s.Dispatch(t.Context(), "ship it", "worker", "default", 10, nil)
+	task, _ := s.Dispatch(t.Context(), "ship it", "", "worker", "default", 10, nil)
 	s.ClaimByID(t.Context(), task.ID, "alice")
 
 	transferred, _ := s.TransferClaim(t.Context(), task.ID, "alice", "bob")

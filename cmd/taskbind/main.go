@@ -5,7 +5,7 @@ import (
 	"os"
 
 
-	"agent-kanban/internal/task"
+	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )
@@ -17,7 +17,7 @@ func main() {
 	var debug bool
 
 	rootCmd := &cobra.Command{
-		Use:   "kanban",
+		Use:   "taskbind",
 		Short: "Agent coordination engine — shared task state for cooperating agents",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := resolveConfig(dbPath, debug)
@@ -26,7 +26,7 @@ func main() {
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVar(&dbPath, "db", ".kanban/kanban.db", "path to SQLite database (or $KANBAN_DB to override)")
+	rootCmd.PersistentFlags().StringVar(&dbPath, "db", ".taskbind/taskbind.db", "path to SQLite database (or $TASKBIND_DB to override)")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
 
 	rootCmd.SilenceUsage = true
@@ -58,7 +58,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Println("kanban " + version)
+			fmt.Println("taskbind " + version)
 		},
 	}
 	return cmd

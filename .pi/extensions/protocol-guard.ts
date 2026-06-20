@@ -6,12 +6,12 @@ import { relative, resolve } from "node:path";
 // Edits to these trigger a warning when the LLM touches them.
 const CLI_ONLY_PATHS = [
   // CLI command layer — not the protocol engine
-  "cmd/kanban/prune.go",
-  "cmd/kanban/upgrade.go",
-  "cmd/kanban/init.go",
-  "cmd/kanban/update.go",
-  "cmd/kanban/output.go",
-  "cmd/kanban/skill_cmd.go",
+  "cmd/taskbind/prune.go",
+  "cmd/taskbind/upgrade.go",
+  "cmd/taskbind/init.go",
+  "cmd/taskbind/update.go",
+  "cmd/taskbind/output.go",
+  "cmd/taskbind/skill_cmd.go",
 
   // Markdown docs — not protocol
   "README.md",
@@ -73,7 +73,7 @@ export default function (pi: ExtensionAPI) {
 
 ── Protocol-First Decision Rule ──
 
-Every change to the kanban codebase must pass this test:
+Every change to the taskbind codebase must pass this test:
 
 "Does this make the coordination protocol more reliable or more
 useful for multi-agent coordination?"
@@ -95,7 +95,7 @@ What NOT to spend time on:
 - README rewrites
 - install.sh formatting
 - Version check UI
-- Any /kanban command visual polish
+- Any /taskbind command visual polish
 
 What IS worth time:
 - Fixing bugs in dispatch/claim/complete state transitions
@@ -122,7 +122,7 @@ The answer should always be: the agent.`,
     if (!filePath) return;
 
     const projectRoot = ctx.cwd;
-    if (!existsSync(resolve(projectRoot, ".kanban"))) return; // not a kanban project
+    if (!existsSync(resolve(projectRoot, ".taskbind"))) return; // not a kanban project
 
     if (isProtocolCore(filePath, projectRoot)) return; // protocol changes always OK
 
@@ -145,7 +145,7 @@ The answer should always be: the agent.`,
 
     // File outside both categories — unknown. Flag it.
     const rel = relative(projectRoot, filePath);
-    if (!rel.startsWith("..") && !rel.startsWith("node_modules") && !rel.startsWith(".kanban")) {
+    if (!rel.startsWith("..") && !rel.startsWith("node_modules") && !rel.startsWith(".taskbind")) {
       return {
         content: [
           ...event.content,
