@@ -36,9 +36,9 @@ func (s *Service) Dispatch(ctx context.Context, title, roleBoundary, project str
 	}
 
 	_, err = tx.Exec(
-		`INSERT INTO tasks (id, title, status, role_boundary, project, priority, depends_on)
-		 VALUES (?, ?, 'TODO', ?, ?, ?, ?)`,
-		id, title, roleBoundary, project, priority, dependsOn,
+		`INSERT INTO tasks (id, title, status, role_boundary, project, priority)
+		 VALUES (?, ?, 'TODO', ?, ?, ?)`,
+		id, title, roleBoundary, project, priority,
 	)
 	if err != nil {
 		return Task{}, fmt.Errorf("insert task: %w", err)

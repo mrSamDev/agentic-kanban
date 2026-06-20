@@ -175,7 +175,6 @@ type SearchParams struct {
 	Agent   string
 	Project string
 	Limit   int
-	Offset  int
 }
 
 func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, error) {
@@ -214,9 +213,6 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 
 	if params.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", params.Limit)
-	}
-	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", params.Offset)
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

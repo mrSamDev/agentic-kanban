@@ -60,12 +60,9 @@ CREATE TABLE IF NOT EXISTS events (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     event_type TEXT NOT NULL,
-    payload    TEXT NOT NULL,
-    ttl_seconds INTEGER DEFAULT 259200  -- 3 days; NULL = never expires
+    payload    TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_ttl
-    ON events(created_at, ttl_seconds);
 
 -- Dependency graph: join table replacing comma-separated depends_on TEXT.
 CREATE TABLE IF NOT EXISTS task_dependencies (

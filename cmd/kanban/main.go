@@ -38,7 +38,7 @@ func main() {
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(initCmd())
 	rootCmd.AddCommand(reInitCmd())
-	rootCmd.AddCommand(upgradeCmd())
+
 	rootCmd.AddCommand(pruneCmd())
 	rootCmd.AddCommand(statusCmd())
 	rootCmd.AddCommand(planCmd())

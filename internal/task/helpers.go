@@ -48,13 +48,6 @@ func NewService(db *sql.DB, reader *sql.DB, timeout time.Duration, hooksDir stri
 		HookRunner: runner,
 	}
 }
-
-// WaitHooks waits for concurrent .d/ hook goroutines to finish.
-// Timeout must exceed execHook's 30s context timeout (35s recommended).
-func (s *Service) WaitHooks(timeout time.Duration) {
-	s.HookRunner.Wait(timeout)
-}
-
 const defaultTimeout = 30 * time.Second
 
 func (s *Service) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
