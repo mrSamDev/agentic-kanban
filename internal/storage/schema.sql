@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS events (
     payload    TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_events_created_at
+    ON events(created_at);
+CREATE INDEX IF NOT EXISTS idx_history_created_at
+    ON history(created_at);
+CREATE INDEX IF NOT EXISTS idx_notes_created_at
+    ON notes(created_at);
 
 -- Dependency graph: join table replacing comma-separated depends_on TEXT.
 CREATE TABLE IF NOT EXISTS task_dependencies (
