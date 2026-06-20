@@ -24,8 +24,6 @@ const CLI_ONLY_PATHS = [
   "planv2.md",
 
   // Extension code for visual/interactive features
-  // (kanban.ts at .pi/extensions IS protocol — tool wrappers for agents)
-  // But gap.ts, caveman, etc are not kanban protocol
 ];
 
 // Protocol core files — where real coordination lives.

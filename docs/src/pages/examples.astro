@@ -11,15 +11,18 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 
   <a href="#pi-subagents"><h2 id="pi-subagents">Pi subagents (three-coder setup)</h2></a>
 
-  <p>Pi discovers the kanban extension at startup, registering 9 typed tools. Each role gets a <code>.md</code> file with YAML frontmatter and a skill reference.</p>
+  <p>Pi discovers the kanban tools at startup via the <code>agent-kanban-pi</code> package. Each role gets a <code>.md</code> file with YAML frontmatter and a skill reference.</p>
 
   <div class="terminal">
     <div class="terminal-bar"><span></span><span></span><span></span><b>setup</b></div>
     <pre><code><span class="cli-comment"># Init project with pi harness</span>
-kanban init --harness pi --plan plan.md</code></pre>
+kanban init --harness pi --plan plan.md
+
+<span class="cli-comment"># Install the pi integration package</span>
+pi install agent-kanban-pi</code></pre>
   </div>
 
-  <p>This creates <code>.pi/extensions/kanban.ts</code> (auto-registers at startup) and <code>.pi/agents/</code> with role definitions. Each agent reads its <code>.md</code> file and uses typed tools instead of raw bash.</p>
+  <p>This creates <code>.pi/agents/</code> with role definitions and <code>.pi/skills/</code> with protocol skill files. The <code>agent-kanban-pi</code> package registers 12 typed MCP tools at startup.</p>
 
   <p>Run agents with:</p>
   <div class="terminal">
@@ -29,7 +32,7 @@ pi run worker     <span class="cli-comment"># claims and completes</span>
 pi run reviewer   <span class="cli-comment"># approves or rejects</span></code></pre>
   </div>
 
-  <p><strong>Registered tools:</strong> <code>claim_next_task</code>, <code>dispatch_task</code>, <code>log_progress</code>, <code>block_task</code>, <code>complete_task</code>, <code>approve_task</code>, <code>reject_task</code>, <code>review_backlog</code>, <code>view_task</code>. Tools auto-detect the kanban database path by walking up from the current directory.</p>
+  <p><strong>Registered tools:</strong> <code>claim_next_task</code>, <code>batch_claim_task</code>, <code>batch_complete_task</code>, <code>claim_task</code>, <code>dispatch_task</code>, <code>log_progress</code>, <code>block_task</code>, <code>complete_task</code>, <code>approve_task</code>, <code>reject_task</code>, <code>review_backlog</code>, <code>view_task</code>. Tools auto-detect the kanban database path by walking up from the current directory.</p>
 
   <p>See the full guide at <a href="https://github.com/mrSamDev/agentic-kanban/blob/main/examples/pi-subagents.md">examples/pi-subagents.md</a>.</p>
 

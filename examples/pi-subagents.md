@@ -20,8 +20,6 @@ This creates:
 .kanban/
 └── kanban.db
 .pi/
-├── extensions/
-│   └── kanban.ts              # Pi extension: auto-registers kanban tools
 ├── agents/
 │   ├── manager.md             # Agent definition with tool references
 │   ├── worker.md
@@ -39,8 +37,15 @@ This creates:
     └── reject-task.md
 ```
 
-Pi auto-discovers `.pi/extensions/kanban.ts` at startup and registers 9 custom tools:
-`claim_next_task`, `dispatch_task`, `log_progress`, `block_task`, `complete_task`,
+Then install the pi integration package:
+
+```bash
+pi install agent-kanban-pi
+```
+
+This registers 12 custom MCP tools:
+`claim_next_task`, `batch_claim_task`, `batch_complete_task`, `claim_task`,
+`dispatch_task`, `log_progress`, `block_task`, `complete_task`,
 `approve_task`, `reject_task`, `review_backlog`, `view_task`.
 
 The footer shows live task counts by status. Type `/kanban` for a board overview.
