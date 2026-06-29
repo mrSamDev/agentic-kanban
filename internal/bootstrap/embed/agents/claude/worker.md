@@ -1,6 +1,6 @@
 ---
 name: worker
-description: Kanban worker agent that claims and completes tasks
+description: Taskbind worker agent that claims and completes tasks
 tools: read, bash, write, edit
 model: ollama/deepseek-v4-flash:cloud
 ---

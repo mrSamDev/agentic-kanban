@@ -126,7 +126,7 @@ After all tasks are built and submitted for review, approve them:
 2. For each task: `taskbind task approve TASK-N --agent <your-agent>`
 3. Repeat until 0 IN_REVIEW remain (or 5 minutes timeout)
 
-Set `KANBAN_ALLOW_SELF_REVIEW=true` in the environment before the
+Set `TASKBIND_ALLOW_SELF_REVIEW=true` in the environment before the
 review phase. The orchestrator dispatched the work, verified subagent
 output, and is acting as the reviewer — self-review is intentional here.
 

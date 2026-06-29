@@ -2,6 +2,8 @@
 
 > **Alpha.** Things may break. You've been warned.
 
+> **External review:** [REVIEW.md](REVIEW.md) — brutally honest senior/staff engineer audit of the codebase, docs, and spec/impl divergence. The review itself is excellent: specific, evidence-backed, correctly distinguishes real engineering (SQLite concurrency core) from vibe-coded packaging (stale docs, missing CI, false README claims). Worth reading before contributing.
+
 Coordination protocol for AI agents. SQLite-backed. Agent-agnostic.
 
 No server, no daemon, no queues. Just a shared database file agents use to claim, track, review, and finish work. Single Go binary plus SQLite.
@@ -14,17 +16,19 @@ curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | 
 
 ## Why
 
-Started with a markdown file. Sprint 1, task 1.1, task 1.2. Agents kept overwriting each other's updates, forgetting to mark things done, or picking up work already claimed. The file became noise fast.
+**What:** SQLite-backed coordination protocol for AI agents. Single binary, no server.
 
-The answer was a database. Every state change is a transaction, so two agents can't claim the same task. If one crashes, its lease expires and another picks it up, same as Rust's ownership model: one owner at a time, released when the owner disappears.
+**Why:** Agents kept overwriting each other's updates, forgetting to mark things done, or picking up work already claimed. Markdown files became noise fast. The answer was a database. Every state change is a transaction, so two agents can't claim the same task. If one crashes, its lease expires and another picks it up, same as Rust's ownership model: one owner at a time, released when the owner disappears.
+
+**When:** Multiple AI agents on the same machine or shared filesystem need durable coordination without Redis or Postgres. Skip it when you need cross-network coordination, real-time push notifications, or thousands of concurrent workers.
 
 The `.db` file is the only coordination point.
 
 ## When it fits
 
-**Use this when:** multiple AI agents on the same machine or a shared filesystem need durable coordination without Redis or Postgres or message queues. You also want crash recovery and task ownership. Tested with 3 to 10 concurrent agents, and up to 50.
+**Use:** Multiple AI agents on same machine/shared filesystem need durable coordination. Crash recovery. Task ownership. Tested 3-10 concurrent agents, up to 50.
 
-**Skip it when:** agents run across untrusted networks, you need real-time push notifications, or you need thousands of concurrent workers. Those cases want something like Temporal, Celery, or Kafka.
+**Skip:** Cross-network agents. Real-time push notifications. Thousands of concurrent workers. Use Temporal, Celery, or Kafka instead.
 
 ## Quick start
 
@@ -67,8 +71,6 @@ A short table since these are reference docs:
 | `taskbind status [--burndown] [--project]` | anyone | Status counts or progress bars |
 | `batch claim --agent --role [--count N]` | worker | Claim multiple tasks atomically |
 | `batch complete --ids --agent [--to-review]` | worker | Complete multiple tasks |
-| `batch set-priority --ids --priority` | manager | Bulk priority update |
-| `batch set-project --ids --project` | manager | Bulk project label |
 | `prune [--before] [--dry-run]` | ops | Clean old events and notes |
 | `init --harness --plan --dir` | setup | Scaffold DB and agent files |
 
@@ -156,8 +158,6 @@ Drop an executable in `.taskbind/hooks/` named after an event. The hook gets JSO
 | `task.blocked` | Blocked |
 | `review.approved` | Approved |
 | `review.rejected` | Rejected |
-| `task.priority_updated` | Batch priority |
-| `task.project_updated` | Batch project |
 
 Chain multiple hooks by adding a `.d/` directory. The single file runs synchronously. The `.d/` hooks run concurrently, so a slow Slack notifier won't block the caller.
 
@@ -217,9 +217,11 @@ Prints database ops alongside normal output. Useful for debugging lock issues, W
 
 ## Production notes
 
-3 to 10 concurrent agents works fine. Past 50 you'll see contention on claim-next. The retry loop (100ms, 200ms, 400ms backoff) handles it, but measure latency. Past 1000, SQLite itself becomes the bottleneck. Switch to Postgres or a distributed queue.
+**Scale:** 3-10 concurrent agents works fine. Past 50 you'll see contention on claim-next. Past 1000, SQLite becomes the bottleneck — switch to Postgres or a distributed queue.
 
-Back up the `.db` file like any database. WAL mode lets you safely copy the main file while the system runs. Schema changes happen automatically on open. Events expire after 3 days by default; set `ttl_seconds` to NULL for permanent events. Run `taskbind prune --before 30d` to clean up, then `VACUUM` to reclaim space.
+**Backup:** WAL mode lets you safely copy the `.db` file while the system runs. Run `taskbind prune --before 30d` periodically, then `VACUUM` to reclaim space.
+
+**Fixes needed:** See [REVIEW.md](REVIEW.md) for 5 high-priority refactors. Each has a one-liner solution. Follow YAGNI — build only what breaks first.
 
 ## How it works
 

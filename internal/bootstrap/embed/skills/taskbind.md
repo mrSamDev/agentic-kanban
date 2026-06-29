@@ -1,11 +1,11 @@
 ---
-name: kanban
-description: Overview of the kanban coordination protocol — state machine, lease model, roles, and lifecycle. Agents read this before role-specific skills.
+name: taskbind
+description: Overview of the taskbind coordination protocol — state machine, lease model, roles, and lifecycle. Agents read this before role-specific skills.
 role: system
 type: protocol
 ---
 
-# Kanban Coordination Protocol
+# Taskbind Coordination Protocol
 
 A shared SQLite database that multiple AI agents use to coordinate work.
 No server, no daemon, no queues. One `.db` file, all agents share it.
@@ -77,7 +77,7 @@ Work submitted for review (`complete --review`) enters `IN_REVIEW` state.
 Any agent with a different identity than the claimer can approve or reject.
 
 - **Self-review**: Blocked by default. An agent cannot approve its own
-  work. Set `KANBAN_ALLOW_SELF_REVIEW=true` to bypass (use when the
+  work. Set `TASKBIND_ALLOW_SELF_REVIEW=true` to bypass (use when the
   orchestrator acts as both worker and reviewer).
 - **Approve**: `IN_REVIEW → DONE`
 - **Reject**: `IN_REVIEW → TODO` (with reason, goes back to backlog)
@@ -89,8 +89,6 @@ Bulk actions that execute atomically in a single transaction:
 - **Batch claim**: `claim-next --count N` — claims up to N eligible tasks
 - **Batch complete**: `batch complete --ids TASK-1,TASK-2 --agent X` —
   completes multiple tasks in one transaction
-- **Batch set-priority**: `batch set-priority --ids TASK-1 --priority 10`
-- **Batch set-project**: `batch set-project --ids TASK-1 --project sprint-2`
 
 ## Claim Transfer (Hierarchical Delegation)
 
@@ -124,8 +122,6 @@ the orchestrator and use the collect-results pattern.
 | `task reject <id> --agent --reason` | reviewer | IN_REVIEW to TODO |
 | `task view <id>` | anyone | Full details + notes + history |
 | `task search --status --role --agent` | manager | Filter the board |
-| `batch set-priority --ids --priority` | manager | Bulk priority |
-| `batch set-project --ids --project` | manager | Bulk project label |
 
 ## Data Integrity
 
@@ -147,8 +143,7 @@ CREATE TABLE events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     event_type  TEXT NOT NULL,
-    payload     TEXT NOT NULL,
-    ttl_seconds INTEGER DEFAULT 259200  -- 3 days; NULL = never expires
+    payload     TEXT NOT NULL
 );
 ```
 
@@ -163,8 +158,8 @@ SELECT id, event_type, payload FROM events
  LIMIT 100;
 ```
 
-Events auto-expire after `ttl_seconds` (default 3 days). TTL cleanup runs
-during board operations.
+Events are append-only. Use `taskbind prune --before <date>` to clean old
+records manually.
 
 ### Event Types
 
@@ -177,8 +172,6 @@ during board operations.
 | `task.submitted_for_review` | complete --review | task_id, agent, title |
 | `task.blocked` | block | task_id, agent, reason |
 | `task.transferred` | transfer-claim | task_id, agent, from_agent |
-| `task.priority_updated` | batch set-priority | task_id, title, priority |
-| `task.project_updated` | batch set-project | task_id, title, project |
 | `review.approved` | approve | task_id, agent, title |
 | `review.rejected` | reject | task_id, agent, reason |
 

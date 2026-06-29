@@ -27,102 +27,109 @@ func (s *Service) Dispatch(ctx context.Context, title, description, roleBoundary
 		project = "default"
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Task{}, fmt.Errorf("dispatch begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	id, err := nextID(tx)
-	if err != nil {
-		return Task{}, err
-	}
-
-	_, err = tx.Exec(
-		`INSERT INTO tasks (id, title, description, status, role_boundary, project, priority)
-		 VALUES (?, ?, ?, 'TODO', ?, ?, ?)`,
-		id, title, description, roleBoundary, project, priority,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert task: %w", err)
-	}
-
-	// If dependencies specified, insert into join table.
-	if dependsOn != nil && *dependsOn != "" {
-		parts := strings.Split(*dependsOn, ",")
-		for _, p := range parts {
-			depID := strings.TrimSpace(p)
-			if depID == "" {
-				continue
-			}
-			if _, err := tx.Exec(
-				`INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES(?, ?)`,
-				id, depID,
-			); err != nil {
-				return Task{}, fmt.Errorf("insert dependency %s -> %s: %w", id, depID, err)
-			}
-		}
-	}
-
-	_, err = tx.Exec(
-		`INSERT INTO history (task_id, agent, action) VALUES (?, 'system', 'DISPATCH')`,
-		id,
-	)
-	if err != nil {
-		return Task{}, fmt.Errorf("insert history: %w", err)
-	}
-
-	if err := insertEvent(tx, "task.created", eventPayload(tx, id, EventPayload{RoleBoundary: roleBoundary})); err != nil {
-		return Task{}, fmt.Errorf("insert event: %w", err)
-	}
-
-	// Cycle detection via Go-level DFS against join table.
-	// Load all task_dependencies, then check if any path from depID leads back to depID.
-	if dependsOn != nil && *dependsOn != "" {
-		depRows, err := tx.Query(`SELECT task_id, depends_on_task_id FROM task_dependencies`)
+	var task Task
+	var id string
+	err := s.retryOnBusy(func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
-			return Task{}, fmt.Errorf("cycle check load deps: %w", err)
+			return fmt.Errorf("dispatch begin tx: %w", err)
 		}
-		depGraph := map[string][]string{}
-		for depRows.Next() {
-			var from, to string
-			if err := depRows.Scan(&from, &to); err != nil {
-				depRows.Close()
-				return Task{}, fmt.Errorf("cycle check scan dep: %w", err)
-			}
-			depGraph[from] = append(depGraph[from], to)
-		}
-		depRows.Close()
+		defer func() { _ = tx.Rollback() }()
 
-		onStack := map[string]bool{}
-		var walk func(current string) bool
-		walk = func(current string) bool {
-			if onStack[current] {
-				return true
-			}
-			onStack[current] = true
-			for _, child := range depGraph[current] {
-				if walk(child) {
-					return true
+		id, err = nextID(tx)
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.Exec(
+			`INSERT INTO tasks (id, title, description, status, role_boundary, project, priority)
+			 VALUES (?, ?, ?, 'TODO', ?, ?, ?)`,
+			id, title, description, roleBoundary, project, priority,
+		)
+		if err != nil {
+			return fmt.Errorf("insert task: %w", err)
+		}
+
+		if dependsOn != nil && *dependsOn != "" {
+			parts := strings.Split(*dependsOn, ",")
+			for _, p := range parts {
+				depID := strings.TrimSpace(p)
+				if depID == "" {
+					continue
+				}
+				if _, err := tx.Exec(
+					`INSERT INTO task_dependencies(task_id, depends_on_task_id) VALUES(?, ?)`,
+					id, depID,
+				); err != nil {
+					return fmt.Errorf("insert dependency %s -> %s: %w", id, depID, err)
 				}
 			}
-			delete(onStack, current)
-			return false
 		}
 
-		for _, p := range strings.Split(*dependsOn, ",") {
-			depID := strings.TrimSpace(p)
-			if depID == "" {
-				continue
+		_, err = tx.Exec(
+			`INSERT INTO history (task_id, agent, action) VALUES (?, 'system', 'DISPATCH')`,
+			id,
+		)
+		if err != nil {
+			return fmt.Errorf("insert history: %w", err)
+		}
+
+		if err := insertEvent(tx, "task.created", eventPayload(tx, id, EventPayload{RoleBoundary: roleBoundary})); err != nil {
+			return fmt.Errorf("insert event: %w", err)
+		}
+
+		if dependsOn != nil && *dependsOn != "" {
+			depRows, err := tx.Query(`SELECT task_id, depends_on_task_id FROM task_dependencies`)
+			if err != nil {
+				return fmt.Errorf("cycle check load deps: %w", err)
 			}
-			if walk(depID) {
-				return Task{}, fmt.Errorf("cycle detected: adding %s would create a dependency cycle", id)
+			depGraph := map[string][]string{}
+			for depRows.Next() {
+				var from, to string
+				if err := depRows.Scan(&from, &to); err != nil {
+					_ = depRows.Close()
+					return fmt.Errorf("cycle check scan dep: %w", err)
+				}
+				depGraph[from] = append(depGraph[from], to)
+			}
+			_ = depRows.Close()
+
+			onStack := map[string]bool{}
+			var walk func(current string) bool
+			walk = func(current string) bool {
+				if onStack[current] {
+					return true
+				}
+				onStack[current] = true
+				for _, child := range depGraph[current] {
+					if walk(child) {
+						return true
+					}
+				}
+				delete(onStack, current)
+				return false
+			}
+
+			for _, p := range strings.Split(*dependsOn, ",") {
+				depID := strings.TrimSpace(p)
+				if depID == "" {
+					continue
+				}
+				if walk(depID) {
+					return fmt.Errorf("cycle detected: adding %s would create a dependency cycle", id)
+				}
 			}
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return Task{}, fmt.Errorf("commit dispatch: %w", err)
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit dispatch: %w", err)
+		}
+
+		task, err = s.View(ctx, id)
+		return err
+	})
+	if err != nil {
+		return Task{}, err
 	}
 
 	runHook(s.HookRunner, s.hooksDir, "task.created", EventPayload{
@@ -132,7 +139,7 @@ func (s *Service) Dispatch(ctx context.Context, title, description, roleBoundary
 		Priority:     fmt.Sprintf("%d", priority),
 		RoleBoundary: roleBoundary,
 	})
-	return s.View(ctx, id)
+	return task, nil
 }
 
 func (s *Service) Complete(ctx context.Context, id, agent string, toReview bool) (Task, error) {
@@ -577,16 +584,16 @@ func (s *Service) ApproveAll(ctx context.Context, agent, project string) ([]Task
 		for rows.Next() {
 			t, err := scanTask(rows)
 			if err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("approve all scan: %w", err)
 			}
 			tasks = append(tasks, t)
 		}
 		if err := rows.Err(); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("approve all rows: %w", err)
 		}
-		rows.Close()
+		_ = rows.Close()
 
 		for _, t := range tasks {
 			if os.Getenv("TASKBIND_ALLOW_SELF_REVIEW") != "true" {
@@ -706,7 +713,7 @@ func (s *Service) SearchFullText(ctx context.Context, query string, limit int) (
 	if err != nil {
 		return nil, fmt.Errorf("full-text search: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tasks []Task
 	for rows.Next() {

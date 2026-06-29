@@ -102,8 +102,9 @@ func Open(path string, debug bool) (*DB, error) {
 
 	// Always seed task_seq from existing tasks on every open.
 	if _, err := db.Exec(`
-		UPDATE task_seq SET next_id = (
-			SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
+		UPDATE task_seq SET next_id = MAX(
+			next_id,
+			(SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks)
 		) WHERE id = 1
 	`); err != nil {
 		_ = db.Close()

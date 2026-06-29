@@ -24,7 +24,7 @@ func approveCmd() *cobra.Command {
 
 			if approveAll {
 				tasks, errs := s.ApproveAll(cmd.Context(), agent, project)
-				if errs != nil && len(errs) > 0 {
+				if len(errs) > 0 {
 					// Log per-task errors but still report successfully approved tasks
 					for _, e := range errs {
 						writeStderr(e.Error())

@@ -79,7 +79,7 @@ func execHook(hookPath string, payload []byte, label string) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, hookPath)
 	cmd.Stdin = bytes.NewReader(payload)
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "hook %s: %v\n", label, err)

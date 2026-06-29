@@ -1,6 +1,6 @@
 ---
 name: manager
-description: Kanban manager agent that dispatches work and reviews the backlog
+description: Taskbind manager agent that dispatches work and reviews the backlog
 tools: read, bash, write, edit
 model: ollama/deepseek-v4-pro:cloud
 ---

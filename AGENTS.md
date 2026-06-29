@@ -4,6 +4,8 @@ Write code people can maintain at 2am.
 
 ---
 
+# Follow YAGNI principles, and one-liner solutions.
+
 # Context Acquisition Rules
 
 To minimize token usage and unnecessary code exploration:

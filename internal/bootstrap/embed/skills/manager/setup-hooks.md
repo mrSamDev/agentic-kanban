@@ -45,8 +45,6 @@ uses hyphens (`.` replaced by `-`):
 | `task.blocked` | Blocked |
 | `review.approved` | Approved |
 | `review.rejected` | Rejected |
-| `task.priority_updated` | Batch priority update |
-| `task.project_updated` | Batch project update |
 
 ## JSON payload
 
@@ -104,7 +102,7 @@ cat >> "/tmp/taskbind-hooks/events.log"
 
 ## Example: format hook files
 
-`kanban init` scaffold creates the `.taskbind/` directory. Hooks are manual.
+`taskbind init` scaffold creates the `.taskbind/` directory. Hooks are manual.
 Create them with your editor or generate from a template:
 
 ```bash

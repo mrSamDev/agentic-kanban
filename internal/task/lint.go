@@ -29,7 +29,7 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 	if err != nil {
 		return nil, fmt.Errorf("lint load tasks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tasks []Task
 	for rows.Next() {
@@ -54,7 +54,7 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 	if err != nil {
 		return nil, fmt.Errorf("lint load deps: %w", err)
 	}
-	defer depRows.Close()
+	defer func() { _ = depRows.Close() }()
 
 	deps := make(map[string][]string, len(tasks))
 	var nodeIDs []string
@@ -70,14 +70,14 @@ func LintPlan(ctx context.Context, db *sql.DB, project string) ([]LintIssue, err
 	for depRows.Next() {
 		var from, to string
 		if err := depRows.Scan(&from, &to); err != nil {
-			depRows.Close()
+			_ = depRows.Close()
 			return nil, fmt.Errorf("lint scan dep: %w", err)
 		}
 		if tByID[to] {
 			deps[from] = append(deps[from], to)
 		}
 	}
-	depRows.Close()
+	_ = depRows.Close()
 	if err := depRows.Err(); err != nil {
 		return nil, fmt.Errorf("lint dep iterate: %w", err)
 	}

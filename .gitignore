@@ -11,4 +11,7 @@ docs/public/screenshots
 docs/node_modules
 docs/.astro
 docs/_site/
-docs/package-lock.json
+docs/package-lock.jsontest-results/
+feedbacks/
+.pi/extensions/
+pnpm-lock.yaml
