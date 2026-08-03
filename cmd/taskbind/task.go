@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"agent-kanban/internal/task"
+	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )
@@ -41,6 +41,7 @@ func taskCmd() *cobra.Command {
 		rejectCmd(),
 		statsCmd(),
 		batchCmd(),
+		setPriorityCmd(),
 	)
 	return cmd
 }

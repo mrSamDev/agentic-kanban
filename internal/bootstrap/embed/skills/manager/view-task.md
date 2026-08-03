@@ -13,7 +13,7 @@ lease info, notes from prior agents, and the complete event log.
 ## Usage
 
 ```bash
-kanban task view TASK-101
+taskbind task view TASK-101
 ```
 
 ## JSON output

@@ -16,7 +16,7 @@ body:
       label: To reproduce
       description: Steps to reproduce the behavior.
       placeholder: |
-        1. Run `kanban ...`
+        1. Run `taskbind ...`
         2. See error
     validations:
       required: true
@@ -34,7 +34,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: OS, Go version, kanban version, number of concurrent agents
+      description: OS, Go version, taskbind version, number of concurrent agents
       placeholder: |
         OS: macOS 14, Ubuntu 22.04
         Kanban version: (from --version or binary SHA)

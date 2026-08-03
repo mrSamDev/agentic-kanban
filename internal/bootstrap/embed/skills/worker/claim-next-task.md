@@ -16,7 +16,7 @@ calls claim-next.
 ## Usage
 
 ```bash
-kanban task claim-next \
+taskbind task claim-next \
   --agent my-agent-name \
   --role worker
 ```
@@ -67,7 +67,7 @@ kanban task claim-next \
 To claim multiple tasks for parallel execution, use `--count`:
 
 ```bash
-kanban task claim-next \
+taskbind task claim-next \
   --agent my-agent-name \
   --role worker \
   --count 3

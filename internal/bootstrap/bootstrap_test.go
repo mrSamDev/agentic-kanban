@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"agent-kanban/internal/storage"
-	"agent-kanban/internal/task"
+	"taskbind/internal/storage"
+	"taskbind/internal/task"
 )
 
 func TestParsePlanMarkdownHeadings(t *testing.T) {
@@ -107,7 +107,7 @@ func TestInitCreatesDBAndSkills(t *testing.T) {
 
 	err := Init(InitOptions{
 		Dir:     tmp,
-		DBPath:  filepath.Join(tmp, ".kanban", "kanban.db"),
+		DBPath:  filepath.Join(tmp, ".taskbind", "taskbind.db"),
 		Harness: HarnessGeneric,
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func TestInitCreatesDBAndSkills(t *testing.T) {
 	}
 
 	// DB created.
-	if _, err := os.Stat(filepath.Join(tmp, ".kanban", "kanban.db")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmp, ".taskbind", "taskbind.db")); os.IsNotExist(err) {
 		t.Fatal("DB not created")
 	}
 
@@ -145,7 +145,7 @@ func TestInitWithPlanDispatchesTasks(t *testing.T) {
 
 	err := Init(InitOptions{
 		Dir:      tmp,
-		DBPath:   filepath.Join(tmp, ".kanban", "kanban.db"),
+		DBPath:   filepath.Join(tmp, ".taskbind", "taskbind.db"),
 		Harness:  HarnessGeneric,
 		PlanPath: planPath,
 	})
@@ -154,7 +154,7 @@ func TestInitWithPlanDispatchesTasks(t *testing.T) {
 	}
 
 	// Verify DB has the task by searching (re-open DB).
-	db, err := storage.Open(filepath.Join(tmp, ".kanban", "kanban.db"), false)
+	db, err := storage.Open(filepath.Join(tmp, ".taskbind", "taskbind.db"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestReInitScaffoldsSkills(t *testing.T) {
 
 	err := Init(InitOptions{
 		Dir:     tmp,
-		DBPath:  filepath.Join(tmp, ".kanban", "kanban.db"),
+		DBPath:  filepath.Join(tmp, ".taskbind", "taskbind.db"),
 		Harness: HarnessGeneric,
 	})
 	if err != nil {
@@ -186,7 +186,7 @@ func TestReInitScaffoldsSkills(t *testing.T) {
 	}
 
 	// DB created by init.
-	if _, err := os.Stat(filepath.Join(tmp, ".kanban", "kanban.db")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmp, ".taskbind", "taskbind.db")); os.IsNotExist(err) {
 		t.Fatal("DB not created by init")
 	}
 
@@ -201,7 +201,7 @@ func TestReInitScaffoldsSkills(t *testing.T) {
 	// Re-init.
 	err = ReInit(InitOptions{
 		Dir:     tmp,
-		DBPath:  filepath.Join(tmp, ".kanban", "kanban.db"),
+		DBPath:  filepath.Join(tmp, ".taskbind", "taskbind.db"),
 		Harness: HarnessGeneric,
 	})
 	if err != nil {
@@ -214,7 +214,7 @@ func TestReInitScaffoldsSkills(t *testing.T) {
 	}
 
 	// DB still intact.
-	if _, err := os.Stat(filepath.Join(tmp, ".kanban", "kanban.db")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmp, ".taskbind", "taskbind.db")); os.IsNotExist(err) {
 		t.Fatal("DB missing after re-init")
 	}
 

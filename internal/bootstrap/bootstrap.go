@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"agent-kanban/internal/storage"
-	"agent-kanban/internal/task"
+	"taskbind/internal/storage"
+	"taskbind/internal/task"
 )
 
 type Harness string
@@ -37,7 +37,7 @@ func Init(opts InitOptions) error {
 		opts.Dir = "."
 	}
 	if opts.DBPath == "" {
-		opts.DBPath = filepath.Join(opts.Dir, ".kanban", "kanban.db")
+		opts.DBPath = filepath.Join(opts.Dir, ".taskbind", "taskbind.db")
 	}
 
 	if opts.Harness != "" && !ValidHarnesses[opts.Harness] {
@@ -77,7 +77,7 @@ func ReInit(opts InitOptions) error {
 		opts.Dir = "."
 	}
 	if opts.DBPath == "" {
-		opts.DBPath = filepath.Join(opts.Dir, ".kanban", "kanban.db")
+		opts.DBPath = filepath.Join(opts.Dir, ".taskbind", "taskbind.db")
 	}
 
 	if opts.Harness != "" && !ValidHarnesses[opts.Harness] {
@@ -144,7 +144,7 @@ func dispatchPlan(sqlDB *sql.DB, planPath string) error {
 		if priority == 0 {
 			priority = 100
 		}
-		if _, err := svc.Dispatch(context.Background(), pt.Title, role, "default", priority, nil); err != nil {
+		if _, err := svc.Dispatch(context.Background(), pt.Title, "", role, "default", priority, nil); err != nil {
 			return fmt.Errorf("dispatch %q: %w", pt.Title, err)
 		}
 	}
@@ -235,8 +235,8 @@ func writeFlatSkills(skillsDir string) error {
 	allSkills := map[string]string{}
 
 	// Read top-level overview skill
-	if data, err := skillFiles.ReadFile("embed/skills/kanban.md"); err == nil {
-		allSkills["kanban.md"] = string(data)
+	if data, err := skillFiles.ReadFile("embed/skills/taskbind.md"); err == nil {
+		allSkills["taskbind.md"] = string(data)
 	}
 
 	for _, skills := range roleSkillMap {
@@ -254,7 +254,7 @@ func writeFlatSkills(skillsDir string) error {
 	// Write role index alongside flat skills
 	var sb strings.Builder
 	sb.WriteString("# Skill Index\n\n")
-	sb.WriteString("system:kanban.md\n")
+	sb.WriteString("system:taskbind.md\n")
 	for role, names := range SkillNames {
 		for _, name := range names {
 			fmt.Fprintf(&sb, "%s:%s.md\n", role, name)

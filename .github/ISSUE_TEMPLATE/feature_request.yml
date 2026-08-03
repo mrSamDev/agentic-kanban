@@ -28,7 +28,7 @@ body:
       label: Scope
       options:
         - label: I'm willing to submit a PR for this
-        - label: This changes the kanban protocol (task states, hooks, or skills)
+        - label: This changes the taskbind protocol (task states, hooks, or skills)
   - type: textarea
     id: notes
     attributes:

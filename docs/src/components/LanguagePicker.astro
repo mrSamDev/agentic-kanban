@@ -10,7 +10,7 @@ const t = useTranslations(lang);
   {Object.entries(languages).map(([code, label]) => (
     code === lang
       ? <span class="lang-current" aria-current="page">{label}</span>
-      : <a href={`/agentic-kanban/${code === 'en' ? '' : code + '/'}`} class="lang-link">{label}</a>
+      : <a href={`/taskbind/${code === 'en' ? '' : code + '/'}`} class="lang-link">{label}</a>
   ))}
 </nav>
 

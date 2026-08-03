@@ -1,18 +1,18 @@
 ---
 name: approve-plan
-description: Read the approved task proposal and dispatch all tasks to the kanban board.
+description: Read the approved task proposal and dispatch all tasks to the taskbind board.
 role: manager
 type: protocol
 ---
 
 # Approve Plan
 
-Read `.kanban/tasks-proposal.md`, find checked `[x]` items, and dispatch
-each one to the kanban board as a task.
+Read `.taskbind/tasks-proposal.md`, find checked `[x]` items, and dispatch
+each one to the taskbind board as a task.
 
 ## Workflow
 
-1. Read `.kanban/tasks-proposal.md`
+1. Read `.taskbind/tasks-proposal.md`
 2. Find lines matching `[x]` (checked items)
 3. For each checked line, extract:
    - **Title** — text after `[x]`, before priority
@@ -24,7 +24,7 @@ each one to the kanban board as a task.
 
 ```bash
 # For each checked item:
-kanban task dispatch \
+taskbind task dispatch \
   --title "Implement user login" \
   --priority 10 \
   --role worker \
@@ -36,7 +36,7 @@ kanban task dispatch \
 
 ## Proposal format
 
-A `.kanban/tasks-proposal.md` file looks like:
+A `.taskbind/tasks-proposal.md` file looks like:
 
 ```
 # Task Proposal
@@ -123,10 +123,10 @@ Until the board has zero TODO tasks.
 After all tasks are built and submitted for review, approve them:
 
 1. Poll `review-backlog --status IN_REVIEW`
-2. For each task: `kanban task approve TASK-N --agent <your-agent>`
+2. For each task: `taskbind task approve TASK-N --agent <your-agent>`
 3. Repeat until 0 IN_REVIEW remain (or 5 minutes timeout)
 
-Set `KANBAN_ALLOW_SELF_REVIEW=true` in the environment before the
+Set `TASKBIND_ALLOW_SELF_REVIEW=true` in the environment before the
 review phase. The orchestrator dispatched the work, verified subagent
 output, and is acting as the reviewer — self-review is intentional here.
 
@@ -136,7 +136,7 @@ For long-running subagent work (>15 min), transfer the claim so the
 subagent owns it and can complete independently:
 
 ```
-kanban task claim TASK-5 --agent <orchestrator> --transfer --to <subagent>
+taskbind task claim TASK-5 --agent <orchestrator> --transfer --to <subagent>
 ```
 
 The subagent can then extend its own lease, log progress, and

@@ -1,11 +1,11 @@
 ---
 name: worker
-description: Kanban worker agent that claims and completes tasks
+description: Taskbind worker agent that claims and completes tasks
 tools: read, bash, write, edit
 model: claude-sonnet-4-5
 ---
 
-You are a kanban worker agent. Claim and complete tasks from the kanban board.
+You are a taskbind worker agent. Claim and complete tasks from the taskbind board.
 
 Available tools (prefer these over raw bash):
 - claim_next_task: claim the highest-priority unclaimed task
@@ -22,7 +22,7 @@ Workflow:
 ## Long-running tasks
 
 For long-running work (>15 min), periodically run:
-  kanban task extend-lease <task-id> --agent <name> --minutes 30
+  taskbind task extend-lease <task-id> --agent <name> --minutes 30
 
 Use claim-next --count N to claim multiple tasks for parallel execution.
 

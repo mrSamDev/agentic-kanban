@@ -1,48 +1,52 @@
-# agentic-kanban
+# taskbind
 
 > **Alpha.** Things may break. You've been warned.
+
+> **External review:** [REVIEW.md](REVIEW.md) — brutally honest senior/staff engineer audit of the codebase, docs, and spec/impl divergence. The review itself is excellent: specific, evidence-backed, correctly distinguishes real engineering (SQLite concurrency core) from vibe-coded packaging (stale docs, missing CI, false README claims). Worth reading before contributing.
 
 Coordination protocol for AI agents. SQLite-backed. Agent-agnostic.
 
 No server, no daemon, no queues. Just a shared database file agents use to claim, track, review, and finish work. Single Go binary plus SQLite.
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
+curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | sh
 ```
 
 > The curl pipe install works fine for trusted environments. For production, grab the binary from releases and verify the checksum.
 
 ## Why
 
-Started with a markdown file. Sprint 1, task 1.1, task 1.2. Agents kept overwriting each other's updates, forgetting to mark things done, or picking up work already claimed. The file became noise fast.
+**What:** SQLite-backed coordination protocol for AI agents. Single binary, no server.
 
-The answer was a database. Every state change is a transaction, so two agents can't claim the same task. If one crashes, its lease expires and another picks it up, same as Rust's ownership model: one owner at a time, released when the owner disappears.
+**Why:** Agents kept overwriting each other's updates, forgetting to mark things done, or picking up work already claimed. Markdown files became noise fast. The answer was a database. Every state change is a transaction, so two agents can't claim the same task. If one crashes, its lease expires and another picks it up, same as Rust's ownership model: one owner at a time, released when the owner disappears.
+
+**When:** Multiple AI agents on the same machine or shared filesystem need durable coordination without Redis or Postgres. Skip it when you need cross-network coordination, real-time push notifications, or thousands of concurrent workers.
 
 The `.db` file is the only coordination point.
 
 ## When it fits
 
-**Use this when:** multiple AI agents on the same machine or a shared filesystem need durable coordination without Redis or Postgres or message queues. You also want crash recovery and task ownership. Tested with 3 to 10 concurrent agents, and up to 50.
+**Use:** Multiple AI agents on same machine/shared filesystem need durable coordination. Crash recovery. Task ownership. Tested 3-10 concurrent agents, up to 50.
 
-**Skip it when:** agents run across untrusted networks, you need real-time push notifications, or you need thousands of concurrent workers. Those cases want something like Temporal, Celery, or Kafka.
+**Skip:** Cross-network agents. Real-time push notifications. Thousands of concurrent workers. Use Temporal, Celery, or Kafka instead.
 
 ## Quick start
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/mrSamDev/agentic-kanban/main/install.sh | sh
-kanban init --harness pi
+curl -sfL https://raw.githubusercontent.com/mrSamDev/taskbind/main/install.sh | sh
+taskbind init --harness pi
 
 # Product owner workflow: an LLM reads your spec or roadmap, writes a task
 # proposal, you approve, then it dispatches. See the dispatch-plan and
 # approve-plan skills under internal/bootstrap/embed/skills/manager/.
 
 # For simple plans, the built-in parser works too.
-kanban init --harness pi --plan plan.md
+taskbind init --harness pi --plan plan.md
 
-kanban --debug task dispatch --title "Set up auth" --role worker --priority 10
-kanban task claim-next --agent my-agent --role worker
-kanban task log-progress TASK-1 --agent my-agent --note "Working"
-kanban task complete TASK-1 --agent my-agent
+taskbind --debug task dispatch --title "Set up auth" --role worker --priority 10
+taskbind task claim-next --agent my-agent --role worker
+taskbind task log-progress TASK-1 --agent my-agent --note "Working"
+taskbind task complete TASK-1 --agent my-agent
 ```
 
 ## Commands
@@ -63,12 +67,10 @@ A short table since these are reference docs:
 | `task approve <id> --agent` | reviewer | IN_REVIEW to DONE (single) |
 | `task approve --all --agent [--project]` | reviewer | Batch approve all IN_REVIEW |
 | `task reject <id> --agent --reason` | reviewer | IN_REVIEW to TODO |
-| `kanban plan lint` | manager | Detect dep cycles, unknown deps |
-| `kanban status [--burndown] [--project]` | anyone | Status counts or progress bars |
+| `taskbind plan lint` | manager | Detect dep cycles, unknown deps |
+| `taskbind status [--burndown] [--project]` | anyone | Status counts or progress bars |
 | `batch claim --agent --role [--count N]` | worker | Claim multiple tasks atomically |
 | `batch complete --ids --agent [--to-review]` | worker | Complete multiple tasks |
-| `batch set-priority --ids --priority` | manager | Bulk priority update |
-| `batch set-project --ids --project` | manager | Bulk project label |
 | `prune [--before] [--dry-run]` | ops | Clean old events and notes |
 | `init --harness --plan --dir` | setup | Scaffold DB and agent files |
 
@@ -86,7 +88,7 @@ Reviewers don't need to claim IN_REVIEW tasks. They just approve or reject.
 
 ## Skills — the agent runtime
 
-Agents don't ship with kanban knowledge. Skills teach them. Each role gets its own set of skill files — the agent reads its role's skills and learns the protocol.
+Agents don't ship with taskbind knowledge. Skills teach them. Each role gets its own set of skill files — the agent reads its role's skills and learns the protocol.
 
 ### Coordination skills (shipped)
 
@@ -99,8 +101,8 @@ These are the **protocol skills** — they teach coordination, not software engi
 | `reviewer/` | claim-review, approve-task, reject-task | Review submissions, approve or reject |
 
 ```text
-Kanban binary = the protocol engine
-Kanban skills = the agent runtime (one per role)
+taskbind binary = the protocol engine
+taskbind skills = the agent runtime (one per role)
 Agent runtime  = Claude Code, PI, Codex, Gemini, ...
 ```
 
@@ -128,10 +130,10 @@ Manager                    Workers                    Reviewers
 ## Project structure
 
 ```
-cmd/kanban/main.go              CLI entrypoint
+cmd/taskbind/main.go              CLI entrypoint
 internal/
   bootstrap/                    Init, plan parsing, agent and skill templates
-  bootstrap/kanban_extension.go Pi extension (TypeScript template)
+  bootstrap/taskbind_extension.go Pi extension (TypeScript template)
   storage/                      SQLite connection, schema, migration
   task/                         Models, queries, service logic
 internal/bootstrap/embed/skills/   Embedded skill templates (canonical source)
@@ -143,7 +145,7 @@ examples/                       Integration guides for pi and Claude Code
 
 ## Hooks
 
-Drop an executable in `.kanban/hooks/` named after an event. The hook gets JSON on stdin with the event type and task details. Each hook has a 30-second timeout. Errors are logged to stderr but the operation continues. Missing hooks are silently ignored.
+Drop an executable in `.taskbind/hooks/` named after an event. The hook gets JSON on stdin with the event type and task details. Each hook has a 30-second timeout. Errors are logged to stderr but the operation continues. Missing hooks are silently ignored.
 
 | Event | When |
 |---|---|
@@ -156,13 +158,11 @@ Drop an executable in `.kanban/hooks/` named after an event. The hook gets JSON 
 | `task.blocked` | Blocked |
 | `review.approved` | Approved |
 | `review.rejected` | Rejected |
-| `task.priority_updated` | Batch priority |
-| `task.project_updated` | Batch project |
 
 Chain multiple hooks by adding a `.d/` directory. The single file runs synchronously. The `.d/` hooks run concurrently, so a slow Slack notifier won't block the caller.
 
 ```text
-.kanban/hooks/
+.taskbind/hooks/
 ├── task-created
 ├── task-completed
 └── task-completed.d/
@@ -174,11 +174,11 @@ Chain multiple hooks by adding a `.d/` directory. The single file runs synchrono
 ## Init command
 
 ```bash
-kanban init                           # interactive prompt
-kanban init --harness pi              # pi extensions
-kanban init --harness claude          # Claude Code agents
-kanban init --harness generic         # plain .agents/ directory
-kanban init --harness pi --plan plan.md
+taskbind init                           # interactive prompt
+taskbind init --harness pi              # pi extensions
+taskbind init --harness claude          # Claude Code agents
+taskbind init --harness generic         # plain .agents/ directory
+taskbind init --harness pi --plan plan.md
 ```
 
 The plan parser handles markdown headings with optional `[p1]` priority hints and JSON arrays.
@@ -197,10 +197,10 @@ The plan parser handles markdown headings with optional `[p1]` priority hints an
 
 ### Product owner workflow
 
-For real plans (specs, PRDs, anything with sections and tables and timelines), the Go parser won't cut it. Use the LLM-driven skills instead. An agent reads the plan, understands what it describes, and writes a proposal to `.kanban/tasks-proposal.md`. You review it, check the items you want, then the agent dispatches each one. No brittle regex, no parser changes. Just the LLM's ability to read a document and figure out what work it describes.
+For real plans (specs, PRDs, anything with sections and tables and timelines), the Go parser won't cut it. Use the LLM-driven skills instead. An agent reads the plan, understands what it describes, and writes a proposal to `.taskbind/tasks-proposal.md`. You review it, check the items you want, then the agent dispatches each one. No brittle regex, no parser changes. Just the LLM's ability to read a document and figure out what work it describes.
 
 ```
-Agent reads plan.md, writes .kanban/tasks-proposal.md
+Agent reads plan.md, writes .taskbind/tasks-proposal.md
 You review and check [x] on approved items
 Agent reads the proposal and dispatches each checked task
 ```
@@ -210,16 +210,18 @@ The skills live at `internal/bootstrap/embed/skills/manager/dispatch-plan.md` an
 ## Observability
 
 ```bash
-kanban --debug task claim-next --agent alice --role worker
+taskbind --debug task claim-next --agent alice --role worker
 ```
 
 Prints database ops alongside normal output. Useful for debugging lock issues, WAL behavior, and multi-agent timing.
 
 ## Production notes
 
-3 to 10 concurrent agents works fine. Past 50 you'll see contention on claim-next. The retry loop (100ms, 200ms, 400ms backoff) handles it, but measure latency. Past 1000, SQLite itself becomes the bottleneck. Switch to Postgres or a distributed queue.
+**Scale:** 3-10 concurrent agents works fine. Past 50 you'll see contention on claim-next. Past 1000, SQLite becomes the bottleneck — switch to Postgres or a distributed queue.
 
-Back up the `.db` file like any database. WAL mode lets you safely copy the main file while the system runs. Schema changes happen automatically on open. Events expire after 3 days by default; set `ttl_seconds` to NULL for permanent events. Run `kanban prune --before 30d` to clean up, then `VACUUM` to reclaim space.
+**Backup:** WAL mode lets you safely copy the `.db` file while the system runs. Run `taskbind prune --before 30d` periodically, then `VACUUM` to reclaim space.
+
+**Fixes needed:** See [REVIEW.md](REVIEW.md) for 5 high-priority refactors. Each has a one-liner solution. Follow YAGNI — build only what breaks first.
 
 ## How it works
 
@@ -231,7 +233,7 @@ Worker-A claims TASK-1. Worker-A crashes.
 Worker-B calls claim-next and gets TASK-1.
 ```
 
-Every command prints stable JSON to stdout. Empty work returns `{}`. Errors go to stderr as `{"error":"..."}` with exit code 2. Skill files (embedded in the binary, written by `kanban init`) teach agents the protocol. No tool-calling framework needed.
+Every command prints stable JSON to stdout. Empty work returns `{}`. Errors go to stderr as `{"error":"..."}` with exit code 2. Skill files (embedded in the binary, written by `taskbind init`) teach agents the protocol. No tool-calling framework needed.
 
 ## Integration examples
 
@@ -241,7 +243,7 @@ Every command prints stable JSON to stdout. Empty work returns `{}`. Errors go t
 ## Building
 
 ```bash
-go build -o kanban ./cmd/kanban/
+go build -o taskbind ./cmd/taskbind/
 ```
 
 Requires Go 1.24 or later. Pure Go, no CGo.

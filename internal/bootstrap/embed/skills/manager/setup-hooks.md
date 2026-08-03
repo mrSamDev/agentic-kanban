@@ -1,21 +1,21 @@
 ---
 name: setup-hooks
-description: Set up kanban event hooks for notifications, metrics, logging, or custom automation
+description: Set up taskbind event hooks for notifications, metrics, logging, or custom automation
 role: manager
 type: protocol
 ---
 # Setup Hooks
 
-Set up event hooks that fire on kanban state transitions. Hooks let you
+Set up event hooks that fire on taskbind state transitions. Hooks let you
 integrate Slack, Discord, metrics, logging, or any custom automation.
 
 ## Hook directory
 
-Place executables in `.kanban/hooks/` named after the event. The event name
+Place executables in `.taskbind/hooks/` named after the event. The event name
 uses hyphens (`.` replaced by `-`):
 
 ```
-.kanban/hooks/
+.taskbind/hooks/
 ├── task-created          ← single hook
 ├── task-completed        ← single hook
 └── task-completed.d/     ← multiple hooks, all receive same payload
@@ -45,8 +45,6 @@ uses hyphens (`.` replaced by `-`):
 | `task.blocked` | Blocked |
 | `review.approved` | Approved |
 | `review.rejected` | Rejected |
-| `task.priority_updated` | Batch priority update |
-| `task.project_updated` | Batch project update |
 
 ## JSON payload
 
@@ -70,7 +68,7 @@ uses hyphens (`.` replaced by `-`):
 
 ```bash
 #!/bin/bash
-# .kanban/hooks/task-completed.d/slack
+# .taskbind/hooks/task-completed.d/slack
 
 set -e
 
@@ -96,25 +94,25 @@ curl -sf -X POST "$WEBHOOK_URL" \
 
 ```bash
 #!/bin/bash
-# .kanban/hooks/log-events
+# .taskbind/hooks/log-events
 
-mkdir -p /tmp/kanban-hooks
-cat >> "/tmp/kanban-hooks/events.log"
+mkdir -p /tmp/taskbind-hooks
+cat >> "/tmp/taskbind-hooks/events.log"
 ```
 
 ## Example: format hook files
 
-`kanban init` scaffold creates the `.kanban/` directory. Hooks are manual.
+`taskbind init` scaffold creates the `.taskbind/` directory. Hooks are manual.
 Create them with your editor or generate from a template:
 
 ```bash
-mkdir -p .kanban/hooks
-cat > .kanban/hooks/task-created << 'SCRIPT'
+mkdir -p .taskbind/hooks
+cat > .taskbind/hooks/task-created << 'SCRIPT'
 #!/bin/bash
 eval "$(jq -r '@sh "title=\(.payload.title) id=\(.payload.id)"')"
 echo "[hook] task $id created: $title"
 SCRIPT
-chmod +x .kanban/hooks/task-created
+chmod +x .taskbind/hooks/task-created
 ```
 
 ## Shell
@@ -122,6 +120,6 @@ chmod +x .kanban/hooks/task-created
 Always set executable permission:
 
 ```bash
-chmod +x .kanban/hooks/task-created
-chmod -R +x .kanban/hooks/task-completed.d/
+chmod +x .taskbind/hooks/task-created
+chmod -R +x .taskbind/hooks/task-completed.d/
 ```

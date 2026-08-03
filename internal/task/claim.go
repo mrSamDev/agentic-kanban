@@ -56,8 +56,8 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 		var rows *sql.Rows
 		if project != "" {
 			rows, err = tx.Query(`
-				SELECT id, title, status, role_boundary, project, priority,
-				       assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+				SELECT id, title, description, status, role_boundary, project, priority,
+				       assigned_agent, lease_until, created_at, updated_at, claimed_by
 				  FROM tasks
 				 WHERE role_boundary = ?
 				   AND project = ?
@@ -68,8 +68,8 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 			)
 		} else {
 			rows, err = tx.Query(`
-				SELECT id, title, status, role_boundary, project, priority,
-				       assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+				SELECT id, title, description, status, role_boundary, project, priority,
+				       assigned_agent, lease_until, created_at, updated_at, claimed_by
 				  FROM tasks
 				 WHERE role_boundary = ?
 				   AND (status = 'TODO'
@@ -118,7 +118,7 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 				`UPDATE tasks
 				    SET status = 'IN_PROGRESS', assigned_agent = ?,
 				        lease_until = datetime('now', '+' || ? || ' minutes'),
-        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
+				        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
 			        updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ? AND status IN ('TODO', 'IN_PROGRESS')`,
 				agent, defaultLeaseMinutes, agent, t.ID,
@@ -136,8 +136,8 @@ func (s *Service) ClaimBatch(ctx context.Context, agent, role, project string, c
 
 			// Re-read from DB to get authoritative status, updated_at, lease_until
 			row := tx.QueryRow(
-				`SELECT id, title, status, role_boundary, project, priority,
-				        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+				`SELECT id, title, description, status, role_boundary, project, priority,
+				        assigned_agent, lease_until, created_at, updated_at, claimed_by
 				   FROM tasks WHERE id = ?`, t.ID,
 			)
 			claimedEntry, err := scanTask(row)
@@ -229,7 +229,10 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 				return &ExitError{Code: 2, Message: fmt.Sprintf("already claimed by %s", agent)}
 			}
 			var leaseUntil sql.NullString
-			tx.QueryRow(`SELECT lease_until FROM tasks WHERE id = ?`, id).Scan(&leaseUntil)
+			if err := tx.QueryRow(`SELECT lease_until FROM tasks WHERE id = ?`, id).Scan(&leaseUntil); err != nil {
+				// Can't determine lease state — fail closed
+				return ErrNotAssigned
+			}
 			if leaseUntil.Valid {
 				parsed, err := parseLeaseTime(leaseUntil.String)
 				if err == nil && parsed.After(time.Now()) {
@@ -253,7 +256,7 @@ func (s *Service) ClaimByID(ctx context.Context, id, agent string) (Task, error)
 			`UPDATE tasks
 			    SET status = 'IN_PROGRESS', assigned_agent = ?,
 			        lease_until = datetime('now', '+' || ? || ' minutes'),
-        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
+				        claimed_by = CASE WHEN claimed_by IS NULL THEN ? ELSE claimed_by END,
 			        updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ?`,
 			agent, defaultLeaseMinutes, agent, id,

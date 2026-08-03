@@ -27,7 +27,7 @@ func TestOpenCreatesDB(t *testing.T) {
 }
 
 func TestOpenCreatesParentDir(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", "sub", "kanban.db")
+	path := filepath.Join(t.TempDir(), "nested", "sub", "taskbind.db")
 	db, err := Open(path, false)
 	if err != nil {
 		t.Fatalf("open with nested dirs: %v", err)
@@ -166,7 +166,7 @@ func TestCloseCheckpointsWAL(t *testing.T) {
 
 func TestOpenInvalidPath(t *testing.T) {
 	// Root dir is not writable — should fail
-	_, err := Open("/dev/null/kanban.db", false)
+	_, err := Open("/dev/null/taskbind.db", false)
 	if err == nil {
 		t.Fatal("expected error for invalid path")
 	}

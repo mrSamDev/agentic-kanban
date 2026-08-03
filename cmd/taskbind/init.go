@@ -3,7 +3,7 @@ package main
 import (
 	"path/filepath"
 
-	"agent-kanban/internal/bootstrap"
+	"taskbind/internal/bootstrap"
 
 	"github.com/spf13/cobra"
 )
@@ -14,22 +14,22 @@ func initCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize a project for agent coordination",
-		Long: `Scaffold a project with kanban database, skill files, and optional task dispatch from a plan file.
+		Long: `Scaffold a project with taskbind database, skill files, and optional task dispatch from a plan file.
 
-Creates .kanban/kanban.db, agent skill directories, and optionally parses
+Creates .taskbind/taskbind.db, agent skill directories, and optionally parses
 --plan to dispatch the first batch of tasks.
 
-  kanban init
-  kanban init --harness pi
-  kanban init --harness pi --plan plan.md
-  kanban init --harness claude --plan plan.md --dir ./my-project
+  taskbind init
+  taskbind init --harness pi
+  taskbind init --harness pi --plan plan.md
+  taskbind init --harness claude --plan plan.md --dir ./my-project
 
 Supported harnesses: pi (default), claude, generic.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_ = ConfigFromContext(cmd.Context()) // init is project-scoped; ignore KANBAN_DB / findProjectRoot
+			_ = ConfigFromContext(cmd.Context()) // init is project-scoped; ignore TASKBIND_DB / findProjectRoot
 			return bootstrap.Init(bootstrap.InitOptions{
 				Dir:      dir,
-				DBPath:   filepath.Join(dir, ".kanban", "kanban.db"),
+				DBPath:   filepath.Join(dir, ".taskbind", "taskbind.db"),
 				Harness:  bootstrap.Harness(harness),
 				PlanPath: plan,
 			})
@@ -49,19 +49,19 @@ func reInitCmd() *cobra.Command {
 		Short: "Re-scaffold agent files without touching the database",
 		Long: `Re-write skill files, agent definitions, and extensions.
 
-The database is left untouched. Useful after upgrading kanban to pick up
+The database is left untouched. Useful after upgrading taskbind to pick up
 new or updated skills (e.g. setup-hooks).
 
-  kanban re-init
-  kanban re-init --harness pi
-  kanban re-init --harness claude --plan plan.md
+  taskbind re-init
+  taskbind re-init --harness pi
+  taskbind re-init --harness claude --plan plan.md
 
 Supported harnesses: pi, claude, generic. Prompts if omitted.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_ = ConfigFromContext(cmd.Context()) // re-init is project-scoped; ignore KANBAN_DB / findProjectRoot
+			_ = ConfigFromContext(cmd.Context()) // re-init is project-scoped; ignore TASKBIND_DB / findProjectRoot
 			return bootstrap.ReInit(bootstrap.InitOptions{
 				Dir:      dir,
-				DBPath:   filepath.Join(dir, ".kanban", "kanban.db"),
+				DBPath:   filepath.Join(dir, ".taskbind", "taskbind.db"),
 				Harness:  bootstrap.Harness(harness),
 				PlanPath: plan,
 			})

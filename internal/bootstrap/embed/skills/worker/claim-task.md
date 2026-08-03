@@ -13,7 +13,7 @@ sends a task ID, and you claim it directly. No shadow tasks, no confusion.
 ## Usage
 
 ```bash
-kanban task claim TASK-12 \
+taskbind task claim TASK-12 \
   --agent worker-1
 ```
 
@@ -36,7 +36,7 @@ kanban task claim TASK-12 \
 Transfer a claimed task to another agent so the subagent owns the claim:
 
 ```bash
-kanban task claim TASK-5 \
+taskbind task claim TASK-5 \
   --agent orchestrator \
   --transfer \
   --to pi-worker

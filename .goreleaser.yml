@@ -1,10 +1,10 @@
 version: 2
 
-project_name: kanban
+project_name: taskbind
 
 builds:
-  - main: ./cmd/kanban/
-    binary: kanban
+  - main: ./cmd/taskbind/
+    binary: taskbind
     goos:
       - linux
       - darwin
@@ -15,7 +15,7 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - name_template: "kanban_{{ .Os }}_{{ .Arch }}"
+  - name_template: "taskbind_{{ .Os }}_{{ .Arch }}"
     format: binary
     files:
       - none*

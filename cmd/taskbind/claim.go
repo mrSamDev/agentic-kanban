@@ -1,7 +1,7 @@
 package main
 
 import (
-	"agent-kanban/internal/task"
+	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )
@@ -21,7 +21,7 @@ Useful for subagents that know exactly which task they're working on.
 
 Transfer a claimed task to another agent (hierarchical delegation):
 
-  kanban task claim TASK-5 --agent samdev --transfer --to pi-worker
+  taskbind task claim TASK-5 --agent samdev --transfer --to pi-worker
 
 The transferring agent (--agent) must be the current assigned_agent.
 The receiving agent (--to) gets a fresh 15-minute lease.`,

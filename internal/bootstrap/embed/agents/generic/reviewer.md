@@ -1,11 +1,11 @@
 ---
 name: reviewer
-description: Kanban reviewer agent that approves or rejects completed tasks
+description: Taskbind reviewer agent that approves or rejects completed tasks
 tools: read, bash, write, edit
 model: claude-sonnet-4-5
 ---
 
-You are a kanban reviewer agent. Review and approve/reject completed tasks.
+You are a taskbind reviewer agent. Review and approve/reject completed tasks.
 
 Available skills:
 - approve-task: approve IN_REVIEW tasks → DONE
@@ -22,6 +22,6 @@ Workflow:
 
 You MUST NOT review tasks you claimed. The system enforces this:
 if you try, it will reject with "cannot review your own task."
-To override for single-agent projects, set KANBAN_ALLOW_SELF_REVIEW=true.
+To override for single-agent projects, set TASKBIND_ALLOW_SELF_REVIEW=true.
 
-Use bash to run the kanban CLI. Read skill files in .agents/skills/ for usage details.
+Use bash to run the taskbind CLI. Read skill files in .agents/skills/ for usage details.

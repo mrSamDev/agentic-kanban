@@ -11,8 +11,8 @@ import (
 
 func (s *Service) View(ctx context.Context, id string) (Task, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, title, status, role_boundary, project, priority,
-		        assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by
+		`SELECT id, title, description, status, role_boundary, project, priority,
+		        assigned_agent, lease_until, created_at, updated_at, claimed_by
 		   FROM tasks WHERE id = ?`, id,
 	)
 	t, err := scanTask(row)
@@ -62,7 +62,7 @@ func (s *Service) listNotes(ctx context.Context, taskID string, limit int) ([]No
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var notes []Note
 	for rows.Next() {
@@ -93,7 +93,7 @@ func (s *Service) listHistory(ctx context.Context, taskID string, limit int) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var history []HistoryEntry
 	for rows.Next() {
@@ -125,7 +125,7 @@ func (s *Service) PollEvents(ctx context.Context, afterID int64) ([]Event, error
 	if err != nil {
 		return nil, fmt.Errorf("poll events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []Event
 	for rows.Next() {
@@ -151,7 +151,7 @@ func (s *Service) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []Event
 	for rows.Next() {
@@ -175,7 +175,6 @@ type SearchParams struct {
 	Agent   string
 	Project string
 	Limit   int
-	Offset  int
 }
 
 func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, error) {
@@ -206,7 +205,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 		args = append(args, params.Project)
 	}
 
-	query := "SELECT id, title, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at, depends_on, claimed_by FROM tasks"
+	query := "SELECT id, title, description, status, role_boundary, project, priority, assigned_agent, lease_until, created_at, updated_at, claimed_by FROM tasks"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -215,15 +214,12 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]Task, erro
 	if params.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", params.Limit)
 	}
-	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", params.Offset)
-	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tasks []Task
 	for rows.Next() {
@@ -298,7 +294,7 @@ func (s *Service) Stats(ctx context.Context, project string) (TaskStats, error) 
 		var status, role string
 		var count int
 		if err := rows.Scan(&status, &role, &count); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return stats, fmt.Errorf("scan stat row: %w", err)
 		}
 		stats.ByStatus[status] += count
@@ -306,10 +302,10 @@ func (s *Service) Stats(ctx context.Context, project string) (TaskStats, error) 
 		stats.TotalTasks += count
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return stats, fmt.Errorf("stat rows: %w", err)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	expQuery := "SELECT COUNT(*) FROM tasks WHERE status = 'IN_PROGRESS' AND lease_until < CURRENT_TIMESTAMP"
 	if project != "" {

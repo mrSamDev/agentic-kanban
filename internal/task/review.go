@@ -20,8 +20,8 @@ func (s *Service) ReviewApprove(ctx context.Context, id, agent string) (Task, er
 		}
 		defer func() { _ = tx.Rollback() }()
 
-		// Check self-review gate (configurable via KANBAN_ALLOW_SELF_REVIEW env var)
-		if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
+		// Check self-review gate (configurable via TASKBIND_ALLOW_SELF_REVIEW env var)
+		if os.Getenv("TASKBIND_ALLOW_SELF_REVIEW") != "true" {
 			if err := checkSelfReview(tx, id, agent); err != nil {
 				return err
 			}
@@ -96,8 +96,8 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 		}
 		defer func() { _ = tx.Rollback() }()
 
-		// Check self-review gate (configurable via KANBAN_ALLOW_SELF_REVIEW env var)
-		if os.Getenv("KANBAN_ALLOW_SELF_REVIEW") != "true" {
+		// Check self-review gate (configurable via TASKBIND_ALLOW_SELF_REVIEW env var)
+		if os.Getenv("TASKBIND_ALLOW_SELF_REVIEW") != "true" {
 			if err := checkSelfReview(tx, id, agent); err != nil {
 				return err
 			}
@@ -168,7 +168,7 @@ func (s *Service) ReviewReject(ctx context.Context, id, agent, reason string) (T
 // Uses the claimed_by column (immutable snapshot set on first claim, preserved across lease
 // reclamations) rather than the prunable history table.
 // Returns nil (allows review) when there is no claiming agent (task created directly in IN_REVIEW).
-// Disabled by setting KANBAN_ALLOW_SELF_REVIEW=true.
+// Disabled by setting TASKBIND_ALLOW_SELF_REVIEW=true.
 func checkSelfReview(tx *sql.Tx, id, agent string) error {
 	var claimedBy sql.NullString
 	err := tx.QueryRow(

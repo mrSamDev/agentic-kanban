@@ -102,8 +102,9 @@ func Open(path string, debug bool) (*DB, error) {
 
 	// Always seed task_seq from existing tasks on every open.
 	if _, err := db.Exec(`
-		UPDATE task_seq SET next_id = (
-			SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks
+		UPDATE task_seq SET next_id = MAX(
+			next_id,
+			(SELECT COALESCE(MAX(CAST(substr(id,6) AS INTEGER)), 0) FROM tasks)
 		) WHERE id = 1
 	`); err != nil {
 		_ = db.Close()
@@ -153,9 +154,13 @@ func (db *DB) Close() error {
 	if db.debug {
 		slog.Info("db checkpointing WAL before close")
 	}
-	_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil && db.debug {
+		slog.Warn("wal checkpoint on close failed", "error", err)
+	}
 	if db.rdb != nil {
-		_ = db.rdb.Close()
+		if err := db.rdb.Close(); err != nil && db.debug {
+			slog.Warn("reader close failed", "error", err)
+		}
 	}
 	return db.DB.Close()
 }

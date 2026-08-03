@@ -13,7 +13,7 @@ in BLOCKED state for a manager to review.
 ## Usage
 
 ```bash
-kanban task block TASK-101 \
+taskbind task block TASK-101 \
   --agent my-agent-name \
   --reason "Waiting for upstream API to be deployed"
 ```

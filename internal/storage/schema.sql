@@ -10,6 +10,7 @@ INSERT OR IGNORE INTO task_seq (id, next_id) VALUES (1, 0);
 CREATE TABLE IF NOT EXISTS tasks (
     id            TEXT PRIMARY KEY,                  -- e.g. 'TASK-101'
     title         TEXT NOT NULL,
+    description   TEXT NOT NULL DEFAULT '',
     status        TEXT NOT NULL CHECK(status IN
                   ('TODO','IN_PROGRESS','BLOCKED','IN_REVIEW','DONE')),
     role_boundary TEXT NOT NULL,                     -- 'worker' | 'reviewer' | ...
@@ -18,7 +19,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     assigned_agent TEXT,                             -- current lease holder, nullable
     lease_until   DATETIME,                          -- nullable when unclaimed
     claimed_by    TEXT,                               -- immutable snapshot of who claimed it (for self-review check)
-    depends_on    TEXT,                               -- comma-separated dependency IDs (deprecated, use task_dependencies)
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -60,12 +60,15 @@ CREATE TABLE IF NOT EXISTS events (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     event_type TEXT NOT NULL,
-    payload    TEXT NOT NULL,
-    ttl_seconds INTEGER DEFAULT 259200  -- 3 days; NULL = never expires
+    payload    TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_ttl
-    ON events(created_at, ttl_seconds);
+CREATE INDEX IF NOT EXISTS idx_events_created_at
+    ON events(created_at);
+CREATE INDEX IF NOT EXISTS idx_history_created_at
+    ON history(created_at);
+CREATE INDEX IF NOT EXISTS idx_notes_created_at
+    ON notes(created_at);
 
 -- Dependency graph: join table replacing comma-separated depends_on TEXT.
 CREATE TABLE IF NOT EXISTS task_dependencies (

@@ -13,15 +13,15 @@ applicable to tasks that were submitted for review via `complete --review`.
 
 ```bash
 # Approve one task
-kanban task approve TASK-101 \
+taskbind task approve TASK-101 \
   --agent reviewer-agent
 
 # Approve all IN_REVIEW tasks at once
-kanban task approve --all \
+taskbind task approve --all \
   --agent reviewer-agent
   
 # Approve all IN_REVIEW for a specific project
-kanban task approve --all \
+taskbind task approve --all \
   --agent reviewer-agent \
   --project sprint-2
 ```

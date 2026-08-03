@@ -11,7 +11,7 @@ Read the plan file three times, each pass extracting a different layer
 of work. Write the proposal only after all three passes. Then STOP.
 
 **STOP after writing the proposal. Do NOT dispatch any tasks.
-Do NOT call dispatch_task. Do NOT call kanban task dispatch.**
+Do NOT call dispatch_task. Do NOT call taskbind task dispatch.**
 
 ---
 
@@ -85,7 +85,7 @@ If you are unsure about sequencing or gaps, call `advisor`.
 
 ## Writing the Proposal
 
-Combine all three passes into `.kanban/tasks-proposal.md`:
+Combine all three passes into `.taskbind/tasks-proposal.md`:
 
 ```markdown
 # Task Proposal: <project>
@@ -129,7 +129,7 @@ Things the plan omits but the project needs.
 - [ ] Reviewed by user
 - [ ] Approved for dispatch
 
-Run `approve-plan` to dispatch these tasks to the kanban board.
+Run `approve-plan` to dispatch these tasks to the taskbind board.
 ```
 
 ---
@@ -137,8 +137,8 @@ Run `approve-plan` to dispatch these tasks to the kanban board.
 ## Hard Rules
 
 - **DO NOT** call `dispatch_task` (the pi tool)
-- **DO NOT** call `kanban task dispatch` (the CLI)
-- **DO NOT** create kanban entries of any kind
+- **DO NOT** call `taskbind task dispatch` (the CLI)
+- **DO NOT** create taskbind entries of any kind
 - **DO NOT** spawn subagents or start working on tasks
 - **DO NOT** claim tasks or modify task state
 - Writing the proposal file is the ONLY allowed output
@@ -149,6 +149,6 @@ Run `approve-plan` to dispatch these tasks to the kanban board.
 
 ## Output
 
-File: `.kanban/tasks-proposal.md`
+File: `.taskbind/tasks-proposal.md`
 The user reviews this file then runs `approve-plan` to dispatch.
-No tasks are created on the kanban board by this skill.
+No tasks are created on the taskbind board by this skill.
