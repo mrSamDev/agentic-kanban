@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"os"
 
-
 	"taskbind/internal/task"
 
 	"github.com/spf13/cobra"
 )
 
-var version = "0.1.13-alpha"
+var version = "0.1.14-alpha"
 
 func main() {
 	var dbPath string

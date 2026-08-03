@@ -101,8 +101,8 @@ These are the **protocol skills** — they teach coordination, not software engi
 | `reviewer/` | claim-review, approve-task, reject-task | Review submissions, approve or reject |
 
 ```text
-Kanban binary = the protocol engine
-Kanban skills = the agent runtime (one per role)
+taskbind binary = the protocol engine
+taskbind skills = the agent runtime (one per role)
 Agent runtime  = Claude Code, PI, Codex, Gemini, ...
 ```
 
