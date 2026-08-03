@@ -1,6 +1,6 @@
 ---
 name: taskbind
-version: 0.1.13-alpha
+version: 0.1.14-alpha
 language: Go (1.25.0)
 database: SQLite (modernc.org/sqlite, pure Go, no CGo)
 cli_framework: cobra (spf13/cobra)
